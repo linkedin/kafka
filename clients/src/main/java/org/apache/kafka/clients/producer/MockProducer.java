@@ -17,6 +17,7 @@
 package org.apache.kafka.clients.producer;
 
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.internals.DefaultPartitioner;
 import org.apache.kafka.clients.producer.internals.FutureRecordMetadata;
@@ -274,7 +275,7 @@ public class MockProducer<K, V> implements Producer<K, V> {
 
     /**
      * Adds the record to the list of sent records. The {@link RecordMetadata} returned will be immediately satisfied.
-     * 
+     *
      * @see #history()
      */
     @Override
@@ -347,7 +348,7 @@ public class MockProducer<K, V> implements Producer<K, V> {
         }
     }
 
-    public synchronized void flush() {
+    public synchronized void flush(long timeout, TimeUnit unit) {
         verifyProducerState();
 
         if (this.flushException != null) {
@@ -356,6 +357,10 @@ public class MockProducer<K, V> implements Producer<K, V> {
 
         while (!this.completions.isEmpty())
             completeNext();
+    }
+
+    public synchronized void flush() {
+        flush(Long.MAX_VALUE, null);
     }
 
     public List<PartitionInfo> partitionsFor(String topic) {

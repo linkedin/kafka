@@ -94,10 +94,15 @@ ext {
   skipSigning = project.hasProperty('skipSigning') && skipSigning.toBoolean()
   shouldSign = !skipSigning && !version.endsWith("SNAPSHOT") && project.gradle.startParameter.taskNames.any { it.contains("upload") }
 
-  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : ''
-  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : ''
-  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : ''
+  bintrayUsername = System.getenv('BINTRAY_USER')
+  bintrayKey=System.getenv('BINTRAY_KEY')
+  bintrayUrl = bintrayApiBaseUrl + '/maven/' + bintrayUsername + '/' + bintrayRepo + '/' + bintrayPackage + '/;publish=1'
 
+  // By default, publish to Bintray.
+  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : bintrayUrl
+  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : bintrayUsername
+  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : bintrayKey
+ 
   userShowStandardStreams = project.hasProperty("showStandardStreams") ? showStandardStreams : null
 
   userTestLoggingEvents = project.hasProperty("testLoggingEvents") ? Arrays.asList(testLoggingEvents.split(",")) : null
@@ -177,9 +182,9 @@ subprojects {
               afterEvaluate {
                   pom.artifactId = "${archivesBaseName}"
                   pom.project {
-                      name 'Apache Kafka'
+                      name 'LinkedIn branch of Apache Kafka'
                       packaging 'jar'
-                      url 'http://kafka.apache.org'
+                      url 'http://github.com/linkedin/kafka'
                       licenses {
                           license {
                               name 'The Apache Software License, Version 2.0'
@@ -517,7 +522,7 @@ for ( sv in availableScalaVersions ) {
 }
 
 def connectPkgs = ['connect:api', 'connect:runtime', 'connect:transforms', 'connect:json', 'connect:file', 'connect:basic-auth-extension']
-def pkgs = ['clients', 'examples', 'log4j-appender', 'tools', 'streams', 'streams:streams-scala', 'streams:test-utils', 'streams:examples'] + connectPkgs
+def pkgs = ['clients', 'examples', 'log4j-appender', 'tools', 'streams', 'streams:test-utils', 'streams:examples'] + connectPkgs
 
 /** Create one task per default Scala version */
 def withDefScalaVersions(taskName) {

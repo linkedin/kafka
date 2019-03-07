@@ -182,7 +182,7 @@ subprojects {
               afterEvaluate {
                   pom.artifactId = "${archivesBaseName}"
                   pom.project {
-                      name 'LinkedIn branch of Apache Kafka'
+                      name 'LinkedIn fork of Apache Kafka'
                       packaging 'jar'
                       url 'http://github.com/linkedin/kafka'
                       licenses {

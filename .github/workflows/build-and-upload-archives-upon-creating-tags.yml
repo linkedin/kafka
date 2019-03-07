@@ -51,5 +51,8 @@ jobs:
         # exclude the streams test and connect test
         run: ./gradlew cleanTest checkstyleMain checkstyleTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
       - name: Upload archive
+        env:
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
           ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:uploadArchives :core:uploadArchives --no-daemon

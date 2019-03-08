@@ -316,6 +316,8 @@ class OffsetCommitTest extends ZooKeeperTestHarness {
     ShutdownServerAndConsumer()
   }
 
+  // Verify whether the committed offset is still there after bouncing a broker
+  // This test case reproduces the issue in KAFKA-8069
   @Test
   def testOffsetExpirationInOldBrokerVersion() {
     StartServerAndConsumer(KAFKA_1_1_IV0)

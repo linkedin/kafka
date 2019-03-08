@@ -32,6 +32,7 @@ install: true
 
 # Excluded integration tests for now because Travis will hit build timeout (50 minutes) when including them.
 # Also excluded streams unitTest because they often fail with "pure virtual method called" error (KAFKA-3502).
+# TODO: re-enable these tests when the mentioned issues are resolved.
 script:
   - ./gradlew clean compileJava compileScala compileTestJava compileTestScala checkstyleMain checkstyleTest findbugsMain unitTest -x :streams:unitTest rat --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed 
 

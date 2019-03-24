@@ -63,6 +63,10 @@ object Defaults {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
 
+  /** ********* Broker-side configuration ***********/
+  val AuditorClassName = "kafka.server.NoOpAuditor"
+  val AuditorShutdownTimeoutMs = 2000
+
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
   val HostName: String = new String("")
@@ -278,6 +282,11 @@ object KafkaConfig {
   val ProducerBatchDecompressionEnableProp = "producer.batch.decompression.enable"
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
+
+  /** ********* Broker-side auditor Configuration ****************/
+  val AuditorClassNameProp = "auditor.class.name"
+  val AuditorShutdownTimeoutMsProp = "auditor.shutdown.timeout"
+
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
   val HostNameProp = "host.name"
@@ -797,6 +806,10 @@ object KafkaConfig {
   val PasswordEncoderKeyLengthDoc =  "The key length used for encoding dynamically configured passwords."
   val PasswordEncoderIterationsDoc =  "The iteration count used for encoding dynamically configured passwords."
 
+  /** *********  Broker-side Auditor Configuration *********/
+  val AuditorClassNameDoc = "The name of the auditor class that is used to audit requests and/or response on broker."
+  val AuditorShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an auditor."
+
   private val configDef = {
     import ConfigDef.Importance._
     import ConfigDef.Range._
@@ -831,6 +844,10 @@ object KafkaConfig {
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
+
+      /************* Broker-side Auditor Configuration ***********/
+      .define(AuditorClassNameProp, STRING, Defaults.AuditorClassName, MEDIUM, AuditorClassNameDoc)
+      .define(AuditorShutdownTimeoutMsProp, LONG, Defaults.AuditorShutdownTimeoutMs, MEDIUM, AuditorShutdownTimeoutMsDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -1120,6 +1137,10 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   /************* Authorizer Configuration ***********/
   val authorizerClassName: String = getString(KafkaConfig.AuthorizerClassNameProp)
+
+  /************* Broker-side Auditor Configuration ********/
+  val auditorClassName: String = getString(KafkaConfig.AuditorClassNameProp)
+  val auditorShutdownTimeoutMs: Long = getLong(KafkaConfig.AuditorShutdownTimeoutMsProp)
 
   /** ********* Socket Server Configuration ***********/
   val hostName = getString(KafkaConfig.HostNameProp)

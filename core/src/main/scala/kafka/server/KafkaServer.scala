@@ -308,7 +308,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
         auditor = try {
           CoreUtils.createObject[Auditor](config.auditorClassName)
         } catch {
-          case e: Throwable =>
+          case e: Exception =>
             error("Creating auditor instance from the given class name failed.", e)
             new NoOpAuditor
         }

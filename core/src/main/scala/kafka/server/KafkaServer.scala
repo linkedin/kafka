@@ -116,7 +116,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
 
   var apis: KafkaApis = null
   var authorizer: Option[Authorizer] = None
-  var auditor: Auditor = null
+  var observer: Observer = null
   var socketServer: SocketServer = null
   var requestHandlerPool: KafkaRequestHandlerPool = null
 
@@ -305,14 +305,14 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
           authZ
         }
 
-        auditor = try {
-          CoreUtils.createObject[Auditor](config.auditorClassName)
+        observer = try {
+          CoreUtils.createObject[Observer](config.ObserverClassName)
         } catch {
           case e: Exception =>
-            error("Creating auditor instance from the given class name failed.", e)
-            new NoOpAuditor
+            error(s"Creating observer instance from the given class name ${config.ObserverClassName} failed.", e)
+            new NoOpObserver
         }
-        auditor.configure(config.originals())
+        observer.configure(config.originals())
 
         val fetchManager = new FetchManager(Time.SYSTEM,
           new FetchSessionCache(config.maxIncrementalFetchSessionCacheSlots,
@@ -320,7 +320,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
 
         /* start processing requests */
         apis = new KafkaApis(socketServer.requestChannel, replicaManager, adminManager, groupCoordinator, transactionCoordinator,
-          kafkaController, zkClient, config.brokerId, config, metadataCache, metrics, authorizer, auditor, quotaManagers,
+          kafkaController, zkClient, config.brokerId, config, metadataCache, metrics, authorizer, observer, quotaManagers,
           fetchManager, brokerTopicStats, clusterId, time, tokenManager)
 
         requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, time,
@@ -617,7 +617,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
           CoreUtils.swallow(apis.close(), this)
         CoreUtils.swallow(authorizer.foreach(_.close()), this)
 
-        CoreUtils.swallow(auditor.close(config.auditorShutdownTimeoutMs, TimeUnit.MILLISECONDS), this)
+        CoreUtils.swallow(observer.close(config.ObserverShutdownTimeoutMs, TimeUnit.MILLISECONDS), this)
 
         if (adminManager != null)
           CoreUtils.swallow(adminManager.shutdown(), this)

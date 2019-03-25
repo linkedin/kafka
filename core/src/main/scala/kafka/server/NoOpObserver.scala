@@ -23,19 +23,19 @@ import kafka.network.RequestChannel
 import org.apache.kafka.common.requests.AbstractResponse
 
 /**
-  * An auditor implementation that has no operation and serves as a place holder.
+  * An observer implementation that has no operation and serves as a place holder.
   */
-class NoOpAuditor extends Auditor {
+class NoOpObserver extends Observer {
 
   def configure(configs: Map[String, _]): Unit = {}
 
   /**
-    * Audit the record based on the given information.
+    * Observer the record based on the given information.
     */
-  def record(request: RequestChannel.Request, response: AbstractResponse): Unit = {}
+  def observe(request: RequestChannel.Request, response: AbstractResponse): Unit = {}
 
   /**
-    * Close the auditor with timeout.
+    * Close the observer with timeout.
     */
   def close(timeout: Long, unit: TimeUnit): Unit = {}
 

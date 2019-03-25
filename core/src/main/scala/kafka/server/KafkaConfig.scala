@@ -64,8 +64,8 @@ object Defaults {
   val AuthorizerClassName = ""
 
   /** ********* Broker-side configuration ***********/
-  val AuditorClassName = "kafka.server.NoOpAuditor"
-  val AuditorShutdownTimeoutMs = 2000
+  val ObserverClassName = "kafka.server.NoOpObserver"
+  val ObserverShutdownTimeoutMs = 2000
 
   /** ********* Socket Server Configuration ***********/
   val Port = 9092
@@ -283,9 +283,9 @@ object KafkaConfig {
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
 
-  /** ********* Broker-side auditor Configuration ****************/
-  val AuditorClassNameProp = "auditor.class.name"
-  val AuditorShutdownTimeoutMsProp = "auditor.shutdown.timeout"
+  /** ********* Broker-side observer Configuration ****************/
+  val ObserverClassNameProp = "observer.class.name"
+  val ObserverShutdownTimeoutMsProp = "observer.shutdown.timeout"
 
   /** ********* Socket Server Configuration ***********/
   val PortProp = "port"
@@ -806,10 +806,10 @@ object KafkaConfig {
   val PasswordEncoderKeyLengthDoc =  "The key length used for encoding dynamically configured passwords."
   val PasswordEncoderIterationsDoc =  "The iteration count used for encoding dynamically configured passwords."
 
-  /** *********  Broker-side Auditor Configuration *********/
-  val AuditorClassNameDoc = "The name of the auditor class that is used to audit requests and/or response on broker."
-  val AuditorShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an auditor. This property can not be less than or equal to " +
-    "zero. When closing/shutting down an auditor, most time is spent on flushing audit stats. The reasonable timeout should be close to " +
+  /** *********  Broker-side Observer Configuration *********/
+  val ObserverClassNameDoc = "The name of the observer class that is used to observe requests and/or response on broker."
+  val ObserverShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an observer. This property can not be less than or equal to " +
+    "zero. When closing/shutting down an observer, most time is spent on flushing the observed stats. The reasonable timeout should be close to " +
     "the time it takes to flush audit stats."
 
   private val configDef = {
@@ -847,9 +847,9 @@ object KafkaConfig {
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
 
-      /************* Broker-side Auditor Configuration ***********/
-      .define(AuditorClassNameProp, STRING, Defaults.AuditorClassName, MEDIUM, AuditorClassNameDoc)
-      .define(AuditorShutdownTimeoutMsProp, LONG, Defaults.AuditorShutdownTimeoutMs, atLeast(1), MEDIUM, AuditorShutdownTimeoutMsDoc)
+      /************* Broker-side Observer Configuration ***********/
+      .define(ObserverClassNameProp, STRING, Defaults.ObserverClassName, MEDIUM, ObserverClassNameDoc)
+      .define(ObserverShutdownTimeoutMsProp, LONG, Defaults.ObserverShutdownTimeoutMs, atLeast(1), MEDIUM, ObserverShutdownTimeoutMsDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)
@@ -1140,9 +1140,9 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   /************* Authorizer Configuration ***********/
   val authorizerClassName: String = getString(KafkaConfig.AuthorizerClassNameProp)
 
-  /************* Broker-side Auditor Configuration ********/
-  val auditorClassName: String = getString(KafkaConfig.AuditorClassNameProp)
-  val auditorShutdownTimeoutMs: Long = getLong(KafkaConfig.AuditorShutdownTimeoutMsProp)
+  /************* Broker-side Observer Configuration ********/
+  val ObserverClassName: String = getString(KafkaConfig.ObserverClassNameProp)
+  val ObserverShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
 
   /** ********* Socket Server Configuration ***********/
   val hostName = getString(KafkaConfig.HostNameProp)

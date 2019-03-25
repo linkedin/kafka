@@ -810,7 +810,7 @@ object KafkaConfig {
   val ObserverClassNameDoc = "The name of the observer class that is used to observe requests and/or response on broker."
   val ObserverShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an observer. This property can not be less than or equal to " +
     "zero. When closing/shutting down an observer, most time is spent on flushing the observed stats. The reasonable timeout should be close to " +
-    "the time it takes to flush audit stats."
+    "the time it takes to flush the stats."
 
   private val configDef = {
     import ConfigDef.Importance._

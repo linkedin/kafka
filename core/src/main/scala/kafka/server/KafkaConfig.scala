@@ -808,7 +808,9 @@ object KafkaConfig {
 
   /** *********  Broker-side Auditor Configuration *********/
   val AuditorClassNameDoc = "The name of the auditor class that is used to audit requests and/or response on broker."
-  val AuditorShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an auditor."
+  val AuditorShutdownTimeoutMsDoc = "The maximum time of closing/shutting down an auditor. This property can not be less than or equal to " +
+    "zero. When closing/shutting down an auditor, most time is spent on flushing audit stats. The reasonable timeout should be close to " +
+    "the time it takes to flush audit stats."
 
   private val configDef = {
     import ConfigDef.Importance._
@@ -847,7 +849,7 @@ object KafkaConfig {
 
       /************* Broker-side Auditor Configuration ***********/
       .define(AuditorClassNameProp, STRING, Defaults.AuditorClassName, MEDIUM, AuditorClassNameDoc)
-      .define(AuditorShutdownTimeoutMsProp, LONG, Defaults.AuditorShutdownTimeoutMs, MEDIUM, AuditorShutdownTimeoutMsDoc)
+      .define(AuditorShutdownTimeoutMsProp, LONG, Defaults.AuditorShutdownTimeoutMs, atLeast(1), MEDIUM, AuditorShutdownTimeoutMsDoc)
 
       /** ********* Socket Server Configuration ***********/
       .define(PortProp, INT, Defaults.Port, HIGH, PortDoc)

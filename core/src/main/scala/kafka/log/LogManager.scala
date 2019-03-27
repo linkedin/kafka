@@ -807,7 +807,9 @@ class LogManager(logDirs: Seq[File],
         // Now that replica in source log directory has been successfully renamed for deletion.
         // Close the log, update checkpoint files, and enqueue this log to be deleted.
         sourceLog.close()
-        checkpointLogRecoveryOffsetsInDir(sourceLog.dir.getParentFile)
+        // Set deleteSnapshotFiles to false to speed up topic deletion, since snapshot file is only used
+        // for transaction, which is not used anywhere in LinkedIn
+        checkpointLogRecoveryOffsetsInDir(sourceLog.dir.getParentFile, false)
         checkpointLogStartOffsetsInDir(sourceLog.dir.getParentFile)
         addLogToBeDeleted(sourceLog)
       } catch {

@@ -20,6 +20,8 @@ package kafka.server
 import java.util.concurrent.TimeUnit
 import kafka.network.RequestChannel
 import org.apache.kafka.common.requests.AbstractResponse
+import org.apache.kafka.common.requests.AbstractRequest
+import org.apache.kafka.common.requests.RequestContext
 import org.apache.kafka.common.Configurable
 
 /**
@@ -37,10 +39,11 @@ trait Observer extends Configurable {
   /**
     * Observe the record based on the given information.
     *
+    * @param requestContext the context information about the request
     * @param request  the request being observed for a various purpose(s)
     * @param response the response to the request
     */
-  def observe(request: RequestChannel.Request, response: AbstractResponse): Unit
+  def observe(requestContext: RequestContext, request: AbstractRequest, response: AbstractResponse): Unit
 
   /**
     * Close the observer with timeout.

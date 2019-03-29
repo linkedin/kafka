@@ -19,8 +19,7 @@ package kafka.server
 
 import java.util.Map
 import java.util.concurrent.TimeUnit
-import kafka.network.RequestChannel
-import org.apache.kafka.common.requests.AbstractResponse
+import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, RequestContext}
 
 /**
   * An observer implementation that has no operation and serves as a place holder.
@@ -32,7 +31,7 @@ class NoOpObserver extends Observer {
   /**
     * Observer the record based on the given information.
     */
-  def observe(request: RequestChannel.Request, response: AbstractResponse): Unit = {}
+  def observe(requestContext: RequestContext, request: AbstractRequest, response: AbstractResponse): Unit = {}
 
   /**
     * Close the observer with timeout.

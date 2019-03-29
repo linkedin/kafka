@@ -2376,7 +2376,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           if (RequestChannel.isRequestLoggingEnabled) Some(response.toString(request.context.apiVersion))
           else None
         try {
-          observer.observe(request, response)
+          observer.observe(request.context, request.body[AbstractRequest], response)
         } catch {
           case e: Exception => error(s"Observer failed to observe ${Observer.describeRequestAndResponse(request, response)}", e)
         }

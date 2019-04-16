@@ -46,7 +46,7 @@ class PartitionStateMachine(config: KafkaConfig,
                             stateChangeLogger: StateChangeLogger,
                             controllerContext: ControllerContext,
                             zkClient: KafkaZkClient,
-                            partitionState: mutable.Map[TopicPartition, PartitionState],
+                            val partitionState: mutable.Map[TopicPartition, PartitionState],
                             controllerBrokerRequestBatch: ControllerBrokerRequestBatch) extends Logging {
   private val controllerId = config.brokerId
 
@@ -137,13 +137,24 @@ class PartitionStateMachine(config: KafkaConfig,
     partitionState.filter { case (_, s) => s == state }.keySet.toSet
   }
 
+  def excludeDeletingTopicFromOfflinePartitionCount(topic: String): Unit = {
+    if (topicDeletionManager.isTopicQueuedUpForDeletion(topic)) {
+      offlinePartitionCount = offlinePartitionCount -
+        controllerContext.partitionsForTopic(topic).count(partition => partitionState(partition) == OfflinePartition)
+    }
+  }
+
+  def removePartitionStatesForTopic(topic: String): Unit = {
+    controllerContext.partitionsForTopic(topic).foreach(partitionState.remove)
+  }
+
   private def changeStateTo(partition: TopicPartition, currentState: PartitionState, targetState: PartitionState): Unit = {
     partitionState.put(partition, targetState)
     updateControllerMetrics(partition, currentState, targetState)
   }
 
   private def updateControllerMetrics(partition: TopicPartition, currentState: PartitionState, targetState: PartitionState) : Unit = {
-    if (!topicDeletionManager.isTopicWithDeletionStarted(partition.topic)) {
+    if (!topicDeletionManager.isTopicQueuedUpForDeletion(partition.topic)) {
       if (currentState != OfflinePartition && targetState == OfflinePartition) {
         offlinePartitionCount = offlinePartitionCount + 1
       } else if (currentState == OfflinePartition && targetState != OfflinePartition) {

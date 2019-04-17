@@ -109,8 +109,9 @@ class TopicDeletionManager(controller: KafkaController,
    */
   def enqueueTopicsForDeletion(topics: Set[String]) {
     if (isDeleteTopicEnabled) {
-      topicsToBeDeleted ++= topics
-      topics.foreach(controller.partitionStateMachine.excludeDeletingTopicFromOfflinePartitionCount)
+      val newTopicsToBeDeleted = topics -- topicsToBeDeleted
+      topicsToBeDeleted ++= newTopicsToBeDeleted
+      newTopicsToBeDeleted.foreach(controller.partitionStateMachine.excludeDeletingTopicFromOfflinePartitionCount)
       resumeDeletions()
     }
   }

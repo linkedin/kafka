@@ -486,6 +486,14 @@ class KafkaApis(val requestChannel: RequestChannel,
     if (authorizedRequestInfo.isEmpty)
       sendResponseCallback(Map.empty)
     else {
+
+      try
+        observer.observeProduceRequest(request.context, request.body[ProduceRequest])
+      catch {
+        case e: Exception => error(s"Observer failed to observe the produce request " +
+          s"${Observer.describeRequestAndResponse(request, null)}", e)
+      }
+
       val internalTopicsAllowed = request.header.clientId == AdminUtils.AdminClientId
 
       // call the replica manager to append messages to the replicas
@@ -497,13 +505,6 @@ class KafkaApis(val requestChannel: RequestChannel,
         entriesPerPartition = authorizedRequestInfo,
         responseCallback = sendResponseCallback,
         recordConversionStatsCallback = processingStatsCallback)
-
-      try
-        observer.observeProduceRequest(request.context, request.body[ProduceRequest])
-      catch {
-        case e: Exception => error(s"Observer failed to observe the produce request " +
-          s"${Observer.describeRequestAndResponse(request, null)}", e)
-      }
 
       // if the request is put into the purgatory, it will have a held reference and hence cannot be garbage collected;
       // hence we clear its data here in order to let GC reclaim its memory since it is already appended to log

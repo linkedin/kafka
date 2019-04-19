@@ -19,7 +19,7 @@ package kafka.server
 
 import java.util.Map
 import java.util.concurrent.TimeUnit
-import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, RequestContext}
+import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, ProduceRequest, RequestContext}
 
 /**
   * An observer implementation that has no operation and serves as a place holder.
@@ -29,9 +29,14 @@ class NoOpObserver extends Observer {
   def configure(configs: Map[String, _]): Unit = {}
 
   /**
-    * Observer the record based on the given information.
+    * Observe a request and its corresponding response.
     */
   def observe(requestContext: RequestContext, request: AbstractRequest, response: AbstractResponse): Unit = {}
+
+  /**
+    * Observe a produce request
+    */
+  def observeProduceRequest(requestContext: RequestContext, produceRequest: ProduceRequest): Unit = {}
 
   /**
     * Close the observer with timeout.

@@ -272,7 +272,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      *
      */
     public KafkaProducer(final Map<String, Object> configs) {
-        this(new ProducerConfig(configs), null, null, null, null);
+        this(new ProducerConfig(configs), null, null, null, null, null);
     }
 
     /**
@@ -289,9 +289,31 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      *                         be called in the producer when the serializer is passed in directly.
      */
     public KafkaProducer(Map<String, Object> configs, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+        this(configs, keySerializer, valueSerializer, null);
+    }
+
+    /**
+     * A producer is instantiated by providing a set of key-value pairs as configuration, a key and a value {@link Serializer},
+     * and custom metric tags.
+     * Valid configuration strings are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
+     * Values can be either strings or Objects of the appropriate type (for example a numeric configuration would accept
+     * either the string "42" or the integer 42).
+     * <p>
+     * Note: after creating a {@code KafkaProducer} you must always {@link #close()} it to avoid resource leaks.
+     * @param configs   The producer configs
+     * @param keySerializer  The serializer for key that implements {@link Serializer}. The configure() method won't be
+     *                       called in the producer when the serializer is passed in directly.
+     * @param valueSerializer  The serializer for value that implements {@link Serializer}. The configure() method won't
+     *                         be called in the producer when the serializer is passed in directly.
+     * @param metricTags  The metric tags used for producer metrics. If it is null, the client id is used as the default
+     *                    tag.
+     */
+    public KafkaProducer(Map<String, Object> configs, Serializer<K> keySerializer, Serializer<V> valueSerializer,
+        Map<String, String> metricTags) {
         this(new ProducerConfig(ProducerConfig.addSerializerToConfig(configs, keySerializer, valueSerializer)),
             keySerializer,
             valueSerializer,
+            null,
             null,
             null);
     }
@@ -304,7 +326,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * @param properties   The producer configs
      */
     public KafkaProducer(Properties properties) {
-        this(new ProducerConfig(properties), null, null, null, null);
+        this(new ProducerConfig(properties), null, null, null, null, null);
     }
 
     /**
@@ -319,8 +341,27 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      *                         be called in the producer when the serializer is passed in directly.
      */
     public KafkaProducer(Properties properties, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+        this(properties, keySerializer, valueSerializer, null);
+    }
+
+    /**
+     * A producer is instantiated by providing a set of key-value pairs as configuration, a key and a value {@link Serializer},
+     * and custom metric tags.
+     * Valid configuration strings are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>.
+     * <p>
+     * Note: after creating a {@code KafkaProducer} you must always {@link #close()} it to avoid resource leaks.
+     * @param properties   The producer configs
+     * @param keySerializer  The serializer for key that implements {@link Serializer}. The configure() method won't be
+     *                       called in the producer when the serializer is passed in directly.
+     * @param valueSerializer  The serializer for value that implements {@link Serializer}. The configure() method won't
+     *                         be called in the producer when the serializer is passed in directly.
+     * @param metricTags  The metric tags used for producer metrics. If it is null, the client id is used as the default
+     *                    tag.
+     */
+    public KafkaProducer(Properties properties, Serializer<K> keySerializer, Serializer<V> valueSerializer,
+        Map<String, String> metricTags) {
         this(new ProducerConfig(ProducerConfig.addSerializerToConfig(properties, keySerializer, valueSerializer)),
-                keySerializer, valueSerializer, null, null);
+            keySerializer, valueSerializer, null, null, metricTags);
     }
 
     @SuppressWarnings("unchecked")
@@ -329,7 +370,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                   Serializer<K> keySerializer,
                   Serializer<V> valueSerializer,
                   Metadata metadata,
-                  KafkaClient kafkaClient) {
+                  KafkaClient kafkaClient,
+                  Map<String, String> metricTags) {
         try {
             Map<String, Object> userProvidedConfigs = config.originals();
             this.producerConfig = config;
@@ -347,7 +389,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             log = logContext.logger(KafkaProducer.class);
             log.trace("Starting the Kafka producer");
 
-            Map<String, String> metricTags = Collections.singletonMap("client-id", clientId);
+            if (metricTags == null || metricTags.isEmpty()) {
+                metricTags = Collections.singletonMap("client-id", clientId);
+            }
             MetricConfig metricConfig = new MetricConfig().samples(config.getInt(ProducerConfig.METRICS_NUM_SAMPLES_CONFIG))
                     .timeWindow(config.getLong(ProducerConfig.METRICS_SAMPLE_WINDOW_MS_CONFIG), TimeUnit.MILLISECONDS)
                     .recordLevel(Sensor.RecordingLevel.forName(config.getString(ProducerConfig.METRICS_RECORDING_LEVEL_CONFIG)))

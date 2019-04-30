@@ -196,7 +196,7 @@ public class KafkaProducerTest {
 
         final Producer<String, String> producer = new KafkaProducer<>(
             new ProducerConfig(ProducerConfig.addSerializerToConfig(props, new StringSerializer(), new StringSerializer())),
-            new StringSerializer(), new StringSerializer(), metadata, client);
+            new StringSerializer(), new StringSerializer(), metadata, client, null);
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         final AtomicReference<Exception> closeException = new AtomicReference<>();
@@ -572,7 +572,7 @@ public class KafkaProducerTest {
 
         Producer<String, String> producer = new KafkaProducer<>(
                 new ProducerConfig(ProducerConfig.addSerializerToConfig(props, new StringSerializer(), new StringSerializer())),
-                new StringSerializer(), new StringSerializer(), metadata, client);
+                new StringSerializer(), new StringSerializer(), metadata, client, null);
         try {
             producer.initTransactions();
             fail("initTransactions() should have raised TimeoutException");
@@ -600,7 +600,7 @@ public class KafkaProducerTest {
 
         Producer<String, String> producer = new KafkaProducer<>(
                 new ProducerConfig(ProducerConfig.addSerializerToConfig(props, new StringSerializer(), new StringSerializer())),
-                new StringSerializer(), new StringSerializer(), metadata, client);
+                new StringSerializer(), new StringSerializer(), metadata, client, null);
         try {
             producer.initTransactions();
         } catch (TimeoutException e) {
@@ -633,7 +633,7 @@ public class KafkaProducerTest {
 
         Producer<String, String> producer = new KafkaProducer<>(new ProducerConfig(
                 ProducerConfig.addSerializerToConfig(props, new StringSerializer(), new StringSerializer())),
-                new StringSerializer(), new StringSerializer(), metadata, client);
+                new StringSerializer(), new StringSerializer(), metadata, client, null);
 
         String invalidTopicName = "topic abc";          // Invalid topic name due to space
         ProducerRecord<String, String> record = new ProducerRecord<>(invalidTopicName, "HelloKafka");
@@ -675,7 +675,7 @@ public class KafkaProducerTest {
 
         Producer<String, String> producer = new KafkaProducer<>(
                 new ProducerConfig(ProducerConfig.addSerializerToConfig(props, new StringSerializer(), new StringSerializer())),
-                new StringSerializer(), new StringSerializer(), metadata, client);
+                new StringSerializer(), new StringSerializer(), metadata, client, null);
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         final AtomicReference<Exception> sendException = new AtomicReference<>();

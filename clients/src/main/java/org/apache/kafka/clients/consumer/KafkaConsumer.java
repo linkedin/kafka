@@ -614,9 +614,33 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     public KafkaConsumer(Map<String, Object> configs,
                          Deserializer<K> keyDeserializer,
                          Deserializer<V> valueDeserializer) {
+        this(configs, keyDeserializer, valueDeserializer, null);
+    }
+
+    /**
+     * A consumer is instantiated by providing a set of key-value pairs as configuration, a key and a value {@link Deserializer},
+     * and custom metric tags.
+     * <p>
+     * Valid configuration strings are documented at {@link ConsumerConfig}.
+     * <p>
+     * Note: after creating a {@code KafkaConsumer} you must always {@link #close()} it to avoid resource leaks.
+     *
+     * @param configs The consumer configs
+     * @param keyDeserializer The deserializer for key that implements {@link Deserializer}. The configure() method
+     *            won't be called in the consumer when the deserializer is passed in directly.
+     * @param valueDeserializer The deserializer for value that implements {@link Deserializer}. The configure() method
+     *            won't be called in the consumer when the deserializer is passed in directly.
+     * @param metricTags  The metric tags used for producer metrics. If it is null, the client id is used as the default
+     *                    tag.
+     */
+    public KafkaConsumer(Map<String, Object> configs,
+                         Deserializer<K> keyDeserializer,
+                         Deserializer<V> valueDeserializer,
+                         Map<String, String> metricTags) {
         this(new ConsumerConfig(ConsumerConfig.addDeserializerToConfig(configs, keyDeserializer, valueDeserializer)),
-            keyDeserializer,
-            valueDeserializer);
+             keyDeserializer,
+             valueDeserializer,
+             metricTags);
     }
 
     /**
@@ -649,14 +673,38 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     public KafkaConsumer(Properties properties,
                          Deserializer<K> keyDeserializer,
                          Deserializer<V> valueDeserializer) {
+        this(properties, keyDeserializer, valueDeserializer, null);
+    }
+
+    /**
+     * A consumer is instantiated by providing a {@link java.util.Properties} object as configuration, a key and a value
+     * {@link Deserializer}, and custom metric tags.
+     * <p>
+     * Valid configuration strings are documented at {@link ConsumerConfig}.
+     * <p>
+     * Note: after creating a {@code KafkaConsumer} you must always {@link #close()} it to avoid resource leaks.
+     *
+     * @param properties The consumer configuration properties
+     * @param keyDeserializer The deserializer for key that implements {@link Deserializer}. The configure() method
+     *            won't be called in the consumer when the deserializer is passed in directly.
+     * @param valueDeserializer The deserializer for value that implements {@link Deserializer}. The configure() method
+     *            won't be called in the consumer when the deserializer is passed in directly.
+     * @param metricTags  The metric tags used for producer metrics. If it is null, the client id is used as the default
+     *                    tag.
+     */
+    public KafkaConsumer(Properties properties,
+                         Deserializer<K> keyDeserializer,
+                         Deserializer<V> valueDeserializer,
+                         Map<String, String> metricTags) {
         this(new ConsumerConfig(ConsumerConfig.addDeserializerToConfig(properties, keyDeserializer, valueDeserializer)),
-             keyDeserializer, valueDeserializer);
+             keyDeserializer, valueDeserializer, metricTags);
     }
 
     @SuppressWarnings("unchecked")
     private KafkaConsumer(ConsumerConfig config,
                           Deserializer<K> keyDeserializer,
-                          Deserializer<V> valueDeserializer) {
+                          Deserializer<V> valueDeserializer,
+                          Map<String, String> metricTags) {
         try {
             String clientId = config.getString(ConsumerConfig.CLIENT_ID_CONFIG);
             if (clientId.isEmpty())
@@ -672,11 +720,13 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
 
-            Map<String, String> metricsTags = Collections.singletonMap("client-id", clientId);
+            if (metricTags == null || metricTags.isEmpty()) {
+              metricTags = Collections.singletonMap("client-id", clientId);
+            }
             MetricConfig metricConfig = new MetricConfig().samples(config.getInt(ConsumerConfig.METRICS_NUM_SAMPLES_CONFIG))
                     .timeWindow(config.getLong(ConsumerConfig.METRICS_SAMPLE_WINDOW_MS_CONFIG), TimeUnit.MILLISECONDS)
                     .recordLevel(Sensor.RecordingLevel.forName(config.getString(ConsumerConfig.METRICS_RECORDING_LEVEL_CONFIG)))
-                    .tags(metricsTags);
+                    .tags(metricTags);
             List<MetricsReporter> reporters = config.getConfiguredInstances(ConsumerConfig.METRIC_REPORTER_CLASSES_CONFIG,
                     MetricsReporter.class);
             reporters.add(new JmxReporter(JMX_PREFIX));
@@ -711,7 +761,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(config.getList(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG));
             this.metadata.update(Cluster.bootstrap(addresses), Collections.<String>emptySet(), 0);
             String metricGrpPrefix = "consumer";
-            ConsumerMetrics metricsRegistry = new ConsumerMetrics(metricsTags.keySet(), "consumer");
+            ConsumerMetrics metricsRegistry = new ConsumerMetrics(metricTags.keySet(), "consumer");
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config);
 
             IsolationLevel isolationLevel = IsolationLevel.valueOf(

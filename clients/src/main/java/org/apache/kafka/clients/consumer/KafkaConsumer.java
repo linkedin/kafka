@@ -721,7 +721,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.time = Time.SYSTEM;
 
             if (metricTags == null || metricTags.isEmpty()) {
-              metricTags = Collections.singletonMap("client-id", clientId);
+                metricTags = Collections.singletonMap("client-id", clientId);
             }
             MetricConfig metricConfig = new MetricConfig().samples(config.getInt(ConsumerConfig.METRICS_NUM_SAMPLES_CONFIG))
                     .timeWindow(config.getLong(ConsumerConfig.METRICS_SAMPLE_WINDOW_MS_CONFIG), TimeUnit.MILLISECONDS)

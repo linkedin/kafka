@@ -377,20 +377,32 @@ public class MetricsTest {
         assertEquals(0.0, sampledTotal.measure(config, time.milliseconds()), EPS);
     }
 
-    @Test
+    @Test(expected = IllegalArgumentException.class)
     public void testDuplicateMetricName() {
-        int initialSize = metrics.metrics().size();
-        MetricName metricName = metrics.metricName("test1", "grp1");
-        metrics.addMetric(metricName, new Count());
-        assertEquals(initialSize + 1, metrics.metrics().size());
+        metrics.sensor("test").add(metrics.metricName("test", "grp1"), new Avg());
+        metrics.sensor("test2").add(metrics.metricName("test", "grp1"), new Total());
+    }
 
-        metrics.addMetric(metricName, new Count());
-        assertEquals(initialSize + 1, metrics.metrics().size());
+    @Test
+    public void testDuplicateMetricNameOptionallyReplace() {
+        try {
+            Metrics.setReplaceOnDuplicateMetric(true);
 
-        assertNotNull(metrics.removeMetric(metricName));
-        assertNull(metrics.metrics().get(metricName));
+            int initialSize = metrics.metrics().size();
+            MetricName metricName = metrics.metricName("test1", "grp1");
+            metrics.addMetric(metricName, new Count());
+            assertEquals(initialSize + 1, metrics.metrics().size());
 
-        assertEquals(initialSize, metrics.metrics().size());
+            metrics.addMetric(metricName, new Count());
+            assertEquals(initialSize + 1, metrics.metrics().size());
+
+            assertNotNull(metrics.removeMetric(metricName));
+            assertNull(metrics.metrics().get(metricName));
+
+            assertEquals(initialSize, metrics.metrics().size());
+        } finally {
+            Metrics.setReplaceOnDuplicateMetric(false);
+        }
     }
 
     @Test

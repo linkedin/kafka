@@ -43,6 +43,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class SensorTest {
     @Test
@@ -117,9 +118,23 @@ public class SensorTest {
         assertTrue(sensor.add(metrics.metricName("test-metric", "test-group"), new Avg()));
 
 
-        // but adding the same metric to a DIFFERENT sensor replace that metric with an error in the logs
+        // but adding the same metric to a DIFFERENT sensor is an error
         final Sensor anotherSensor = metrics.sensor("another-sensor");
-        anotherSensor.add(metrics.metricName("test-metric", "test-group"), new Avg());
+        try {
+            anotherSensor.add(metrics.metricName("test-metric", "test-group"), new Avg());
+            fail("should have thrown");
+        } catch (final IllegalArgumentException ignored) {
+            // pass
+        }
+
+        // Unless duplicate sensors are allowed, then the sensor will be replaced with an error in the logs
+        try {
+            Metrics.setReplaceOnDuplicateMetric(true);
+            final Sensor anotherAnotherSensor = metrics.sensor("another-sensor");
+            anotherAnotherSensor.add(metrics.metricName("test-metric", "test-group"), new Avg());
+        } finally {
+            Metrics.setReplaceOnDuplicateMetric(false);
+        }
 
         // note that adding a different metric with the same name is also a no-op
         assertTrue(sensor.add(metrics.metricName("test-metric", "test-group"), new Sum()));

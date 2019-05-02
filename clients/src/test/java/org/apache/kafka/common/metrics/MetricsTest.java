@@ -377,10 +377,20 @@ public class MetricsTest {
         assertEquals(0.0, sampledTotal.measure(config, time.milliseconds()), EPS);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testDuplicateMetricName() {
-        metrics.sensor("test").add(metrics.metricName("test", "grp1"), new Avg());
-        metrics.sensor("test2").add(metrics.metricName("test", "grp1"), new Total());
+        int initialSize = metrics.metrics().size();
+        MetricName metricName = metrics.metricName("test1", "grp1");
+        metrics.addMetric(metricName, new Count());
+        assertEquals(initialSize + 1, metrics.metrics().size());
+
+        metrics.addMetric(metricName, new Count());
+        assertEquals(initialSize + 1, metrics.metrics().size());
+
+        assertNotNull(metrics.removeMetric(metricName));
+        assertNull(metrics.metrics().get(metricName));
+
+        assertEquals(initialSize, metrics.metrics().size());
     }
 
     @Test

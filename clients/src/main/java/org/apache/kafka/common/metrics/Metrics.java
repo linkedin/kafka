@@ -530,7 +530,7 @@ public class Metrics implements Closeable {
                 try {
                     reporter.metricRemoval(metric);
                 } catch (Exception e) {
-                    log.error("Error when removing metric from " + reporter.getClass().getName(), e);
+                    log.error("Error when removing metric " + metricName + " from " + reporter.getClass().getName(), e);
                 }
             }
             log.trace("Removed metric named {}", metricName);
@@ -558,17 +558,10 @@ public class Metrics implements Closeable {
     synchronized void registerMetric(KafkaMetric metric) {
         MetricName metricName = metric.metricName();
 
-        KafkaMetric existingMetric = this.metrics.get(metricName);
-        if (existingMetric != null) {
+        if (this.metrics.containsKey(metricName)) {
             if (replaceOnDuplicate) {
                 log.error("The metric " + metricName + " is being replaced since it had already been registered. Please file a bug report.");
-                for (MetricsReporter reporter : reporters) {
-                    try {
-                        reporter.metricRemoval(existingMetric);
-                    } catch (Exception e) {
-                        log.error("Error when removing metric " + metricName + " from " + reporter.getClass().getName(), e);
-                    }
-                }
+                removeMetric(metricName);
             } else {
                 throw new IllegalArgumentException("A metric named '" + metricName + "' already exists, can't register another one.");
             }

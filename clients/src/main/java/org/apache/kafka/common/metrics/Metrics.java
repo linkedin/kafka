@@ -75,7 +75,7 @@ public class Metrics implements Closeable {
     private final ScheduledThreadPoolExecutor metricsScheduler;
     private static final Logger log = LoggerFactory.getLogger(Metrics.class);
 
-    private static boolean replaceOnDuplicate = false;
+    private volatile boolean replaceOnDuplicate = false;
 
     /**
      * Create a metrics repository with no metric reporters and default configuration.
@@ -641,7 +641,7 @@ public class Metrics implements Closeable {
         return this.metricName(template.name(), template.group(), template.description(), tags);
     }
 
-    public static void setReplaceOnDuplicateMetric(boolean value) {
+    public void setReplaceOnDuplicateMetric(boolean value) {
         replaceOnDuplicate = value;
     }
 

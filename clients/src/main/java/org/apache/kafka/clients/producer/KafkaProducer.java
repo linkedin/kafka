@@ -356,6 +356,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 config.getConfiguredInstances(ProducerConfig.METRIC_REPORTER_CLASSES_CONFIG, MetricsReporter.class);
             reporters.add(new JmxReporter(JMX_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time);
+            this.metrics.setReplaceOnDuplicateMetric(config.getBoolean(ProducerConfig.METRICS_REPLACE_ON_DUPLICATE_CONFIG));
             ProducerMetrics metricsRegistry = new ProducerMetrics(this.metrics);
             this.partitioner = config.getConfiguredInstance(ProducerConfig.PARTITIONER_CLASS_CONFIG, Partitioner.class);
             long retryBackoffMs = config.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG);

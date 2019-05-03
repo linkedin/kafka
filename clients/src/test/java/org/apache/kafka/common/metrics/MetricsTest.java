@@ -385,24 +385,20 @@ public class MetricsTest {
 
     @Test
     public void testDuplicateMetricNameOptionallyReplace() {
-        try {
-            Metrics.setReplaceOnDuplicateMetric(true);
+        metrics.setReplaceOnDuplicateMetric(true);
 
-            int initialSize = metrics.metrics().size();
-            MetricName metricName = metrics.metricName("test1", "grp1");
-            metrics.addMetric(metricName, new Count());
-            assertEquals(initialSize + 1, metrics.metrics().size());
+        int initialSize = metrics.metrics().size();
+        MetricName metricName = metrics.metricName("test1", "grp1");
+        metrics.addMetric(metricName, new Count());
+        assertEquals(initialSize + 1, metrics.metrics().size());
 
-            metrics.addMetric(metricName, new Count());
-            assertEquals(initialSize + 1, metrics.metrics().size());
+        metrics.addMetric(metricName, new Count());
+        assertEquals(initialSize + 1, metrics.metrics().size());
 
-            assertNotNull(metrics.removeMetric(metricName));
-            assertNull(metrics.metrics().get(metricName));
+        assertNotNull(metrics.removeMetric(metricName));
+        assertNull(metrics.metrics().get(metricName));
 
-            assertEquals(initialSize, metrics.metrics().size());
-        } finally {
-            Metrics.setReplaceOnDuplicateMetric(false);
-        }
+        assertEquals(initialSize, metrics.metrics().size());
     }
 
     @Test

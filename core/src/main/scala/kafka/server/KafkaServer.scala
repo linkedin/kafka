@@ -232,11 +232,11 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
         kafkaScheduler.startup()
 
         /* create and configure metrics */
-        Metrics.setReplaceOnDuplicateMetric(true);
         val reporters = new util.ArrayList[MetricsReporter]
         reporters.add(new JmxReporter(jmxPrefix))
         val metricConfig = KafkaServer.metricConfig(config)
         metrics = new Metrics(metricConfig, reporters, time, true)
+        metrics.setReplaceOnDuplicateMetric(config.metricReplaceOnDuplicate)
 
         /* register broker metrics */
         _brokerTopicStats = new BrokerTopicStats

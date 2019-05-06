@@ -96,7 +96,7 @@ ext {
 
   bintrayUsername = System.getenv('BINTRAY_USER')
   bintrayKey=System.getenv('BINTRAY_KEY')
-  bintrayUrl = bintrayApiBaseUrl + '/maven/' + bintrayUsername + '/' + bintrayRepo + '/' + bintrayPackage + '/;publish=1'
+  bintrayUrl = bintrayApiBaseUrl + '/maven/linkedin/' + bintrayRepo + '/' + bintrayPackage + '/;publish=1'
 
   // By default, publish to Bintray.
   mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : bintrayUrl

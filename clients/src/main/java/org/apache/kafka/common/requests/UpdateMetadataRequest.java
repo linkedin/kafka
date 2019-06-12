@@ -217,6 +217,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
                 append(", brokerEpoch=").append(brokerEpoch).
                 append(", liveBrokers=").append(Utils.join(liveBrokers, ", ")).
                 append(")");
+
             // bld.append("(type: UpdateMetadataRequest=").
             //   append(", controllerId=").append(controllerId).
             //   append(", controllerEpoch=").append(controllerEpoch).

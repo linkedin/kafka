@@ -274,7 +274,7 @@ class Partition(val topic: String,
       if (logManager.getLog(topicPartition, isFuture = true).isDefined)
         logManager.asyncDelete(topicPartition, isFuture = true)
     }
-    // If the deleted replica was leader replica, there might be delayed produce requests in purgatory need to be cleaned up.
+    // If the deleted replica was leader replica, there might be delayed requests in purgatory need to be cleaned up.
     if (wasLeader) {
       tryCompleteDelayedRequests()
     }

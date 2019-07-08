@@ -219,10 +219,15 @@ class ReplicaManagerTest {
         assertEquals(Errors.UNKNOWN_TOPIC_OR_PARTITION, response.error)
       }
 
-      // Send a StopReplicaRequest to replica manager.
-      val stopReplicaRequest =  new StopReplicaRequest.Builder(ApiKeys.STOP_REPLICA.latestVersion(), 0, 0, brokerEpoch, true,
+      // Send StopReplicaRequest(delete = false) to move replica to OfflineReplica state.
+      val stopReplicaRequest1 =  new StopReplicaRequest.Builder(ApiKeys.STOP_REPLICA.latestVersion(), 0, 0, brokerEpoch, false,
         Set(new TopicPartition(topic, 0)).asJava).build()
-      rm.stopReplicas(stopReplicaRequest)
+      rm.stopReplicas(stopReplicaRequest1)
+
+      // Send StopReplicaRequest(delete = true) to move replica to NonExistentReplica state.
+      val stopReplicaRequest2 =  new StopReplicaRequest.Builder(ApiKeys.STOP_REPLICA.latestVersion(), 0, 0, brokerEpoch, true,
+        Set(new TopicPartition(topic, 0)).asJava).build()
+      rm.stopReplicas(stopReplicaRequest2)
 
       assertTrue(appendResult.isFired)
     } finally {

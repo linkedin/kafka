@@ -263,9 +263,7 @@ class Partition(val topic: String,
 
   def delete() {
     // need to hold the lock to prevent appendMessagesToLeader() from hitting I/O exceptions due to log being deleted
-    var wasLeader = false
     inWriteLock(leaderIsrUpdateLock) {
-      wasLeader = leaderReplicaIdOpt.map(_ == localBrokerId).getOrElse(false)
       allReplicasMap.clear()
       inSyncReplicas = Set.empty[Replica]
       leaderReplicaIdOpt = None
@@ -273,10 +271,6 @@ class Partition(val topic: String,
       logManager.asyncDelete(topicPartition)
       if (logManager.getLog(topicPartition, isFuture = true).isDefined)
         logManager.asyncDelete(topicPartition, isFuture = true)
-    }
-    // If the deleted replica was leader replica, there might be delayed requests in purgatory need to be cleaned up.
-    if (wasLeader) {
-      tryCompleteDelayedRequests()
     }
   }
 
@@ -532,7 +526,7 @@ class Partition(val topic: String,
   /**
    * Try to complete any pending requests. This should be called without holding the leaderIsrUpdateLock.
    */
-  private def tryCompleteDelayedRequests() {
+  def tryCompleteDelayedRequests() {
     val requestKey = new TopicPartitionOperationKey(topicPartition)
     replicaManager.tryCompleteDelayedFetch(requestKey)
     replicaManager.tryCompleteDelayedProduce(requestKey)

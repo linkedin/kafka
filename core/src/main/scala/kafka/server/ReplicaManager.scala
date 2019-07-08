@@ -358,6 +358,9 @@ class ReplicaManager(val config: KafkaConfig,
     }
 
     if (removedPartition != null) {
+      // If the deleted replica was leader replica, there might be delayed requests in purgatory need to be cleaned up.
+      if (removedPartition.leaderReplicaIdOpt.map(_ == localBrokerId).getOrElse(false))
+        removedPartition.tryCompleteDelayedRequests()
       val topicHasPartitions = allPartitions.values.exists(partition => topicPartition.topic == partition.topic)
       if (!topicHasPartitions)
         brokerTopicStats.removeMetrics(topicPartition.topic)

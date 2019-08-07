@@ -1019,6 +1019,10 @@ class KafkaApis(val requestChannel: RequestChannel,
       topicResponses
     } else {
       val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
+      val describeRequestContext = (requestCxt : RequestContext) => {
+        "request from " + requestCxt.principal + " at IP address " + requestCxt.clientAddress + " with header " + requestCxt.header
+      }
+
       val responsesForNonExistentTopics = nonExistentTopics.map { topic =>
         if (isInternal(topic)) {
           val topicMetadata = createInternalTopic(topic)
@@ -1029,12 +1033,15 @@ class KafkaApis(val requestChannel: RequestChannel,
         } else if (allowAutoTopicCreation && config.autoCreateTopicsEnable) {
           val msg =  "Automatically creating topic: " + topic + " with " + config.numPartitions +
                      " partitions and replication factor " + config.defaultReplicationFactor +
-                     " due to request from " + requestContext.principal + " at IP address " +
-            requestContext.clientAddress + " and header " + requestContext.header
+                     " due to " + describeRequestContext(requestContext)
 
-          info(msg);
+          info(msg)
           createTopic(topic, config.numPartitions, config.defaultReplicationFactor)
         } else {
+          val msg = "A " + describeRequestContext(requestContext) +
+            " is trying to get metadata for a nonexistent topic: " + topic + " while auto topic creation is disabled"
+
+          info(msg)
           new MetadataResponse.TopicMetadata(Errors.UNKNOWN_TOPIC_OR_PARTITION, topic, false, java.util.Collections.emptyList())
         }
       }

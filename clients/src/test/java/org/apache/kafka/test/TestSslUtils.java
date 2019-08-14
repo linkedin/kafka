@@ -151,7 +151,7 @@ public class TestSslUtils {
     }
 
     private static Map<String, Object> createSslConfig(Mode mode, File keyStoreFile, Password password, Password keyPassword,
-                                                       File trustStoreFile, Password trustStorePassword) {
+                                                       File trustStoreFile, Password trustStorePassword, boolean usingConscrypt) {
         Map<String, Object> sslConfigs = new HashMap<>();
         sslConfigs.put(SslConfigs.SSL_PROTOCOL_CONFIG, "TLSv1.2"); // protocol to create SSLContext
 
@@ -171,6 +171,9 @@ public class TestSslUtils {
         List<String> enabledProtocols  = new ArrayList<>();
         enabledProtocols.add("TLSv1.2");
         sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
+        if (usingConscrypt) {
+            sslConfigs.put(SslConfigs.SSL_PROVIDER_CONFIG, "Conscrypt");
+        }
 
         return sslConfigs;
     }
@@ -183,11 +186,11 @@ public class TestSslUtils {
     public static  Map<String, Object> createSslConfig(boolean useClientCert, boolean trustStore,
             Mode mode, File trustStoreFile, String certAlias, String cn)
         throws IOException, GeneralSecurityException {
-        return createSslConfig(useClientCert, trustStore, mode, trustStoreFile, certAlias, cn, new CertificateBuilder());
+        return createSslConfig(useClientCert, trustStore, mode, trustStoreFile, certAlias, cn, new CertificateBuilder(), false);
     }
 
     public static  Map<String, Object> createSslConfig(boolean useClientCert, boolean trustStore,
-            Mode mode, File trustStoreFile, String certAlias, String cn, CertificateBuilder certBuilder)
+            Mode mode, File trustStoreFile, String certAlias, String cn, CertificateBuilder certBuilder, boolean usingConscrypt)
             throws IOException, GeneralSecurityException {
         Map<String, X509Certificate> certs = new HashMap<>();
         File keyStoreFile = null;
@@ -216,7 +219,7 @@ public class TestSslUtils {
             trustStoreFile.deleteOnExit();
         }
 
-        return createSslConfig(mode, keyStoreFile, password, password, trustStoreFile, trustStorePassword);
+        return createSslConfig(mode, keyStoreFile, password, password, trustStoreFile, trustStorePassword, usingConscrypt);
     }
 
     public static class CertificateBuilder {

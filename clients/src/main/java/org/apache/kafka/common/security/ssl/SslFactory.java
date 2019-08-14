@@ -53,6 +53,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.HashSet;
+import org.conscrypt.Conscrypt;
 
 
 public class SslFactory implements Reconfigurable {
@@ -209,7 +210,10 @@ public class SslFactory implements Reconfigurable {
     SSLContext createSSLContext(SecurityStore keystore, SecurityStore truststore) throws GeneralSecurityException, IOException  {
         SSLContext sslContext;
         if (provider != null)
-            sslContext = SSLContext.getInstance(protocol, provider);
+            if (provider.equals("Conscrypt"))
+                sslContext = SSLContext.getInstance(protocol, Conscrypt.newProvider());
+            else
+                sslContext = SSLContext.getInstance(protocol, provider);
         else
             sslContext = SSLContext.getInstance(protocol);
 

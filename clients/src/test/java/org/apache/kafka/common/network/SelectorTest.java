@@ -467,7 +467,7 @@ public class SelectorTest {
     public void testMuteOnOOM() throws Exception {
         //clean up default selector, replace it with one that uses a finite mem pool
         selector.close();
-        MemoryPool pool = new SimpleMemoryPool(900, 900, false, null);
+        MemoryPool pool = new SimpleMemoryPool(900, 900, false, null, null);
         selector = new Selector(NetworkReceive.UNLIMITED, 5000, metrics, time, "MetricGroup",
             new HashMap<String, String>(), true, false, channelBuilder, pool, new LogContext());
 

@@ -219,7 +219,7 @@ public class SslSelectorTest extends SelectorTest {
     public void testMuteOnOOM() throws Exception {
         //clean up default selector, replace it with one that uses a finite mem pool
         selector.close();
-        MemoryPool pool = new SimpleMemoryPool(900, 900, false, null);
+        MemoryPool pool = new SimpleMemoryPool(900, 900, false, null, null);
         //the initial channel builder is for clients, we need a server one
         File trustStoreFile = File.createTempFile("truststore", ".jks");
         Map<String, Object> sslServerConfigs = TestSslUtils.createSslConfig(false, true, Mode.SERVER, trustStoreFile, "server");

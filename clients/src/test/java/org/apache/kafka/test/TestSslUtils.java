@@ -70,6 +70,10 @@ import java.util.ArrayList;
 
 public class TestSslUtils {
 
+    public enum SSLProvider {
+        DEFAULT, OPENSSL
+    }
+
     /**
      * Create a self-signed X.509 Certificate.
      * From http://bfo.com/blog/2011/03/08/odds_and_ends_creating_a_new_x_509_certificate.html.
@@ -151,7 +155,7 @@ public class TestSslUtils {
     }
 
     private static Map<String, Object> createSslConfig(Mode mode, File keyStoreFile, Password password, Password keyPassword,
-                                                       File trustStoreFile, Password trustStorePassword, boolean usingConscrypt) {
+                                                       File trustStoreFile, Password trustStorePassword, SSLProvider provider) {
         Map<String, Object> sslConfigs = new HashMap<>();
         sslConfigs.put(SslConfigs.SSL_PROTOCOL_CONFIG, "TLSv1.2"); // protocol to create SSLContext
 
@@ -171,7 +175,8 @@ public class TestSslUtils {
         List<String> enabledProtocols  = new ArrayList<>();
         enabledProtocols.add("TLSv1.2");
         sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
-        if (usingConscrypt) {
+        // Use Conscrypt's OpenSSL implementation.
+        if (provider.equals(SSLProvider.OPENSSL)) {
             sslConfigs.put(SslConfigs.SSL_PROVIDER_CONFIG, "Conscrypt");
         }
 
@@ -186,11 +191,11 @@ public class TestSslUtils {
     public static  Map<String, Object> createSslConfig(boolean useClientCert, boolean trustStore,
             Mode mode, File trustStoreFile, String certAlias, String cn)
         throws IOException, GeneralSecurityException {
-        return createSslConfig(useClientCert, trustStore, mode, trustStoreFile, certAlias, cn, new CertificateBuilder(), false);
+        return createSslConfig(useClientCert, trustStore, mode, trustStoreFile, certAlias, cn, new CertificateBuilder(), SSLProvider.DEFAULT);
     }
 
     public static  Map<String, Object> createSslConfig(boolean useClientCert, boolean trustStore,
-            Mode mode, File trustStoreFile, String certAlias, String cn, CertificateBuilder certBuilder, boolean usingConscrypt)
+            Mode mode, File trustStoreFile, String certAlias, String cn, CertificateBuilder certBuilder, SSLProvider provider)
             throws IOException, GeneralSecurityException {
         Map<String, X509Certificate> certs = new HashMap<>();
         File keyStoreFile = null;
@@ -219,7 +224,7 @@ public class TestSslUtils {
             trustStoreFile.deleteOnExit();
         }
 
-        return createSslConfig(mode, keyStoreFile, password, password, trustStoreFile, trustStorePassword, usingConscrypt);
+        return createSslConfig(mode, keyStoreFile, password, password, trustStoreFile, trustStorePassword, provider);
     }
 
     public static class CertificateBuilder {

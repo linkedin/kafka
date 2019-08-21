@@ -16,6 +16,9 @@
  */
 package org.apache.kafka.common.security.ssl;
 
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.util.function.Supplier;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Reconfigurable;
 import org.apache.kafka.common.config.ConfigException;
@@ -62,7 +65,7 @@ public class SslFactory implements Reconfigurable {
     private final boolean keystoreVerifiableUsingTruststore;
 
     private String protocol;
-    private String provider;
+    private Supplier<SSLContext> sslContextProvider;
     private String kmfAlgorithm;
     private String tmfAlgorithm;
     private SecurityStore keystore = null;
@@ -88,7 +91,32 @@ public class SslFactory implements Reconfigurable {
     @Override
     public void configure(Map<String, ?> configs) throws KafkaException {
         this.protocol =  (String) configs.get(SslConfigs.SSL_PROTOCOL_CONFIG);
-        this.provider = (String) configs.get(SslConfigs.SSL_PROVIDER_CONFIG);
+        String provider = (String) configs.get(SslConfigs.SSL_PROVIDER_CONFIG);
+        if (provider != null)
+            if (provider.equals("Conscrypt"))
+                this.sslContextProvider = () -> {
+                    try {
+                        return SSLContext.getInstance(protocol, Conscrypt.newProvider());
+                    } catch (NoSuchAlgorithmException e) {
+                        throw new UnsupportedOperationException(e);
+                    }
+                };
+            else
+                this.sslContextProvider = () -> {
+                    try {
+                        return SSLContext.getInstance(protocol, provider);
+                    } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
+                        throw new UnsupportedOperationException(e);
+                    }
+                };
+        else
+            this.sslContextProvider = () -> {
+                try {
+                    return SSLContext.getInstance(protocol);
+                } catch (NoSuchAlgorithmException e) {
+                    throw new UnsupportedOperationException(e);
+                }
+            };
 
         @SuppressWarnings("unchecked")
         List<String> cipherSuitesList = (List<String>) configs.get(SslConfigs.SSL_CIPHER_SUITES_CONFIG);
@@ -208,14 +236,7 @@ public class SslFactory implements Reconfigurable {
 
     // package access for testing
     SSLContext createSSLContext(SecurityStore keystore, SecurityStore truststore) throws GeneralSecurityException, IOException  {
-        SSLContext sslContext;
-        if (provider != null)
-            if (provider.equals("Conscrypt"))
-                sslContext = SSLContext.getInstance(protocol, Conscrypt.newProvider());
-            else
-                sslContext = SSLContext.getInstance(protocol, provider);
-        else
-            sslContext = SSLContext.getInstance(protocol);
+        SSLContext sslContext = sslContextProvider.get();
 
         KeyManager[] keyManagers = null;
         if (keystore != null) {

@@ -595,6 +595,7 @@ public class Sender implements Runnable {
             this.accumulator.splitAndReenqueue(batch);
             this.accumulator.deallocate(batch);
             this.sensors.recordBatchSplit();
+            maybeRemoveFromInflightBatches(batch);
         } else if (error != Errors.NONE) {
             if (canRetry(batch, response, now)) {
                 log.warn(

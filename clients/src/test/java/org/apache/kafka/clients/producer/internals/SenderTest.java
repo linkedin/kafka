@@ -1873,6 +1873,11 @@ public class SenderTest {
             responseMap.put(tp, new ProduceResponse.PartitionResponse(Errors.MESSAGE_TOO_LARGE));
             client.respond(new ProduceResponse(responseMap));
             sender.run(time.milliseconds()); // split and reenqueue
+
+            // Make sure that there is no inflight batch for the topic partition
+            // (i.e. the original big batch has been cleaned up)
+            assertTrue("There should be only no inflight batch for the topic partition", sender.inFlightBatches(tp).isEmpty());
+
             assertEquals("The next sequence should be 2", 2, txnManager.sequenceNumber(tp).longValue());
             // The compression ratio should have been improved once.
             assertEquals(CompressionType.GZIP.rate - CompressionRatioEstimator.COMPRESSION_RATIO_IMPROVING_STEP,

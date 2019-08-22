@@ -72,7 +72,7 @@ class SocketServer(val config: KafkaConfig, val metrics: Metrics, val time: Time
   private val memoryPoolAllocationSensor = metrics.sensor("MemoryPoolAllocation")
   private val memoryPoolMaxAllocateSizeMetricName = metrics.metricName("MemoryPoolMaxAllocateSize", "socket-server-metrics")
   private val memoryPoolAllocateSizePercentilesMetricName = metrics.metricName("MemoryPoolAllocateSizePercentiles", "socket-server-metrics")
-  private val percentiles = (1 to 10).map( i => new Percentile(metrics.metricName("MemoryPoolAllocateSize%dPercentile".format(i * 10), "socket-server-metrics"), i * 10))
+  private val percentiles = (1 to 9).map( i => new Percentile(metrics.metricName("MemoryPoolAllocateSize%dPercentile".format(i * 10), "socket-server-metrics"), i * 10))
   memoryPoolAllocationSensor.add(memoryPoolMaxAllocateSizeMetricName, new Max())
   // At current stage, we do not know the max decrypted request size, temporarily set it to 10MB.
   memoryPoolAllocationSensor.add(memoryPoolAllocateSizePercentilesMetricName, new Percentiles(400, 0.0, 10485760, BucketSizing.CONSTANT, percentiles:_*))

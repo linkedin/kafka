@@ -64,10 +64,10 @@ class SocketServer(val config: KafkaConfig, val metrics: Metrics, val time: Time
   private val logContext = new LogContext(s"[SocketServer brokerId=${config.brokerId}] ")
   this.logIdent = logContext.logPrefix
 
-  private val memoryPoolUtilizationSensor = metrics.sensor("MemoryPoolUtilization")
+  private val memoryPoolUsageSensor = metrics.sensor("MemoryPoolUsage")
   private val memoryPoolDepletedPercentMetricName = metrics.metricName("MemoryPoolAvgDepletedPercent", "socket-server-metrics")
   private val memoryPoolDepletedTimeMetricName = metrics.metricName("MemoryPoolDepletedTimeTotal", "socket-server-metrics")
-  memoryPoolUtilizationSensor.add(new Meter(TimeUnit.MILLISECONDS, memoryPoolDepletedPercentMetricName, memoryPoolDepletedTimeMetricName))
+  memoryPoolUsageSensor.add(new Meter(TimeUnit.MILLISECONDS, memoryPoolDepletedPercentMetricName, memoryPoolDepletedTimeMetricName))
 
   private val memoryPoolAllocationSensor = metrics.sensor("MemoryPoolAllocation")
   private val memoryPoolMaxAllocateSizeMetricName = metrics.metricName("MemoryPoolMaxAllocateSize", "socket-server-metrics")
@@ -77,7 +77,7 @@ class SocketServer(val config: KafkaConfig, val metrics: Metrics, val time: Time
   // At current stage, we do not know the max decrypted request size, temporarily set it to 10MB.
   memoryPoolAllocationSensor.add(memoryPoolAllocateSizePercentilesMetricName, new Percentiles(400, 0.0, 10485760, BucketSizing.CONSTANT, percentiles:_*))
 
-  private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolUtilizationSensor, memoryPoolAllocationSensor)
+  private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolUsageSensor, memoryPoolAllocationSensor)
                            else MemoryPool.NONE
   val requestChannel = new RequestChannel(maxQueuedRequests, time)
   private val processors = new ConcurrentHashMap[Int, Processor]()

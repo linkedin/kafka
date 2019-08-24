@@ -41,8 +41,8 @@ public class GarbageCollectedMemoryPool extends SimpleMemoryPool implements Auto
     private final Thread gcListenerThread;
     private volatile boolean alive = true;
 
-    public GarbageCollectedMemoryPool(long sizeBytes, int maxSingleAllocationSize, boolean strict, Sensor oomPeriodSensor, Sensor allocateSensor) {
-        super(sizeBytes, maxSingleAllocationSize, strict, oomPeriodSensor, allocateSensor);
+    public GarbageCollectedMemoryPool(long sizeBytes, int maxSingleAllocationSize, boolean strict, Sensor oomPeriodSensor) {
+        super(sizeBytes, maxSingleAllocationSize, strict, oomPeriodSensor, null);
         this.alive = true;
         this.gcListenerThread = new Thread(gcListener, "memory pool GC listener");
         this.gcListenerThread.setDaemon(true); //so we dont need to worry about shutdown

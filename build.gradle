@@ -42,7 +42,7 @@ spotless {
   }
 }
 
-// Use the osdetector-gradle-plugin
+// Use the osdetector-gradle-plugin in combination with the consrypt library
 apply plugin: "com.google.osdetector"
 
 apply from: "$rootDir/gradle/dependencies.gradle"

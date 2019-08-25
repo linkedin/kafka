@@ -44,6 +44,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
 import org.apache.kafka.common.config.types.Password;
+import org.apache.kafka.common.security.ssl.OpenSslContextProvider;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
@@ -175,9 +176,8 @@ public class TestSslUtils {
         List<String> enabledProtocols  = new ArrayList<>();
         enabledProtocols.add("TLSv1.2");
         sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
-        // Use Conscrypt's OpenSSL implementation.
         if (provider.equals(SSLProvider.OPENSSL)) {
-            sslConfigs.put(SslConfigs.SSL_PROVIDER_CONFIG, "Conscrypt");
+            sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, OpenSslContextProvider.class.getName());
         }
 
         return sslConfigs;

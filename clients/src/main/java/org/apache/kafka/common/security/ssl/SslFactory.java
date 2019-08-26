@@ -214,7 +214,7 @@ public class SslFactory implements Reconfigurable {
 
     // package access for testing
     SSLContext createSSLContext(SecurityStore keystore, SecurityStore truststore) throws GeneralSecurityException, IOException  {
-        SSLContext sslContext = sslContextProvider.getInstance();
+        SSLContext sslContext = sslContextProvider.getSSLContext();
 
         KeyManager[] keyManagers = null;
         if (keystore != null) {

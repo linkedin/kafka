@@ -33,5 +33,5 @@ public interface SslContextProvider extends Configurable {
     * @throws NoSuchAlgorithmException if protocol config is invalid.
     * @throws NoSuchProviderException if provider config is invalid.
     */
-    SSLContext getInstance() throws NoSuchAlgorithmException, NoSuchProviderException;
+    SSLContext getSSLContext() throws NoSuchAlgorithmException, NoSuchProviderException;
 }

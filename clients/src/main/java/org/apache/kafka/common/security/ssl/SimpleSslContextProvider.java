@@ -28,7 +28,7 @@ public class SimpleSslContextProvider implements SslContextProvider {
     private String provider;
 
     @Override
-    public SSLContext getInstance() throws NoSuchAlgorithmException, NoSuchProviderException {
+    public SSLContext getSSLContext() throws NoSuchAlgorithmException, NoSuchProviderException {
         if (provider == null)
             return SSLContext.getInstance(protocol);
         else

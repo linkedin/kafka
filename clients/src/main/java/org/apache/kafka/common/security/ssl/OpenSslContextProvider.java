@@ -37,7 +37,7 @@ public class OpenSslContextProvider implements SslContextProvider {
     }
 
     @Override
-    public SSLContext getInstance()  throws NoSuchAlgorithmException {
+    public SSLContext getSSLContext()  throws NoSuchAlgorithmException {
         return SSLContext.getInstance(protocol, provider);
     }
 }

@@ -87,10 +87,7 @@ public class SslFactory implements Reconfigurable {
     public void configure(Map<String, ?> configs) throws KafkaException {
         try {
             String sslContextProvider = (String) configs.get(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG);
-            if (sslContextProvider == null || sslContextProvider.isEmpty())
-                this.sslContextProvider = new SimpleSslContextProvider();
-            else
-                this.sslContextProvider = (SslContextProvider) Class.forName(sslContextProvider).newInstance();
+            this.sslContextProvider = (SslContextProvider) Class.forName(sslContextProvider).newInstance();
         } catch (Exception e) {
             throw new KafkaException(e);
         }

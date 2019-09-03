@@ -24,9 +24,9 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.conscrypt.Conscrypt;
 
 /**
- * A OpenSslContext provider based on Conscrypt library.
+ * A BoringSslContext provider based on Conscrypt library.
  */
-public class OpenSslContextProvider implements SslContextProvider {
+public class BoringSslContextProvider implements SslContextProvider {
     private String protocol;
     private Provider provider;
 

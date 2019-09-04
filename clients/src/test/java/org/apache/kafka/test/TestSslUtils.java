@@ -45,6 +45,7 @@ import java.security.cert.X509Certificate;
 
 import org.apache.kafka.common.config.types.Password;
 import org.apache.kafka.common.security.ssl.BoringSslContextProvider;
+import org.apache.kafka.common.security.ssl.SimpleSslContextProvider;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
@@ -178,6 +179,8 @@ public class TestSslUtils {
         sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
         if (provider.equals(SSLProvider.OPENSSL)) {
             sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, BoringSslContextProvider.class.getName());
+        } else {
+            sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, SimpleSslContextProvider.class.getName());
         }
 
         return sslConfigs;

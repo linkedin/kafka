@@ -216,6 +216,7 @@ object Defaults {
 
   /** ********* SSL configuration ***********/
   val SslProtocol = SslConfigs.DEFAULT_SSL_PROTOCOL
+  val SslContextProviderClass = SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS
   val SslEnabledProtocols = SslConfigs.DEFAULT_SSL_ENABLED_PROTOCOLS
   val SslKeystoreType = SslConfigs.DEFAULT_SSL_KEYSTORE_TYPE
   val SslTruststoreType = SslConfigs.DEFAULT_SSL_TRUSTSTORE_TYPE
@@ -439,6 +440,7 @@ object KafkaConfig {
   /** ********* SSL Configuration ****************/
   val SslProtocolProp = SslConfigs.SSL_PROTOCOL_CONFIG
   val SslProviderProp = SslConfigs.SSL_PROVIDER_CONFIG
+  val SslContextProviderClassProp = SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG
   val SslCipherSuitesProp = SslConfigs.SSL_CIPHER_SUITES_CONFIG
   val SslEnabledProtocolsProp = SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG
   val SslKeystoreTypeProp = SslConfigs.SSL_KEYSTORE_TYPE_CONFIG
@@ -757,6 +759,7 @@ object KafkaConfig {
   /** ********* SSL Configuration ****************/
   val SslProtocolDoc = SslConfigs.SSL_PROTOCOL_DOC
   val SslProviderDoc = SslConfigs.SSL_PROVIDER_DOC
+  val SslContextProviderClassDoc = SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_DOC
   val SslCipherSuitesDoc = SslConfigs.SSL_CIPHER_SUITES_DOC
   val SslEnabledProtocolsDoc = SslConfigs.SSL_ENABLED_PROTOCOLS_DOC
   val SslKeystoreTypeDoc = SslConfigs.SSL_KEYSTORE_TYPE_DOC
@@ -1008,6 +1011,7 @@ object KafkaConfig {
       .define(PrincipalBuilderClassProp, CLASS, null, MEDIUM, PrincipalBuilderClassDoc)
       .define(SslProtocolProp, STRING, Defaults.SslProtocol, MEDIUM, SslProtocolDoc)
       .define(SslProviderProp, STRING, null, MEDIUM, SslProviderDoc)
+      .define(SslContextProviderClassProp, STRING, Defaults.SslContextProviderClass, MEDIUM, SslContextProviderClassDoc)
       .define(SslEnabledProtocolsProp, LIST, Defaults.SslEnabledProtocols, MEDIUM, SslEnabledProtocolsDoc)
       .define(SslKeystoreTypeProp, STRING, Defaults.SslKeystoreType, MEDIUM, SslKeystoreTypeDoc)
       .define(SslKeystoreLocationProp, STRING, null, MEDIUM, SslKeystoreLocationDoc)

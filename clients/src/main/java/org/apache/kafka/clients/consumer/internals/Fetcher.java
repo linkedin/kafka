@@ -283,6 +283,9 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                                                 fetchTarget.id());
                                         return;
                                     }
+
+                                    handler.maybeLogThrottledFetch(response, resp.requestHeader().apiVersion());
+
                                     if (!handler.handleResponse(response)) {
                                         return;
                                     }

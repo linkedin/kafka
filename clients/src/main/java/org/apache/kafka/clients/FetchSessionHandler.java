@@ -380,7 +380,7 @@ public class FetchSessionHandler {
      */
     public boolean handleResponse(FetchResponse response) {
         if (response.error() != Errors.NONE) {
-            log.info("Node {} was unable to process the fetch request with {}: {}.",
+            log.debug("Node {} was unable to process the fetch request with {}: {}.",
                 node, nextMetadata, response.error());
             if (response.error() == Errors.FETCH_SESSION_ID_NOT_FOUND) {
                 nextMetadata = FetchMetadata.INITIAL;
@@ -391,7 +391,7 @@ public class FetchSessionHandler {
         } else if (nextMetadata.isFull()) {
             String problem = verifyFullFetchResponsePartitions(response);
             if (problem != null) {
-                log.info("Node {} sent an invalid full fetch response with {}", node, problem);
+                log.debug("Node {} sent an invalid full fetch response with {}", node, problem);
                 nextMetadata = FetchMetadata.INITIAL;
                 return false;
             } else if (response.sessionId() == INVALID_SESSION_ID) {
@@ -409,7 +409,7 @@ public class FetchSessionHandler {
         } else {
             String problem = verifyIncrementalFetchResponsePartitions(response);
             if (problem != null) {
-                log.info("Node {} sent an invalid incremental fetch response with {}", node, problem);
+                log.debug("Node {} sent an invalid incremental fetch response with {}", node, problem);
                 nextMetadata = nextMetadata.nextCloseExisting();
                 return false;
             } else if (response.sessionId() == INVALID_SESSION_ID) {
@@ -439,5 +439,14 @@ public class FetchSessionHandler {
     public void handleError(Throwable t) {
         log.info("Error sending fetch request {} to node {}: {}.", nextMetadata, node, t.toString());
         nextMetadata = nextMetadata.nextCloseExisting();
+    }
+
+
+    public void maybeLogThrottledFetch(FetchResponse response, short version) {
+        int throttleTimeMs = response.throttleTimeMs();
+        if (throttleTimeMs > 0 && response.shouldClientThrottle(version)) {
+            log.info("FetchRequest to node {} is throttled for {} ms for session {}. Fetch session partitions={}", node,
+                throttleTimeMs, response.sessionId(), partitionsToLogString(sessionPartitions.keySet()));
+        }
     }
 }

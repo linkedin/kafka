@@ -285,11 +285,11 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
 
             if (struct.hasField(OFFLINE_REPLICAS)) {
                 Object[] offlineReplicasArray = struct.get(OFFLINE_REPLICAS);
-                offlineReplicas = new ArrayList<>(offlineReplicasArray.length);
+                this.offlineReplicas = new ArrayList<>(offlineReplicasArray.length);
                 for (Object r : offlineReplicasArray)
                     offlineReplicas.add((Integer) r);
             } else {
-                offlineReplicas = Collections.emptyList();
+                this.offlineReplicas = Collections.emptyList();
             }
         }
 

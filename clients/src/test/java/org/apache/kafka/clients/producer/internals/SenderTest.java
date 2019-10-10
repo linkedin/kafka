@@ -146,7 +146,7 @@ public class SenderTest {
     private MockTime time = new MockTime();
     private int batchSize = 16 * 1024;
     private ProducerMetadata metadata = new ProducerMetadata(0, Long.MAX_VALUE, TOPIC_IDLE_MS,
-            new LogContext(), new ClusterResourceListeners(), time);
+            new LogContext(), new ClusterResourceListeners(), time, false);
     private MockClient client = new MockClient(time, metadata);
     private ApiVersions apiVersions = new ApiVersions();
     private Metrics metrics = null;
@@ -173,7 +173,7 @@ public class SenderTest {
         }));
         return Collections.unmodifiableMap(partitionRecords);
     }
- 
+
     @Test
     public void testSimple() throws Exception {
         long offset = 0;
@@ -3107,7 +3107,7 @@ public class SenderTest {
     private TransactionManager createTransactionManager() {
         return new TransactionManager(new LogContext(), null, 0, 100L, new ApiVersions());
     }
-    
+
     private void setupWithTransactionState(TransactionManager transactionManager) {
         setupWithTransactionState(transactionManager, false, null, true, Integer.MAX_VALUE, 0);
     }

@@ -47,7 +47,7 @@ import static org.apache.kafka.common.protocol.types.Type.INT32;
 public class UpdateMetadataRequest extends AbstractControlRequest {
     private static final Field.ComplexArray TOPIC_STATES = new Field.ComplexArray("topic_states", "Topic states");
     private static final Field.ComplexArray PARTITION_STATES = new Field.ComplexArray("partition_states", "Partition states");
-    private static final Field.ComplexArray LIVE_BROKERS = new Field.ComplexArray("live_brokers", "Live broekrs");
+    private static final Field.ComplexArray LIVE_BROKERS = new Field.ComplexArray("live_brokers", "Live brokers");
 
     // PartitionState fields
     private static final Field.Int32 LEADER = new Field.Int32("leader", "The broker id for the leader.");

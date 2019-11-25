@@ -251,10 +251,10 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
   def addPartitions(topic: String,
                     existingAssignment: Map[Int, Seq[Int]],
                     allBrokers: Seq[BrokerMetadata],
-                    numPartitions: Int = 1,
-                    replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
-                    validateOnly: Boolean = false,
-                    noNewPartitionBrokerIds: Set[Int] = Set.empty[Int]): Map[Int, Seq[Int]] = {
+                    numPartitions: Int,
+                    replicaAssignment: Option[Map[Int, Seq[Int]]],
+                    validateOnly: Boolean,
+                    noNewPartitionBrokerIds: Set[Int]): Map[Int, Seq[Int]] = {
     val existingAssignmentPartition0 = existingAssignment.getOrElse(0,
       throw new AdminOperationException(
         s"Unexpected existing replica assignment for topic '$topic', partition id 0 is missing. " +

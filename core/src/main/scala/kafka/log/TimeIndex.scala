@@ -17,15 +17,13 @@
 
 package kafka.log
 
-import java.io.{File, IOException}
+import java.io.File
 import java.nio.ByteBuffer
-import java.nio.file.Files
 
 import kafka.utils.CoreUtils.inLock
 import kafka.utils.Logging
 import org.apache.kafka.common.errors.InvalidOffsetException
 import org.apache.kafka.common.record.RecordBatch
-import org.apache.kafka.common.utils.Utils
 
 /**
  * An index that maps from the timestamp to the logical offsets of the messages in a segment. This index might be
@@ -53,7 +51,7 @@ import org.apache.kafka.common.utils.Utils
  */
 // Avoid shadowing mutable file in AbstractIndex
 class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable: Boolean = true)
-    extends AbstractIndex[Long, Long](_file, baseOffset, maxIndexSize, writable) {
+    extends AbstractIndex(_file, baseOffset, maxIndexSize, writable) {
   import TimeIndex._
 
   @volatile private var _lastEntry = lastEntryFromIndexFile
@@ -233,86 +231,4 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
 
 object TimeIndex extends Logging {
   override val loggerName: String = classOf[TimeIndex].getName
-}
-
-
-
-/**
-  * A thin wrapper on top of the raw TimeIndex object to avoid initialization on construction. This defers the TimeIndex
-  * initialization to the time it gets accessed so the cost of the heavy memory mapped operation gets amortized over time.
-  *
-  * Combining with skipping sanity check for safely flushed segments, the startup time of a broker can be reduced, especially
-  * for the the broker with a lot of log segments. Similarly, the broker shutdown time can be reduced by closing the
-  * index lazily, which closes it only if it has been accessed before -- i.e. already has a corresponding memory map.
-  * It prevents illegal accesses to the underlying index after closing the index, which might otherwise lead to memory
-  * leaks due to recreation of underlying memory mapped object.
-  *
-  * Finally, this wrapper ensures that redundant disk accesses and memory mapped operations are avoided upon attempts to
-  * delete or rename the file that backs this time index.
-  */
-class LazyTimeIndex(@volatile private var _file: File, baseOffset: Long, maxIndexSize: Int = -1, writable: Boolean = true) {
-  @volatile private var timeIndex: Option[TimeIndex] = None
-  // A closed index does not allow accessing its indices to prevent side effects.
-  @volatile private var isClosed: Boolean = false
-
-  def file: File = {
-    if (timeIndex.isDefined)
-      timeIndex.get.file
-    else
-      _file
-  }
-
-  def file_=(f: File) {
-    if (timeIndex.isDefined)
-      timeIndex.get.file = f
-    else
-      _file = f
-  }
-
-  def get: TimeIndex = {
-    if (isClosed)
-      throw new IllegalStateException(s"Attempt to access the closed TimeIndex (file=${_file}, baseOffset=${baseOffset}, " +
-                                      s"maxIndexSize=${maxIndexSize}, writable=${writable}.")
-    if (timeIndex.isEmpty)
-      timeIndex = Some(new TimeIndex(_file, baseOffset, maxIndexSize, writable))
-    timeIndex.get
-  }
-
-  /**
-   * Close this index file.
-   * Note: This will be a no-op if the index has already been closed.
-   */
-  def close(): Unit = {
-    if (!isClosed) {
-      timeIndex.foreach(_.close())
-      isClosed = true
-    }
-  }
-
-  /**
-   * Delete the index file that backs this offset if exists.
-   * This method ensures that if the index file has already been closed, it will not be recreated as a side effect.
-   *
-   * @throws IOException if deletion fails due to an I/O error
-   * @return `true` if the file was deleted by this method; `false` if the file could not be deleted because it did
-   *         not exist
-   */
-  def deleteIfExists(): Boolean = {
-    if (isClosed)
-      Files.deleteIfExists(file.toPath)
-    else
-      get.deleteIfExists()
-  }
-
-  /**
-   * Rename the file that backs this time index if the index has ever been initialized or file already exists.
-   *
-   * @throws IOException if rename fails for defined index or existing file.
-   */
-  def renameTo(f: File) {
-    try {
-      if (timeIndex.isDefined || file.exists)
-        Utils.atomicMoveWithFallback(file.toPath, f.toPath)
-    } finally file = f
-  }
 }

@@ -155,7 +155,8 @@ public class Metadata implements Closeable {
     }
 
 
-    public Optional<Integer> lastSeenLeaderEpoch(TopicPartition topicPartition) {
+    // Visible for testing
+    Optional<Integer> lastSeenLeaderEpoch(TopicPartition topicPartition) {
         return Optional.ofNullable(lastSeenLeaderEpochs.get(topicPartition));
     }
 

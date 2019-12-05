@@ -127,7 +127,6 @@ import static org.apache.kafka.test.TestUtils.assertOptional;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -978,63 +977,6 @@ public class FetcherTest {
         consumerClient.poll(time.timer(0));
         assertEquals(0, fetcher.fetchedRecords().size());
         assertEquals(0L, metadata.timeToNextUpdate(time.milliseconds()));
-    }
-
-    @Test
-    public void testFetchFencedLeaderEpoch() {
-        buildFetcher();
-        assignFromUser(singleton(tp0));
-        subscriptions.seek(tp0, 0);
-
-        assertEquals(1, fetcher.sendFetches());
-        client.prepareResponse(fullFetchResponse(tp0, this.records, Errors.FENCED_LEADER_EPOCH, 100L, 0));
-        consumerClient.poll(time.timer(0));
-
-        assertEquals("Should not return any records", 0, fetcher.fetchedRecords().size());
-        assertEquals("Should have requested metadata update", 0L, metadata.timeToNextUpdate(time.milliseconds()));
-    }
-
-    @Test
-    public void testFetchUnknownLeaderEpoch() {
-        buildFetcher();
-        assignFromUser(singleton(tp0));
-        subscriptions.seek(tp0, 0);
-
-        assertEquals(1, fetcher.sendFetches());
-        client.prepareResponse(fullFetchResponse(tp0, this.records, Errors.UNKNOWN_LEADER_EPOCH, 100L, 0));
-        consumerClient.poll(time.timer(0));
-
-        assertEquals("Should not return any records", 0, fetcher.fetchedRecords().size());
-        assertNotEquals("Should not have requested metadata update", 0L, metadata.timeToNextUpdate(time.milliseconds()));
-    }
-
-    @Test
-    public void testEpochSetInFetchRequest() {
-        buildFetcher();
-        subscriptions.assignFromUser(singleton(tp0));
-        MetadataResponse metadataResponse = TestUtils.metadataUpdateWith("dummy", 1,
-                Collections.emptyMap(), Collections.singletonMap(topicName, 4), tp -> 99);
-        client.updateMetadata(metadataResponse);
-
-        subscriptions.seek(tp0, 10);
-        assertEquals(1, fetcher.sendFetches());
-
-        // Check for epoch in outgoing request
-        MockClient.RequestMatcher matcher = body -> {
-            if (body instanceof FetchRequest) {
-                FetchRequest fetchRequest = (FetchRequest) body;
-                fetchRequest.fetchData().values().forEach(partitionData -> {
-                    assertTrue("Expected Fetcher to set leader epoch in request", partitionData.currentLeaderEpoch.isPresent());
-                    assertEquals("Expected leader epoch to match epoch from metadata update", 99, partitionData.currentLeaderEpoch.get().longValue());
-                });
-                return true;
-            } else {
-                fail("Should have seen FetchRequest");
-                return false;
-            }
-        };
-        client.prepareResponse(matcher, fullFetchResponse(tp0, this.records, Errors.NONE, 100L, 0));
-        consumerClient.pollNoWakeup();
     }
 
     @Test
@@ -2264,74 +2206,6 @@ public class FetcherTest {
         testGetOffsetsForTimesWithError(Errors.UNKNOWN_TOPIC_OR_PARTITION, Errors.NONE, 10L, 100L, 10L, 100L);
         testGetOffsetsForTimesWithError(Errors.UNSUPPORTED_FOR_MESSAGE_FORMAT, Errors.NONE, 10L, 100L, null, 100L);
         testGetOffsetsForTimesWithError(Errors.BROKER_NOT_AVAILABLE, Errors.NONE, 10L, 100L, 10L, 100L);
-    }
-
-    @Test
-    public void testGetOffsetsFencedLeaderEpoch() {
-        buildFetcher();
-        subscriptions.assignFromUser(singleton(tp0));
-        client.updateMetadata(initialUpdateResponse);
-
-        subscriptions.requestOffsetReset(tp0, OffsetResetStrategy.LATEST);
-
-        client.prepareResponse(listOffsetResponse(Errors.FENCED_LEADER_EPOCH, 1L, 5L));
-        fetcher.resetOffsetsIfNeeded();
-        consumerClient.pollNoWakeup();
-
-        assertTrue(subscriptions.isOffsetResetNeeded(tp0));
-        assertFalse(subscriptions.isFetchable(tp0));
-        assertFalse(subscriptions.hasValidPosition(tp0));
-        assertEquals(0L, metadata.timeToNextUpdate(time.milliseconds()));
-    }
-
-    @Test
-    public void testGetOffsetsUnknownLeaderEpoch() {
-        buildFetcher();
-        subscriptions.assignFromUser(singleton(tp0));
-        subscriptions.requestOffsetReset(tp0, OffsetResetStrategy.LATEST);
-
-        client.prepareResponse(listOffsetResponse(Errors.UNKNOWN_LEADER_EPOCH, 1L, 5L));
-        fetcher.resetOffsetsIfNeeded();
-        consumerClient.pollNoWakeup();
-
-        assertTrue(subscriptions.isOffsetResetNeeded(tp0));
-        assertFalse(subscriptions.isFetchable(tp0));
-        assertFalse(subscriptions.hasValidPosition(tp0));
-        assertEquals(0L, metadata.timeToNextUpdate(time.milliseconds()));
-    }
-
-    @Test
-    public void testGetOffsetsIncludesLeaderEpoch() {
-        buildFetcher();
-        subscriptions.assignFromUser(singleton(tp0));
-
-        client.updateMetadata(initialUpdateResponse);
-
-        // Metadata update with leader epochs
-        MetadataResponse metadataResponse = TestUtils.metadataUpdateWith("dummy", 1,
-                Collections.emptyMap(), Collections.singletonMap(topicName, 4), tp -> 99);
-        client.updateMetadata(metadataResponse);
-
-        // Request latest offset
-        subscriptions.requestOffsetReset(tp0);
-        fetcher.resetOffsetsIfNeeded();
-
-        // Check for epoch in outgoing request
-        MockClient.RequestMatcher matcher = body -> {
-            if (body instanceof ListOffsetRequest) {
-                ListOffsetRequest offsetRequest = (ListOffsetRequest) body;
-                Optional<Integer> epoch = offsetRequest.partitionTimestamps().get(tp0).currentLeaderEpoch;
-                assertTrue("Expected Fetcher to set leader epoch in request", epoch.isPresent());
-                assertEquals("Expected leader epoch to match epoch from metadata update", epoch.get().longValue(), 99);
-                return true;
-            } else {
-                fail("Should have seen ListOffsetRequest");
-                return false;
-            }
-        };
-
-        client.prepareResponse(matcher, listOffsetResponse(Errors.NONE, 1L, 5L));
-        consumerClient.pollNoWakeup();
     }
 
     @Test

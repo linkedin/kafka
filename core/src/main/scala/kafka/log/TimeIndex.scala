@@ -233,9 +233,11 @@ object TimeIndex extends Logging {
 /**
   * A thin wrapper on top of the raw TimeIndex object to avoid initialization on construction. This defers the TimeIndex
   * initialization to the time it gets accessed so the cost of the heavy memory mapped operation gets amortized over time.
+  * Likewise, the TimeIndex initialization can be further postponed by accessing the index lazily.
   *
   * Combining with skipping sanity check for safely flushed segments, the startup time of a broker can be reduced, especially
-  * for the the broker with a lot of log segments
+  * for the the broker with a lot of log segments. Similarly, the broker shutdown time can be reduced by accessing the
+  * index lazily, and closing it only if it has been accessed before -- i.e. already has a corresponding memory map.
   *
   */
 class LazyTimeIndex(@volatile private var _file: File, baseOffset: Long, maxIndexSize: Int = -1, writable: Boolean = true) {
@@ -259,5 +261,9 @@ class LazyTimeIndex(@volatile private var _file: File, baseOffset: Long, maxInde
     if (timeIndex.isEmpty)
       timeIndex = Some(new TimeIndex(_file, baseOffset, maxIndexSize, writable))
     timeIndex.get
+  }
+
+  def getLazy: Option[TimeIndex] = {
+    timeIndex
   }
 }

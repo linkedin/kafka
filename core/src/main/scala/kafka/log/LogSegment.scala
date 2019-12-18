@@ -601,8 +601,8 @@ class LogSegment private[log] (val log: FileRecords,
     if (_maxTimestampSoFar.nonEmpty || _offsetOfMaxTimestampSoFar.nonEmpty) {
       CoreUtils.swallow(timeIndex.maybeAppend(maxTimestampSoFar, offsetOfMaxTimestampSoFar, skipFullCheck = true), this)
     }
-    CoreUtils.swallow(offsetIndex.close(), this)
-    CoreUtils.swallow(timeIndex.close(), this)
+    CoreUtils.swallow(lazyOffsetIndex.getLazy.foreach(_.close()), this)
+    CoreUtils.swallow(lazyTimeIndex.getLazy.foreach(_.close()), this)
     CoreUtils.swallow(log.close(), this)
     CoreUtils.swallow(txnIndex.close(), this)
   }
@@ -611,8 +611,8 @@ class LogSegment private[log] (val log: FileRecords,
     * Close file handlers used by the log segment but don't write to disk. This is used when the disk may have failed
     */
   def closeHandlers() {
-    CoreUtils.swallow(offsetIndex.closeHandler(), this)
-    CoreUtils.swallow(timeIndex.closeHandler(), this)
+    CoreUtils.swallow(lazyOffsetIndex.getLazy.foreach(_.closeHandler()), this)
+    CoreUtils.swallow(lazyTimeIndex.getLazy.foreach(_.closeHandler()), this)
     CoreUtils.swallow(log.closeHandlers(), this)
     CoreUtils.swallow(txnIndex.close(), this)
   }

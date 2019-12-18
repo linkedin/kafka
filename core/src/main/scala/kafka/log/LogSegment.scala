@@ -43,8 +43,8 @@ import scala.math._
  * A segment with a base offset of [base_offset] would be stored in two files, a [base_offset].index and a [base_offset].log file.
  *
  * @param log The file records containing log entries
- * @param offsetIndex The offset index
- * @param timeIndex The timestamp index
+ * @param lazyOffsetIndex The offset index
+ * @param lazyTimeIndex The timestamp index
  * @param txnIndex The transaction index
  * @param baseOffset A lower bound on the offsets in this segment
  * @param indexIntervalBytes The approximate number of bytes between entries in the index

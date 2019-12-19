@@ -501,13 +501,13 @@ class LogSegment private[log] (val log: FileRecords,
   }
 
   /**
-   * Change the suffix for the index and log file for this log segment
+   * Change the suffix for the index and log files for this log segment
    * IOException from this method should be handled by the caller
    */
   def changeFileSuffixes(oldSuffix: String, newSuffix: String) {
     log.renameTo(new File(CoreUtils.replaceSuffix(log.file.getPath, oldSuffix, newSuffix)))
-    offsetIndex.renameTo(new File(CoreUtils.replaceSuffix(lazyOffsetIndex.file.getPath, oldSuffix, newSuffix)))
-    timeIndex.renameTo(new File(CoreUtils.replaceSuffix(lazyTimeIndex.file.getPath, oldSuffix, newSuffix)))
+    lazyOffsetIndex.renameTo(new File(CoreUtils.replaceSuffix(lazyOffsetIndex.file.getPath, oldSuffix, newSuffix)))
+    lazyTimeIndex.renameTo(new File(CoreUtils.replaceSuffix(lazyTimeIndex.file.getPath, oldSuffix, newSuffix)))
     txnIndex.renameTo(new File(CoreUtils.replaceSuffix(txnIndex.file.getPath, oldSuffix, newSuffix)))
   }
 
@@ -601,8 +601,8 @@ class LogSegment private[log] (val log: FileRecords,
     if (_maxTimestampSoFar.nonEmpty || _offsetOfMaxTimestampSoFar.nonEmpty) {
       CoreUtils.swallow(timeIndex.maybeAppend(maxTimestampSoFar, offsetOfMaxTimestampSoFar, skipFullCheck = true), this)
     }
-    CoreUtils.swallow(lazyOffsetIndex.getLazy.foreach(_.close()), this)
-    CoreUtils.swallow(lazyTimeIndex.getLazy.foreach(_.close()), this)
+    CoreUtils.swallow(lazyOffsetIndex.close(), this)
+    CoreUtils.swallow(lazyTimeIndex.close(), this)
     CoreUtils.swallow(log.close(), this)
     CoreUtils.swallow(txnIndex.close(), this)
   }
@@ -611,8 +611,8 @@ class LogSegment private[log] (val log: FileRecords,
     * Close file handlers used by the log segment but don't write to disk. This is used when the disk may have failed
     */
   def closeHandlers() {
-    CoreUtils.swallow(lazyOffsetIndex.getLazy.foreach(_.closeHandler()), this)
-    CoreUtils.swallow(lazyTimeIndex.getLazy.foreach(_.closeHandler()), this)
+    CoreUtils.swallow(lazyOffsetIndex.close(), this)
+    CoreUtils.swallow(lazyTimeIndex.close(), this)
     CoreUtils.swallow(log.closeHandlers(), this)
     CoreUtils.swallow(txnIndex.close(), this)
   }
@@ -635,8 +635,8 @@ class LogSegment private[log] (val log: FileRecords,
 
     CoreUtils.tryAll(Seq(
       () => delete(log.deleteIfExists _, "log", log.file, logIfMissing = true),
-      () => delete(offsetIndex.deleteIfExists _, "offset index", lazyOffsetIndex.file, logIfMissing = true),
-      () => delete(timeIndex.deleteIfExists _, "time index", lazyTimeIndex.file, logIfMissing = true),
+      () => delete(lazyOffsetIndex.deleteIfExists _, "offset index", lazyOffsetIndex.file, logIfMissing = true),
+      () => delete(lazyTimeIndex.deleteIfExists _, "time index", lazyTimeIndex.file, logIfMissing = true),
       () => delete(txnIndex.deleteIfExists _, "transaction index", txnIndex.file, logIfMissing = false)
     ))
   }

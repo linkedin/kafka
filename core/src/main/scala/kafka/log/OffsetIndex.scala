@@ -17,12 +17,14 @@
 
 package kafka.log
 
-import java.io.File
+import java.io.{File, IOException}
 import java.nio.ByteBuffer
+import java.nio.file.Files
 
 import kafka.utils.CoreUtils.inLock
 import kafka.utils.Logging
 import org.apache.kafka.common.errors.InvalidOffsetException
+import org.apache.kafka.common.utils.Utils
 
 /**
  * An index that maps offsets to physical file locations for a particular log segment. This index may be sparse:
@@ -214,12 +216,18 @@ object OffsetIndex extends Logging {
   * Likewise, the OffsetIndex initialization can be further postponed by accessing the index lazily.
   *
   * Combining with skipping sanity check for safely flushed segments, the startup time of a broker can be reduced, especially
-  * for the the broker with a lot of log segments. Similarly, the broker shutdown time can be reduced by accessing the
-  * index lazily, and closing it only if it has been accessed before -- i.e. already has a corresponding memory map.
+  * for the the broker with a lot of log segments. Similarly, the broker shutdown time can be reduced by closing the
+  * index lazily, which closes it only if it has been accessed before -- i.e. already has a corresponding memory map.
+  * It prevents illegal accesses to the underlying index after closing the index, which might otherwise lead to memory
+  * leaks due to recreation of underlying memory mapped object.
   *
+  * Finally, this wrapper ensures that redundant disk accesses and memory mapped operations are avoided upon attempts to
+  * delete or rename the file that backs this offset index.
   */
 class LazyOffsetIndex(@volatile private var _file: File, baseOffset: Long, maxIndexSize: Int = -1, writable: Boolean = true) {
   @volatile private var offsetIndex: Option[OffsetIndex] = None
+  // A closed offset index does not allow accessing its indices to prevent side effects.
+  @volatile private var isClosed: Boolean = false
 
   def file: File = {
     if (offsetIndex.isDefined)
@@ -236,12 +244,49 @@ class LazyOffsetIndex(@volatile private var _file: File, baseOffset: Long, maxIn
   }
 
   def get: OffsetIndex = {
+    if (isClosed)
+      throw new IllegalStateException(s"Attempt to access the closed OffsetIndex (file=${_file}, baseOffset=${baseOffset}, " +
+                                      s"maxIndexSize=${maxIndexSize}, writable=${writable}.")
     if (offsetIndex.isEmpty)
       offsetIndex = Some(new OffsetIndex(_file, baseOffset, maxIndexSize, writable))
     offsetIndex.get
   }
 
-  def getLazy: Option[OffsetIndex] = {
-    offsetIndex
+  /**
+   * Close this index file.
+   * Note: This will be a no-op if the index has already been closed.
+   */
+  def close(): Unit = {
+    if (!isClosed) {
+      offsetIndex.foreach(_.close())
+      isClosed = true
+    }
+  }
+
+  /**
+   * Delete the index file that backs this offset if exists.
+   * This method ensures that if the index file has already been closed, it will not be recreated as a side effect.
+   *
+   * @throws IOException if deletion fails due to an I/O error
+   * @return `true` if the file was deleted by this method; `false` if the file could not be deleted because it did
+   *         not exist
+   */
+  def deleteIfExists(): Boolean = {
+    if (isClosed)
+      Files.deleteIfExists(file.toPath)
+    else
+      get.deleteIfExists()
+  }
+
+  /**
+   * Rename the file that backs this offset index if the index has ever been initialized or file already exists.
+   *
+   * @throws IOException if rename fails for defined index or existing file.
+   */
+  def renameTo(f: File) {
+    try {
+      if (offsetIndex.isDefined || file.exists)
+        Utils.atomicMoveWithFallback(file.toPath, f.toPath)
+    } finally file = f
   }
 }

@@ -180,6 +180,15 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
+  def oneAboveMinIsr: Boolean = {
+    leaderReplicaIfLocal match {
+      case Some(leaderReplica) =>
+        inSyncReplicas.size == leaderReplica.log.get.config.minInSyncReplicas + 1
+      case None =>
+        false
+    }
+  }
+
   /**
     * Create the future replica if 1) the current replica is not in the given log directory and 2) the future replica
     * does not exist. This method assumes that the current replica has already been created.

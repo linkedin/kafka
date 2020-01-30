@@ -255,7 +255,7 @@ class ReplicaManager(val config: KafkaConfig,
   val oneAboveMinIsrPartitionCount = newGauge(
     "OneAboveMinIsrPartitionCount",
     new Gauge[Int] {
-      def value = leaderPartitionsIterator.count(_.oneAboveMinIsr)
+      def value = leaderPartitionsIterator.count(_.isOneAboveMinIsr)
     }
   )
 

@@ -180,7 +180,7 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
-  def oneAboveMinIsr: Boolean = {
+  def isOneAboveMinIsr: Boolean = {
     leaderReplicaIfLocal match {
       case Some(leaderReplica) =>
         inSyncReplicas.size == leaderReplica.log.get.config.minInSyncReplicas + 1

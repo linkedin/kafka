@@ -37,7 +37,7 @@ import kafka.server.{BrokerReconfigurable, KafkaConfig}
 import kafka.utils._
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.{KafkaException, Reconfigurable}
-import org.apache.kafka.common.memory.{MemoryPool, SimpleMemoryPool}
+import org.apache.kafka.common.memory.{MemoryPool, RecyclingMemoryPool, SimpleMemoryPool}
 import org.apache.kafka.common.metrics._
 import org.apache.kafka.common.metrics.stats.Total
 import org.apache.kafka.common.metrics.stats.Percentiles.BucketSizing
@@ -96,6 +96,7 @@ class SocketServer(val config: KafkaConfig,
   // At current stage, we do not know the max decrypted request size, temporarily set it to 10MB.
   memoryPoolAllocationSensor.add(memoryPoolAllocateSizePercentilesMetricName, new Percentiles(400, 0.0, 10485760, BucketSizing.CONSTANT, percentiles:_*))
   private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolUsageSensor, memoryPoolAllocationSensor)
+                           else if (config.socketRequestCommonBytes > 0) new RecyclingMemoryPool(config.socketRequestCommonBytes, config.socketRequestBufferCacheSize, memoryPoolAllocationSensor)
                            else MemoryPool.NONE
   // data-plane
   private val dataPlaneProcessors = new ConcurrentHashMap[Int, Processor]()

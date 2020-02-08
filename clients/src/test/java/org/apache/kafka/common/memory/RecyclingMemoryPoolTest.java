@@ -18,6 +18,8 @@
 package org.apache.kafka.common.memory;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.junit.Assert;
@@ -71,5 +73,34 @@ public class RecyclingMemoryPoolTest {
         Assert.assertEquals(System.identityHashCode(reuse2), System.identityHashCode(buffer2));
         Assert.assertEquals(System.identityHashCode(reuse3), System.identityHashCode(buffer3));
         Assert.assertNotEquals(System.identityHashCode(reuse4), System.identityHashCode(buffer4));
+    }
+
+    @Test
+    public void testMultiThreadAllocation() {
+        RecyclingMemoryPool memoryPool = new RecyclingMemoryPool(CACHEABLE_BUFFER_SIZE, BUFFER_CACHE_CAPACITY, ALLOCATE_SENSOR);
+        List<Thread> processorThreads = new ArrayList<>(3);
+        for (int i = 0; i < 3; i++) {
+            processorThreads.add(new Thread(() -> {
+                ByteBuffer buffer = memoryPool.tryAllocate(CACHEABLE_BUFFER_SIZE);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    memoryPool.release(buffer);
+                }
+            }));
+        }
+        processorThreads.forEach(Thread::start);
+        processorThreads.forEach(t -> {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        Assert.assertEquals(memoryPool.bufferCache.size(), BUFFER_CACHE_CAPACITY);
+        Assert.assertEquals(memoryPool.numAllocatedCacheableBuffer.get(), BUFFER_CACHE_CAPACITY + 1);
     }
 }

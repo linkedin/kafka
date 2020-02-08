@@ -18,9 +18,8 @@
 package org.apache.kafka.common.memory;
 
 import java.nio.ByteBuffer;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.common.metrics.Sensor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,10 +32,11 @@ import org.slf4j.LoggerFactory;
  */
 public class RecyclingMemoryPool implements MemoryPool {
     protected final Logger log = LoggerFactory.getLogger(getClass());
-    protected final int cacheableBufferSize;
+    protected final int cacheableBufferSizeUpperThreshold;
+    protected final int cacheableBufferSizeLowerThreshold;
     protected final int bufferCacheCapacity;
-    protected int bufferCacheSlot;
-    protected final List<ByteBuffer> bufferCache;
+    protected final AtomicInteger numAllocatedCacheableBuffer;
+    protected final ConcurrentLinkedDeque<ByteBuffer> bufferCache;
     protected volatile Sensor requestSensor;
 
     public RecyclingMemoryPool(int cacheableBufferSize, int bufferCacheCapacity, Sensor requestSensor) {
@@ -44,11 +44,12 @@ public class RecyclingMemoryPool implements MemoryPool {
             throw new IllegalArgumentException(String.format("Must provide a positive cacheable buffer size and buffer cache " +
                     "capacity, provided %d and %d respectively.", cacheableBufferSize, bufferCacheCapacity));
         }
-        this.bufferCache = new LinkedList<>();
-        this.cacheableBufferSize = cacheableBufferSize;
+        this.bufferCache = new ConcurrentLinkedDeque<>();
+        this.cacheableBufferSizeUpperThreshold = cacheableBufferSize;
+        this.cacheableBufferSizeLowerThreshold = cacheableBufferSize / 2;
         this.bufferCacheCapacity = bufferCacheCapacity;
         this.requestSensor = requestSensor;
-        this.bufferCacheSlot = 0;
+        this.numAllocatedCacheableBuffer = new AtomicInteger(0);
     }
 
     @Override
@@ -58,7 +59,7 @@ public class RecyclingMemoryPool implements MemoryPool {
         }
 
         ByteBuffer allocated = null;
-        if (sizeBytes > cacheableBufferSize / 2 && sizeBytes <= cacheableBufferSize) {
+        if (sizeBytes > cacheableBufferSizeLowerThreshold  && sizeBytes <= cacheableBufferSizeUpperThreshold) {
             allocated = maybePopBufferFromCache();
         }
         if (allocated == null) {
@@ -69,32 +70,21 @@ public class RecyclingMemoryPool implements MemoryPool {
     }
 
     /**
-     * If (1) there are recycled buffers in cache or (2) more buffer of size {@link #cacheableBufferSize} can be allocated,
+     * If (1) there are recycled buffers in cache or (2) more buffer of size {@link #cacheableBufferSizeUpperThreshold} can be allocated,
      * (allocate the buffer and) return the buffer to the client.
      *
      * @return The available buffer if any.
      */
     protected ByteBuffer maybePopBufferFromCache() {
-        boolean canAllocateMoreBuffer;
-        synchronized (this) {
-            if (!bufferCache.isEmpty()) {
-                Iterator<ByteBuffer> it = bufferCache.iterator();
-                ByteBuffer buffer = it.next();
-                it.remove();
-                buffer.clear();
-                return buffer;
-            }
-            canAllocateMoreBuffer = bufferCacheSlot < bufferCacheCapacity;
-            if (canAllocateMoreBuffer) {
-                bufferCacheSlot++;
+        ByteBuffer byteBuffer = bufferCache.poll();
+        if (byteBuffer == null) {
+            int allocated = numAllocatedCacheableBuffer.updateAndGet(v -> v > bufferCacheCapacity ? v : v + 1);
+            if (allocated <= bufferCacheCapacity) {
+                byteBuffer = ByteBuffer.allocate(cacheableBufferSizeUpperThreshold);
+                bufferToBeAllocated(byteBuffer);
             }
         }
-        if (canAllocateMoreBuffer) {
-            ByteBuffer byteBuffer = ByteBuffer.allocate(cacheableBufferSize);
-            bufferToBeAllocated(byteBuffer);
-            return byteBuffer;
-        }
-        return null;
+        return byteBuffer;
     }
 
     @Override
@@ -102,22 +92,22 @@ public class RecyclingMemoryPool implements MemoryPool {
         if (previouslyAllocated == null) {
             throw new IllegalArgumentException("provided null buffer");
         }
-        if (previouslyAllocated.capacity() == cacheableBufferSize) {
+        if (previouslyAllocated.capacity() == cacheableBufferSizeUpperThreshold) {
             maybeRecycleBufferToCache(previouslyAllocated);
         }
         bufferToBeReleased(previouslyAllocated);
     }
 
-    protected synchronized void maybeRecycleBufferToCache(ByteBuffer previouslyAllocated) {
+    protected void maybeRecycleBufferToCache(ByteBuffer previouslyAllocated) {
         if (bufferCache.size() < bufferCacheCapacity) {
-            bufferCache.add(previouslyAllocated);
+            bufferCache.offer(previouslyAllocated);
         }
     }
 
     //allows subclasses to do their own bookkeeping (and validation) _before_ memory is returned to client code.
     protected void bufferToBeAllocated(ByteBuffer justAllocated) {
         this.requestSensor.record(justAllocated.capacity());
-        log.trace("allocated buffer of size {} ", justAllocated.capacity());
+        log.trace("allocated buffer of size {}", justAllocated.capacity());
     }
 
     //allows subclasses to do their own bookkeeping (and validation) _before_ memory is marked as reclaimed.

@@ -20,6 +20,7 @@ package org.apache.kafka.common.memory;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.junit.Assert;
@@ -78,29 +79,32 @@ public class RecyclingMemoryPoolTest {
     @Test
     public void testMultiThreadAllocation() {
         RecyclingMemoryPool memoryPool = new RecyclingMemoryPool(CACHEABLE_BUFFER_SIZE, BUFFER_CACHE_CAPACITY, ALLOCATE_SENSOR);
+        AtomicReference<Throwable> error = new AtomicReference<>();
         List<Thread> processorThreads = new ArrayList<>(3);
         for (int i = 0; i < 3; i++) {
             processorThreads.add(new Thread(() -> {
-                ByteBuffer buffer = memoryPool.tryAllocate(CACHEABLE_BUFFER_SIZE);
                 try {
+                    ByteBuffer buffer = memoryPool.tryAllocate(CACHEABLE_BUFFER_SIZE);
                     Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } finally {
                     memoryPool.release(buffer);
+                } catch (InterruptedException e) {
+                    error.compareAndSet(null, e);
                 }
             }));
         }
-        processorThreads.forEach(Thread::start);
+        processorThreads.forEach(t -> {
+            t.setDaemon(true);
+            t.start();
+        });
         processorThreads.forEach(t -> {
             try {
-                t.join();
+                t.join(30000);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                error.compareAndSet(null, e);
             }
         });
 
+        Assert.assertNull(error.get());
         Assert.assertEquals(memoryPool.bufferCache.size(), BUFFER_CACHE_CAPACITY);
-        Assert.assertEquals(memoryPool.numAllocatedCacheableBuffer.get(), BUFFER_CACHE_CAPACITY + 1);
     }
 }

@@ -60,7 +60,9 @@ public class RecyclingMemoryPool implements MemoryPool {
         if (sizeBytes > cacheableBufferSizeLowerThreshold  && sizeBytes <= cacheableBufferSizeUpperThreshold) {
             allocated = bufferCache.poll();
         }
-        if (allocated == null) {
+        if (allocated != null) {
+            allocated.limit(sizeBytes);
+        } else {
             allocated = ByteBuffer.allocate(sizeBytes);
         }
         bufferToBeAllocated(allocated);

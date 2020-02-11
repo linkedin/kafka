@@ -30,11 +30,11 @@ import org.slf4j.LoggerFactory;
  * In this case, instead of deallocate and reallocate the buffer, the memory pool will recycle the buffer for future use.
  */
 public class RecyclingMemoryPool implements MemoryPool {
-    protected final Logger log = LoggerFactory.getLogger(getClass());
+    protected static final Logger log = LoggerFactory.getLogger(RecyclingMemoryPool.class);
     protected final int cacheableBufferSizeUpperThreshold;
     protected final int cacheableBufferSizeLowerThreshold;
     protected final LinkedBlockingQueue<ByteBuffer> bufferCache;
-    protected volatile Sensor requestSensor;
+    protected final Sensor requestSensor;
 
     public RecyclingMemoryPool(int cacheableBufferSize, int bufferCacheCapacity, Sensor requestSensor) {
         if (bufferCacheCapacity <= 0 || cacheableBufferSize <= 0) {
@@ -62,8 +62,8 @@ public class RecyclingMemoryPool implements MemoryPool {
         }
         if (allocated == null) {
             allocated = ByteBuffer.allocate(sizeBytes);
-            bufferToBeAllocated(allocated);
         }
+        bufferToBeAllocated(allocated);
         return allocated;
     }
 
@@ -82,7 +82,11 @@ public class RecyclingMemoryPool implements MemoryPool {
 
     //allows subclasses to do their own bookkeeping (and validation) _before_ memory is returned to client code.
     protected void bufferToBeAllocated(ByteBuffer justAllocated) {
-        this.requestSensor.record(justAllocated.capacity());
+        try {
+            this.requestSensor.record(justAllocated.capacity());
+        } catch (Exception e) {
+            log.debug("failed to record size of allocated buffer");
+        }
         log.trace("allocated buffer of size {}", justAllocated.capacity());
     }
 

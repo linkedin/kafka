@@ -85,7 +85,7 @@ public class RecyclingMemoryPool implements MemoryPool {
     //allows subclasses to do their own bookkeeping (and validation) _before_ memory is returned to client code.
     protected void bufferToBeAllocated(ByteBuffer justAllocated) {
         try {
-            this.requestSensor.record(justAllocated.capacity());
+            this.requestSensor.record(justAllocated.limit());
         } catch (Exception e) {
             log.debug("failed to record size of allocated buffer");
         }

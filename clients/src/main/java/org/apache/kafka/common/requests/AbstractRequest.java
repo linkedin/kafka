@@ -27,8 +27,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public abstract class AbstractRequest extends AbstractRequestResponse {
-    private ByteBuffer serializedBuffer;
-
+    private ByteBuffer bodyBuffer;
     public static abstract class Builder<T extends AbstractRequest> {
         private final ApiKeys apiKey;
         private final short oldestAllowedVersion;
@@ -94,20 +93,21 @@ public abstract class AbstractRequest extends AbstractRequestResponse {
     }
 
     public Send toSend(String destination, RequestHeader header) {
-        return new NetworkSend(destination, serialize(header));
+        // For UpdateMetadataRequest, the same object will be called many times, each time with a different destination
+        // value and a header containing a different correlation id.
+        ByteBuffer headerBuffer = serializeStruct(header.toStruct());
+        if (bodyBuffer == null) {
+            bodyBuffer = serializeStruct(toStruct());
+        }
+        bodyBuffer.rewind();
+        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, bodyBuffer});
     }
 
     /**
      * Use with care, typically {@link #toSend(String, RequestHeader)} should be used instead.
      */
     public ByteBuffer serialize(RequestHeader header) {
-        // For a given UpdateMetadataRequest object, the serialize method will be called many times,
-        // once for each broker in the cluster. Thus we cache the serialized byte buffer in order to reduce
-        // memory footprint on the controller.
-        if (serializedBuffer == null) {
-            serializedBuffer = serialize(header.toStruct(), toStruct());
-        }
-        return serializedBuffer;
+        return serialize(header.toStruct(), toStruct());
     }
 
     protected abstract Struct toStruct();

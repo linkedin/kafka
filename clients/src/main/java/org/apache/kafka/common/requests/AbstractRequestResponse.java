@@ -31,4 +31,11 @@ public abstract class AbstractRequestResponse {
         buffer.rewind();
         return buffer;
     }
+
+    public static ByteBuffer serializeStruct(Struct struct) {
+        ByteBuffer buffer = ByteBuffer.allocate(struct.sizeOf());
+        struct.writeTo(buffer);
+        buffer.rewind();
+        return buffer;
+    }
 }

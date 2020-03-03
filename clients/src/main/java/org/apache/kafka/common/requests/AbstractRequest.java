@@ -27,6 +27,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public abstract class AbstractRequest extends AbstractRequestResponse {
+    private ByteBuffer serializedBuffer;
 
     public static abstract class Builder<T extends AbstractRequest> {
         private final ApiKeys apiKey;
@@ -100,7 +101,13 @@ public abstract class AbstractRequest extends AbstractRequestResponse {
      * Use with care, typically {@link #toSend(String, RequestHeader)} should be used instead.
      */
     public ByteBuffer serialize(RequestHeader header) {
-        return serialize(header.toStruct(), toStruct());
+        // For a given UpdateMetadataRequest object, the serialize method will be called many times,
+        // once for each broker in the cluster. Thus we cache the serialized byte buffer in order to reduce
+        // memory footprint on the controller.
+        if (serializedBuffer == null) {
+            serializedBuffer = serialize(header.toStruct(), toStruct());
+        }
+        return serializedBuffer;
     }
 
     protected abstract Struct toStruct();

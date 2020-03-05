@@ -27,7 +27,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public abstract class AbstractRequest extends AbstractRequestResponse {
-    private ByteBuffer bodyBuffer;
+    private byte[] bodyBuffer;
     public static abstract class Builder<T extends AbstractRequest> {
         private final ApiKeys apiKey;
         private final short oldestAllowedVersion;
@@ -97,10 +97,9 @@ public abstract class AbstractRequest extends AbstractRequestResponse {
         // value and a header containing a different correlation id.
         ByteBuffer headerBuffer = serializeStruct(header.toStruct());
         if (bodyBuffer == null) {
-            bodyBuffer = serializeStruct(toStruct());
+            bodyBuffer = serializeStruct(toStruct()).array();
         }
-        bodyBuffer.rewind();
-        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, bodyBuffer});
+        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
     }
 
     /**

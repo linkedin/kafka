@@ -532,7 +532,6 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
         AbstractControlRequest.UNKNOWN_BROKER_EPOCH, maxBrokerEpoch, partitionStates.asJava, liveBrokers.asJava)
 
       updateMetadataRequestBrokerSet.intersect(controllerContext.liveOrShuttingDownBrokerIds).foreach { broker =>
-        val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(broker)
         sendRequest(broker, updateMetadataRequest)
       }
     } else {

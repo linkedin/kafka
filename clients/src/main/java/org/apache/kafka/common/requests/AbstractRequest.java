@@ -27,7 +27,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public abstract class AbstractRequest extends AbstractRequestResponse {
-
+    private byte[] bodyBuffer;
     public static abstract class Builder<T extends AbstractRequest> {
         private final ApiKeys apiKey;
         private final short oldestAllowedVersion;
@@ -93,7 +93,13 @@ public abstract class AbstractRequest extends AbstractRequestResponse {
     }
 
     public Send toSend(String destination, RequestHeader header) {
-        return new NetworkSend(destination, serialize(header));
+        // For UpdateMetadataRequest, the toSend method on the same object will be called many times, each time with a different destination
+        // value and a header containing a different correlation id.
+        ByteBuffer headerBuffer = serializeStruct(header.toStruct());
+        if (bodyBuffer == null) {
+            bodyBuffer = serializeStruct(toStruct()).array();
+        }
+        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
     }
 
     /**

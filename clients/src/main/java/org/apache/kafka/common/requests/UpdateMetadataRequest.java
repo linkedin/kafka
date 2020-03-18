@@ -465,7 +465,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         } finally {
             bobyBufferLock.unlock();
         }
-       return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
+        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
     }
 
     @Override

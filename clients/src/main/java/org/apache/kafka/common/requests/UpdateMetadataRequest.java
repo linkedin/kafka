@@ -22,6 +22,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.network.ListenerName;
+import org.apache.kafka.common.network.NetworkSend;
+import org.apache.kafka.common.network.Send;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Field;
@@ -45,6 +47,9 @@ import static org.apache.kafka.common.protocol.CommonFields.TOPIC_NAME;
 import static org.apache.kafka.common.protocol.types.Type.INT32;
 
 public class UpdateMetadataRequest extends AbstractControlRequest {
+    private ReentrantLock bobyBufferLock = new ReentrantLock();
+    private byte[] bodyBuffer;
+
     private static final Field.ComplexArray TOPIC_STATES = new Field.ComplexArray("topic_states", "Topic states");
     private static final Field.ComplexArray PARTITION_STATES = new Field.ComplexArray("partition_states", "Partition states");
     private static final Field.ComplexArray LIVE_BROKERS = new Field.ComplexArray("live_brokers", "Live brokers");
@@ -445,6 +450,22 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         }
         this.partitionStates = partitionStates;
         this.liveBrokers = liveBrokers;
+    }
+
+    @Override
+    public Send toSend(String destination, RequestHeader header) {
+        // For UpdateMetadataRequest, the toSend method on the same object will be called many times, each time with a different destination
+        // value and a header containing a different correlation id.
+        ByteBuffer headerBuffer = serializeStruct(header.toStruct());
+        bobyBufferLock.lock();
+        try {
+            if (bodyBuffer == null) {
+                bodyBuffer = serializeStruct(toStruct()).array();
+            }
+        } finally {
+            bobyBufferLock.unlock();
+        }
+       return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
     }
 
     @Override

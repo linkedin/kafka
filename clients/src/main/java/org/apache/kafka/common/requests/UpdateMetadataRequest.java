@@ -47,7 +47,7 @@ import static org.apache.kafka.common.protocol.CommonFields.TOPIC_NAME;
 import static org.apache.kafka.common.protocol.types.Type.INT32;
 
 public class UpdateMetadataRequest extends AbstractControlRequest {
-    private ReentrantLock bobyBufferLock = new ReentrantLock();
+    private final ReentrantLock bodyBufferLock = new ReentrantLock();
     private byte[] bodyBuffer;
 
     private static final Field.ComplexArray TOPIC_STATES = new Field.ComplexArray("topic_states", "Topic states");
@@ -457,13 +457,13 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         // For UpdateMetadataRequest, the toSend method on the same object will be called many times, each time with a different destination
         // value and a header containing a different correlation id.
         ByteBuffer headerBuffer = serializeStruct(header.toStruct());
-        bobyBufferLock.lock();
+        bodyBufferLock.lock();
         try {
             if (bodyBuffer == null) {
                 bodyBuffer = serializeStruct(toStruct()).array();
             }
         } finally {
-            bobyBufferLock.unlock();
+            bodyBufferLock.unlock();
         }
         return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
     }

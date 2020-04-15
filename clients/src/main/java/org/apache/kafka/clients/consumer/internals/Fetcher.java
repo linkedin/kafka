@@ -270,7 +270,14 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
             if (log.isDebugEnabled()) {
                 log.debug("Sending {} {} to broker {}", isolationLevel, data.toString(), fetchTarget);
             }
-            client.send(fetchTarget, request)
+
+            RequestFuture<ClientResponse> future = client.send(fetchTarget, request);
+            // We add the node to the set of nodes with pending fetch requests before adding the
+            // listener because the future may have been fulfilled on another thread (e.g. during a
+            // disconnection being handled by the heartbeat thread) which will mean the listener
+            // will be invoked synchronously.
+            this.nodesWithPendingFetchRequests.add(entry.getKey().id());
+            future
                     .addListener(new RequestFutureListener<ClientResponse>() {
                         @Override
                         public void onSuccess(ClientResponse resp) {
@@ -343,8 +350,6 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                             }
                         }
                     });
-
-            this.nodesWithPendingFetchRequests.add(entry.getKey().id());
         }
         return fetchRequestMap.size();
     }

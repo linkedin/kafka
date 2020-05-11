@@ -137,8 +137,8 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
     }
 
     public static class Builder extends AbstractControlRequest.Builder<LeaderAndIsrRequest> {
-        private final Map<TopicPartition, PartitionState> partitionStates;
-        private final Set<Node> liveLeaders;
+        private Map<TopicPartition, PartitionState> partitionStates;
+        private Set<Node> liveLeaders;
 
         public Builder(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
                        Map<TopicPartition, PartitionState> partitionStates, Set<Node> liveLeaders) {
@@ -164,6 +164,17 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
                 .append(", liveLeaders=(").append(Utils.join(liveLeaders, ", ")).append(")")
                 .append(")");
             return bld.toString();
+        }
+
+        public boolean merge(LeaderAndIsrRequest.Builder other) {
+            if (other.maxBrokerEpoch == maxBrokerEpoch && other.brokerEpoch == brokerEpoch && other.controllerEpoch == controllerEpoch) {
+                liveLeaders.addAll(other.liveLeaders);
+                other.partitionStates.forEach((k, v) -> partitionStates.merge(k, v,
+                    (state, otherState) -> new PartitionState(otherState.basePartitionState, state.isNew || otherState.isNew)));
+                return true;
+            } else {
+                return other.maxBrokerEpoch < maxBrokerEpoch || other.brokerEpoch < brokerEpoch || other.controllerEpoch < controllerEpoch;
+            }
         }
     }
 
@@ -321,6 +332,11 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
                               List<Integer> replicas,
                               boolean isNew) {
             this.basePartitionState = new BasePartitionState(controllerEpoch, leader, leaderEpoch, isr, zkVersion, replicas);
+            this.isNew = isNew;
+        }
+
+        public PartitionState(BasePartitionState basePartitionState, boolean isNew) {
+            this.basePartitionState = basePartitionState;
             this.isNew = isNew;
         }
 

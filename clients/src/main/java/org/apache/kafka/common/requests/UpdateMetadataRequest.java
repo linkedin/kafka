@@ -199,8 +199,8 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
     }
 
     public static class Builder extends AbstractControlRequest.Builder<UpdateMetadataRequest> {
-        private final Map<TopicPartition, PartitionState> partitionStates;
-        private final Set<Broker> liveBrokers;
+        private Map<TopicPartition, PartitionState> partitionStates;
+        private Set<Broker> liveBrokers;
         private Lock buildLock = new ReentrantLock();
 
 
@@ -261,6 +261,16 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
             //   append(", liveBrokers=").append(Utils.join(liveBrokers, ", ")).
             //   append(")");
             return bld.toString();
+        }
+
+        public boolean merge(UpdateMetadataRequest.Builder other) {
+            if (other.maxBrokerEpoch == maxBrokerEpoch && other.brokerEpoch == brokerEpoch && other.controllerEpoch == controllerEpoch) {
+                liveBrokers = other.liveBrokers;
+                partitionStates = other.partitionStates;
+                return true;
+            } else {
+                return other.maxBrokerEpoch < maxBrokerEpoch || other.brokerEpoch < brokerEpoch || other.controllerEpoch < controllerEpoch;
+            }
         }
     }
 

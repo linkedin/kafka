@@ -17,6 +17,9 @@
 package kafka.controller
 
 import java.net.SocketTimeoutException
+import java.util
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
 
 import com.yammer.metrics.core.{Gauge, Timer}
@@ -125,7 +128,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   private def addNewBroker(broker: Broker) {
-    val messageQueue = new LinkedBlockingQueue[QueueItem]
+    val messageQueue = new RequestSendQueue()
     debug(s"Controller ${config.brokerId} trying to connect to broker ${broker.id}")
     val controllerToBrokerListenerName = config.controlPlaneListenerName.getOrElse(config.interBrokerListenerName)
     val controllerToBrokerSecurityProtocol = config.controlPlaneSecurityProtocol.getOrElse(config.interBrokerSecurityProtocol)
@@ -228,12 +231,12 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 }
 
-case class QueueItem(apiKey: ApiKeys, request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
-                     callback: AbstractResponse => Unit, enqueueTimeMs: Long)
+case class QueueItem(apiKey: ApiKeys, var request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+  var callback: AbstractResponse => Unit, enqueueTimeMs: Long)
 
 class RequestSendThread(val controllerId: Int,
                         val controllerContext: ControllerContext,
-                        val queue: BlockingQueue[QueueItem],
+                        val queue: RequestSendQueue,
                         val networkClient: NetworkClient,
                         val brokerNode: Node,
                         val config: KafkaConfig,
@@ -618,7 +621,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
 case class ControllerBrokerStateInfo(networkClient: NetworkClient,
                                      brokerNode: Node,
-                                     messageQueue: BlockingQueue[QueueItem],
+                                     messageQueue: RequestSendQueue,
                                      requestSendThread: RequestSendThread,
                                      queueSizeGauge: Gauge[Int],
                                      requestRateAndTimeMetrics: Timer,
@@ -642,4 +645,101 @@ class BrokerResponseTimeStats(val key: ApiKeys) extends KafkaMetricsGroup {
     removeMetric("brokerRequestQueueTimeMs", responseTimeTags)
     removeMetric("brokerRequestRemoteTimeMs", responseTimeTags)
   }
+}
+
+case class QueueItemWrapper(var queueItem: QueueItem, var id: Int)
+
+class RequestSendQueue {
+  val count: AtomicInteger = new AtomicInteger()
+  var openLeaderAndIsrRequestItem: Option[QueueItemWrapper] = None
+  var openUpdateMetadataRequestItem: Option[QueueItemWrapper] = None
+  var nextId: Int = 0
+  val lock = new ReentrantLock()
+  val notEmpty: Condition = lock.newCondition();
+  val queue = new util.LinkedList[QueueItemWrapper]()
+
+  private def wrapItem(item: QueueItem): QueueItemWrapper = {
+    val wrappedItem = QueueItemWrapper(item, nextId)
+    nextId+=1
+    wrappedItem
+  }
+
+  def size(): Int = {
+    count.get()
+  }
+
+  def put(item: QueueItem): Unit = {
+    lock.lock()
+    try {
+      val newWrappedItem: Option[QueueItemWrapper] = item.apiKey match {
+        case ApiKeys.LEADER_AND_ISR =>
+          // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
+          openUpdateMetadataRequestItem = None
+
+          // Update the openLeaderAndIsrRequestItem
+          openLeaderAndIsrRequestItem match {
+            case Some(openItem) =>
+              val openBuilder = openItem.queueItem.request.asInstanceOf[LeaderAndIsrRequest.Builder]
+              val newBuilder = item.request.asInstanceOf[LeaderAndIsrRequest.Builder]
+              if (!openBuilder.merge(newBuilder)) Some(wrapItem(item))
+              else None
+            case None => Some(wrapItem(item))
+          }
+        case ApiKeys.UPDATE_METADATA =>
+          openUpdateMetadataRequestItem match {
+            case Some(openItem) =>
+              val openBuilder = openItem.queueItem.request.asInstanceOf[UpdateMetadataRequest.Builder]
+              val newBuilder = item.request.asInstanceOf[UpdateMetadataRequest.Builder]
+              if (!openBuilder.merge(newBuilder)) Some(wrapItem(item))
+              else None
+            case None => Some(wrapItem(item))
+          }
+        case ApiKeys.STOP_REPLICA =>
+          // Seal the openLeaderAndIsrRequestItem and openUpdateMetadataRequestItem
+          openUpdateMetadataRequestItem = None
+          openLeaderAndIsrRequestItem = None
+          Some(wrapItem(item))
+        case _ => throw new IllegalArgumentException()
+      }
+
+      if (newWrappedItem.isDefined) {
+        queue.addLast(newWrappedItem.get)
+        count.getAndIncrement()
+        notEmpty.signal()
+      }
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  def take(): QueueItem = {
+    lock.lock()
+    try {
+      while(queue.isEmpty()) {
+        notEmpty.await();
+      }
+      val wrappedItem = queue.removeFirst()
+      count.getAndDecrement()
+      if (openLeaderAndIsrRequestItem.isDefined && openLeaderAndIsrRequestItem.get.id == wrappedItem.id)
+        openLeaderAndIsrRequestItem = None
+      else if (openUpdateMetadataRequestItem.isDefined && openUpdateMetadataRequestItem.get.id == wrappedItem.id)
+        openUpdateMetadataRequestItem = None
+      wrappedItem.queueItem
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  def clear(): Unit = {
+    lock.lock()
+    try {
+      queue.clear()
+      openUpdateMetadataRequestItem = None
+      openLeaderAndIsrRequestItem = None
+      count.set(0)
+    } finally {
+      lock.unlock()
+    }
+  }
+
 }

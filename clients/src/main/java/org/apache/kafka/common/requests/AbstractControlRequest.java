@@ -47,7 +47,6 @@ public abstract class AbstractControlRequest extends AbstractRequest {
             this.brokerEpoch = brokerEpoch;
             this.maxBrokerEpoch = maxBrokerEpoch;
         }
-
     }
 
     public int controllerId() {

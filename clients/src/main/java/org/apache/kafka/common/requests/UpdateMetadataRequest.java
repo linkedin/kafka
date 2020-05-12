@@ -201,6 +201,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
     public static class Builder extends AbstractControlRequest.Builder<UpdateMetadataRequest> {
         private Map<TopicPartition, PartitionState> partitionStates;
         private Set<Broker> liveBrokers;
+        private final boolean cacheable;
         private Lock buildLock = new ReentrantLock();
 
 
@@ -208,34 +209,47 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         private final Map<Short, UpdateMetadataRequest> requestCache = new HashMap<>();
 
         public Builder(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
-                       Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers) {
+                       Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers, boolean cacheable) {
             super(ApiKeys.UPDATE_METADATA, version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch);
             this.partitionStates = partitionStates;
             this.liveBrokers = liveBrokers;
+            this.cacheable = cacheable;
+        }
+
+        public Builder(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
+            Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers) {
+            this(version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch, partitionStates, liveBrokers, false);
+        }
+
+        private UpdateMetadataRequest buildInternal(short version) {
+            if (version == 0) {
+                for (Broker broker : liveBrokers) {
+                    if (broker.endPoints.size() != 1 || broker.endPoints.get(0).securityProtocol != SecurityProtocol.PLAINTEXT) {
+                        throw new UnsupportedVersionException(
+                            "UpdateMetadataRequest v0 only handles PLAINTEXT endpoints");
+                    }
+                }
+            }
+            return new UpdateMetadataRequest(version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch, partitionStates,
+                    liveBrokers);
         }
 
         @Override
         public UpdateMetadataRequest build(short version) {
-            buildLock.lock();
-            try {
-                UpdateMetadataRequest updateMetadataRequest = requestCache.get(version);
-                if (updateMetadataRequest == null) {
-                    if (version == 0) {
-                        for (Broker broker : liveBrokers) {
-                            if (broker.endPoints.size() != 1 || broker.endPoints.get(0).securityProtocol != SecurityProtocol.PLAINTEXT) {
-                                throw new UnsupportedVersionException(
-                                    "UpdateMetadataRequest v0 only handles PLAINTEXT endpoints");
-                            }
-                        }
+            if (cacheable) {
+                buildLock.lock();
+                try {
+                    UpdateMetadataRequest updateMetadataRequest = requestCache.get(version);
+                    if (updateMetadataRequest == null) {
+                        updateMetadataRequest = buildInternal(version);
+                        requestCache.put(version, updateMetadataRequest);
                     }
-                    updateMetadataRequest =
-                        new UpdateMetadataRequest(version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch, partitionStates,
-                            liveBrokers);
-                    requestCache.put(version, updateMetadataRequest);
+                    return updateMetadataRequest;
+                } finally {
+                    buildLock.unlock();
                 }
-                return updateMetadataRequest;
-            } finally {
-                buildLock.unlock();
+            } else {
+                return buildInternal(version);
             }
         }
 
@@ -264,9 +278,10 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         }
 
         public boolean merge(UpdateMetadataRequest.Builder other) {
+            if (cacheable) return false;
             if (other.maxBrokerEpoch == maxBrokerEpoch && other.brokerEpoch == brokerEpoch && other.controllerEpoch == controllerEpoch) {
                 liveBrokers = other.liveBrokers;
-                partitionStates = other.partitionStates;
+                other.partitionStates.forEach((k, v) -> partitionStates.merge(k, v, (state, otherState) -> otherState));
                 return true;
             } else {
                 return other.maxBrokerEpoch < maxBrokerEpoch || other.brokerEpoch < brokerEpoch || other.controllerEpoch < controllerEpoch;
@@ -384,16 +399,23 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
 
     private final Map<TopicPartition, PartitionState> partitionStates;
     private final Set<Broker> liveBrokers;
+    private final boolean cacheable;
 
     // LIKAFKA-18349 - Cache the UpdateMetadataRequest struct to reduce memory usage
     private Struct struct = null;
     private Lock structLock = new ReentrantLock();
 
     private UpdateMetadataRequest(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
-                                  Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers) {
+                                  Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers, boolean cacheable) {
         super(ApiKeys.UPDATE_METADATA, version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch);
         this.partitionStates = partitionStates;
         this.liveBrokers = liveBrokers;
+        this.cacheable = cacheable;
+    }
+
+    private UpdateMetadataRequest(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
+        Map<TopicPartition, PartitionState> partitionStates, Set<Broker> liveBrokers) {
+        this(version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch, partitionStates, liveBrokers, false);
     }
 
     public UpdateMetadataRequest(Struct struct, short versionId) {
@@ -460,100 +482,113 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         }
         this.partitionStates = partitionStates;
         this.liveBrokers = liveBrokers;
+        this.cacheable = false;
     }
 
     @Override
     public Send toSend(String destination, RequestHeader header) {
-        // For UpdateMetadataRequest, the toSend method on the same object will be called many times, each time with a different destination
-        // value and a header containing a different correlation id.
-        ByteBuffer headerBuffer = serializeStruct(header.toStruct());
-        bodyBufferLock.lock();
-        try {
-            if (bodyBuffer == null) {
-                bodyBuffer = serializeStruct(toStruct()).array();
+        if (cacheable) {
+            // For UpdateMetadataRequest, the toSend method on the same object will be called many times, each time with a different destination
+            // value and a header containing a different correlation id.
+            ByteBuffer headerBuffer = serializeStruct(header.toStruct());
+            bodyBufferLock.lock();
+            try {
+                if (bodyBuffer == null) {
+                    bodyBuffer = serializeStruct(toStruct()).array();
+                }
+            } finally {
+                bodyBufferLock.unlock();
             }
-        } finally {
-            bodyBufferLock.unlock();
+            return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
+        } else {
+            return super.toSend(destination, header);
         }
-        return new NetworkSend(destination, new ByteBuffer[]{headerBuffer, ByteBuffer.wrap(bodyBuffer)});
+    }
+
+    protected Struct toStructInternal() {
+        short version = version();
+        Struct struct = new Struct(ApiKeys.UPDATE_METADATA.requestSchema(version));
+        struct.set(CONTROLLER_ID, controllerId);
+        struct.set(CONTROLLER_EPOCH, controllerEpoch);
+        struct.setIfExists(BROKER_EPOCH, brokerEpoch);
+        struct.setIfExists(MAX_BROKER_EPOCH, maxBrokerEpoch);
+
+        if (struct.hasField(TOPIC_STATES)) {
+            Map<String, Map<Integer, PartitionState>> topicStates = CollectionUtils.groupPartitionDataByTopic(partitionStates);
+            List<Struct> topicStatesData = new ArrayList<>(topicStates.size());
+            for (Map.Entry<String, Map<Integer, PartitionState>> entry : topicStates.entrySet()) {
+                Struct topicStateData = struct.instance(TOPIC_STATES);
+                topicStateData.set(TOPIC_NAME, entry.getKey());
+                Map<Integer, PartitionState> partitionMap = entry.getValue();
+                List<Struct> partitionStatesData = new ArrayList<>(partitionMap.size());
+                for (Map.Entry<Integer, PartitionState> partitionEntry : partitionMap.entrySet()) {
+                    Struct partitionStateData = topicStateData.instance(PARTITION_STATES);
+                    partitionStateData.set(PARTITION_ID, partitionEntry.getKey());
+                    partitionEntry.getValue().setStruct(partitionStateData);
+                    partitionStatesData.add(partitionStateData);
+                }
+                topicStateData.set(PARTITION_STATES, partitionStatesData.toArray());
+                topicStatesData.add(topicStateData);
+            }
+            struct.set(TOPIC_STATES, topicStatesData.toArray());
+        } else {
+            List<Struct> partitionStatesData = new ArrayList<>(partitionStates.size());
+            for (Map.Entry<TopicPartition, PartitionState> entry : partitionStates.entrySet()) {
+                Struct partitionStateData = struct.instance(PARTITION_STATES);
+                TopicPartition topicPartition = entry.getKey();
+                partitionStateData.set(TOPIC_NAME, topicPartition.topic());
+                partitionStateData.set(PARTITION_ID, topicPartition.partition());
+                entry.getValue().setStruct(partitionStateData);
+                partitionStatesData.add(partitionStateData);
+            }
+            struct.set(PARTITION_STATES, partitionStatesData.toArray());
+        }
+
+        List<Struct> brokersData = new ArrayList<>(liveBrokers.size());
+        for (Broker broker : liveBrokers) {
+            Struct brokerData = struct.instance(LIVE_BROKERS);
+            brokerData.set(BROKER_ID, broker.id);
+
+            if (version == 0) {
+                EndPoint endPoint = broker.endPoints.get(0);
+                brokerData.set(HOST, endPoint.host);
+                brokerData.set(PORT, endPoint.port);
+            } else {
+                List<Struct> endPointsData = new ArrayList<>(broker.endPoints.size());
+                for (EndPoint endPoint : broker.endPoints) {
+                    Struct endPointData = brokerData.instance(ENDPOINTS);
+                    endPointData.set(PORT, endPoint.port);
+                    endPointData.set(HOST, endPoint.host);
+                    endPointData.set(SECURITY_PROTOCOL_TYPE, endPoint.securityProtocol.id);
+                    if (version >= 3) endPointData.set(LISTENER_NAME, endPoint.listenerName.value());
+                    endPointsData.add(endPointData);
+                }
+                brokerData.set(ENDPOINTS, endPointsData.toArray());
+                if (version >= 2) {
+                    brokerData.set(RACK, broker.rack);
+                }
+            }
+
+            brokersData.add(brokerData);
+        }
+        struct.set(LIVE_BROKERS, brokersData.toArray());
+        return struct;
     }
 
     @Override
     protected Struct toStruct() {
-        structLock.lock();
-        try {
-            if (struct == null) {
-                short version = version();
-                Struct struct = new Struct(ApiKeys.UPDATE_METADATA.requestSchema(version));
-                struct.set(CONTROLLER_ID, controllerId);
-                struct.set(CONTROLLER_EPOCH, controllerEpoch);
-                struct.setIfExists(BROKER_EPOCH, brokerEpoch);
-                struct.setIfExists(MAX_BROKER_EPOCH, maxBrokerEpoch);
-
-                if (struct.hasField(TOPIC_STATES)) {
-                    Map<String, Map<Integer, PartitionState>> topicStates = CollectionUtils.groupPartitionDataByTopic(partitionStates);
-                    List<Struct> topicStatesData = new ArrayList<>(topicStates.size());
-                    for (Map.Entry<String, Map<Integer, PartitionState>> entry : topicStates.entrySet()) {
-                        Struct topicStateData = struct.instance(TOPIC_STATES);
-                        topicStateData.set(TOPIC_NAME, entry.getKey());
-                        Map<Integer, PartitionState> partitionMap = entry.getValue();
-                        List<Struct> partitionStatesData = new ArrayList<>(partitionMap.size());
-                        for (Map.Entry<Integer, PartitionState> partitionEntry : partitionMap.entrySet()) {
-                            Struct partitionStateData = topicStateData.instance(PARTITION_STATES);
-                            partitionStateData.set(PARTITION_ID, partitionEntry.getKey());
-                            partitionEntry.getValue().setStruct(partitionStateData);
-                            partitionStatesData.add(partitionStateData);
-                        }
-                        topicStateData.set(PARTITION_STATES, partitionStatesData.toArray());
-                        topicStatesData.add(topicStateData);
-                    }
-                    struct.set(TOPIC_STATES, topicStatesData.toArray());
-                } else {
-                    List<Struct> partitionStatesData = new ArrayList<>(partitionStates.size());
-                    for (Map.Entry<TopicPartition, PartitionState> entry : partitionStates.entrySet()) {
-                        Struct partitionStateData = struct.instance(PARTITION_STATES);
-                        TopicPartition topicPartition = entry.getKey();
-                        partitionStateData.set(TOPIC_NAME, topicPartition.topic());
-                        partitionStateData.set(PARTITION_ID, topicPartition.partition());
-                        entry.getValue().setStruct(partitionStateData);
-                        partitionStatesData.add(partitionStateData);
-                    }
-                    struct.set(PARTITION_STATES, partitionStatesData.toArray());
+        if (cacheable) {
+            structLock.lock();
+            try {
+                if (struct == null) {
+                    struct = toStructInternal();
                 }
-
-                List<Struct> brokersData = new ArrayList<>(liveBrokers.size());
-                for (Broker broker : liveBrokers) {
-                    Struct brokerData = struct.instance(LIVE_BROKERS);
-                    brokerData.set(BROKER_ID, broker.id);
-
-                    if (version == 0) {
-                        EndPoint endPoint = broker.endPoints.get(0);
-                        brokerData.set(HOST, endPoint.host);
-                        brokerData.set(PORT, endPoint.port);
-                    } else {
-                        List<Struct> endPointsData = new ArrayList<>(broker.endPoints.size());
-                        for (EndPoint endPoint : broker.endPoints) {
-                            Struct endPointData = brokerData.instance(ENDPOINTS);
-                            endPointData.set(PORT, endPoint.port);
-                            endPointData.set(HOST, endPoint.host);
-                            endPointData.set(SECURITY_PROTOCOL_TYPE, endPoint.securityProtocol.id);
-                            if (version >= 3) endPointData.set(LISTENER_NAME, endPoint.listenerName.value());
-                            endPointsData.add(endPointData);
-                        }
-                        brokerData.set(ENDPOINTS, endPointsData.toArray());
-                        if (version >= 2) {
-                            brokerData.set(RACK, broker.rack);
-                        }
-                    }
-
-                    brokersData.add(brokerData);
-                }
-                struct.set(LIVE_BROKERS, brokersData.toArray());
-                this.struct = struct;
+                return struct;
+            } finally {
+                structLock.unlock();
             }
-            return struct;
-        } finally {
-            structLock.unlock();
+        } else {
+            return toStructInternal();
         }
     }
 

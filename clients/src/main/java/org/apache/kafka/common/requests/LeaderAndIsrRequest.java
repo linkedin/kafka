@@ -168,7 +168,7 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
 
         public boolean merge(LeaderAndIsrRequest.Builder other) {
             if (other.maxBrokerEpoch == maxBrokerEpoch && other.brokerEpoch == brokerEpoch && other.controllerEpoch == controllerEpoch) {
-                liveLeaders.addAll(other.liveLeaders);
+                other.liveLeaders.forEach(node -> liveLeaders.add(node));
                 other.partitionStates.forEach((k, v) -> partitionStates.merge(k, v,
                     (state, otherState) -> new PartitionState(otherState.basePartitionState, state.isNew || otherState.isNew)));
                 return true;

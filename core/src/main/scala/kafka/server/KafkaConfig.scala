@@ -62,6 +62,7 @@ object Defaults {
   val ProducerBatchDecompressionEnable = true
   val PreferredController = false
   val AllowPreferredControllerFallback = true
+  val UpdateMetadataRequestCacheThreshold = 5000
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
@@ -301,6 +302,7 @@ object KafkaConfig {
   val ProducerBatchDecompressionEnableProp = "producer.batch.decompression.enable"
   val PreferredControllerProp = "preferred.controller"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
+  val UpdateMetadataRequestCacheThreshold = "update.metadata.request.cache.threshold"
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
@@ -558,6 +560,8 @@ object KafkaConfig {
   val AllowPreferredControllerFallbackDoc = "Specifies whether a non-preferred controller node (broker) is allowed to become the controller." +
   " This configuration is expected to be configured at cluster level via dynamic broker configuration to provide a consistent configuration among all brokers." +
   " If AllowPreferredControllerFallback is dynamically set to false and there is no preferred controllers, the non-preferred active controller does not resign."
+  val UpdateMetadataRequestCacheThresholdDoc = "Specifies the number of partitions included in a single UpdateMetadataRequest that will trigger caching the request." +
+    " If a single UpdateMetadataRequest has more partitions than the specified threshold, we will cache the request to reduce memory pressure in controller."
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = "The authorizer class that should be used for authorization"
   /** ********* Socket Server Configuration ***********/
@@ -937,6 +941,7 @@ object KafkaConfig {
       .define(ProducerBatchDecompressionEnableProp, BOOLEAN, Defaults.ProducerBatchDecompressionEnable, LOW, ProducerBatchDecompressionEnableDoc)
       .define(PreferredControllerProp, BOOLEAN, Defaults.PreferredController, HIGH, PreferredControllerDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
+      .define(UpdateMetadataRequestCacheThreshold, INT, Defaults.UpdateMetadataRequestCacheThreshold, LOW, UpdateMetadataRequestCacheThresholdDoc)
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
@@ -1245,6 +1250,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   var preferredController = getBoolean(KafkaConfig.PreferredControllerProp)
   def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)
+  val updateMetadataRequestCacheThreshold = getInt(KafkaConfig.UpdateMetadataRequestCacheThreshold);
 
   def getNumReplicaAlterLogDirsThreads: Int = {
     val numThreads: Integer = Option(getInt(KafkaConfig.NumReplicaAlterLogDirsThreadsProp)).getOrElse(logDirs.size)

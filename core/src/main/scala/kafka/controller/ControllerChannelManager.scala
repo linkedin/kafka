@@ -480,11 +480,10 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
             stateChangeLog.trace(s"Sending $typeOfRequest LeaderAndIsr request $state to broker $broker for partition $topicPartition")
         }
         val leaderIds = leaderAndIsrPartitionStates.map(_._2.basePartitionState.leader).toSet
-        val leaders = controllerContext.liveOrShuttingDownBrokers.filter(b => leaderIds.contains(b.id)).map {
+        val leaders = controllerContext.liveOrShuttingDownBrokers.to[mutable.Set].filter(b => leaderIds.contains(b.id)).map {
           _.node(config.interBrokerListenerName)
         }
         val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(broker)
-
         val leaderAndIsrRequestBuilder = new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, controllerId, controllerEpoch,
           brokerEpoch, maxBrokerEpoch, leaderAndIsrPartitionStates.asJava, leaders.asJava)
         sendRequest(broker, leaderAndIsrRequestBuilder, (r: AbstractResponse) => sendEvent(LeaderAndIsrResponseReceived(r, broker)))
@@ -499,7 +498,6 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
         s"for partition $tp")
     }
 
-    val partitionStates = Map.empty ++ updateMetadataRequestPartitionInfoMap
     val updateMetadataRequestVersion: Short =
       if (config.interBrokerProtocolVersion >= KAFKA_2_5_IV0) 6
       else if (config.interBrokerProtocolVersion >= KAFKA_2_2_IV0) 5
@@ -527,12 +525,12 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       }
     }
 
-    if (updateMetadataRequestVersion >= 6) {
+    if (updateMetadataRequestVersion >= 6 && updateMetadataRequestPartitionInfoMap.size >= config.updateMetadataRequestCacheThreshold) {
       // We should only create one copy UpdateMetadataRequest that should apply to all brokers.
       // The goal is to reduce memory footprint on the controller.
       val maxBrokerEpoch = controllerContext.maxBrokerEpoch
       val updateMetadataRequest = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch,
-        AbstractControlRequest.UNKNOWN_BROKER_EPOCH, maxBrokerEpoch, partitionStates.asJava, liveBrokers.asJava)
+        AbstractControlRequest.UNKNOWN_BROKER_EPOCH, maxBrokerEpoch, updateMetadataRequestPartitionInfoMap.asJava, liveBrokers.asJava, true)
 
       updateMetadataRequestBrokerSet.intersect(controllerContext.liveOrShuttingDownBrokerIds).foreach { broker =>
         sendRequest(broker, updateMetadataRequest)
@@ -541,7 +539,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       updateMetadataRequestBrokerSet.intersect(controllerContext.liveOrShuttingDownBrokerIds).foreach { broker =>
         val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(broker)
         val updateMetadataRequest = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch,
-          brokerEpoch, AbstractControlRequest.UNKNOWN_BROKER_EPOCH, partitionStates.asJava, liveBrokers.asJava)
+          brokerEpoch, AbstractControlRequest.UNKNOWN_BROKER_EPOCH, updateMetadataRequestPartitionInfoMap.asJava, liveBrokers.asJava, false)
         sendRequest(broker, updateMetadataRequest)
       }
     }
@@ -668,31 +666,85 @@ class RequestSendQueue {
     count.get()
   }
 
+  /**
+   * This method is invoked the the caller wants to enqueue a controller request to be sent out to a specific broker.
+   * The controller request is either merged with another request in the queue of the same type or enqueued as a
+   * separate item without breaking the guarantees listed below:
+   * U = UpdateMetadataRequest
+   * L = LeaderAndIsrRequest
+   * S = StopReplicaRequest
+   *
+   * 1. U enqueued after L/S should be seen by the broker after L/S. Otherwise the broker may see the updated metadata
+   *    before the changes are taken.
+   * 2. S enqueued after L should be seen by the broker after L. Otherwise the broker may re-create an already deleted
+   *    replica.
+   * 3. L enqueued after S should be seen by the broker after S. Otherwise the broker may miss to create a replica.
+   *
+   * In this class, apart from have a single request queue, we also maintain the currently opened
+   * LeaderAndIsrRequestItem (LI) and UpdateMetadataRequestItem (UI) in the queue, which are eligible of merging with
+   * the items being put into the queue. With this structure, we can coalesce the following patterns:
+   * - Adjacent UpdateMetadataRequests:       U  U  U    =>   U
+   *                                              (UI)      (UI)
+   *
+   * - Adjacent LeaderAndIsrRequests:         L  L  L    =>   L
+   *                                              (LI)      (LI)
+   *
+   * - Adjacent (U, L) pairs:     U   L   U   L   U   L  =>   U   L
+   *                                            (UI) (LI)   (UI) (LI)
+   *
+   *
+   * Caveats:
+   * - StopReplicaRequest acts like a barrier meaning that coalescing is not allowed across S. For example,
+   *   "U L S U L => S U L" is not allowed, otherwise guarantee 1) and 3) are broken.
+   *
+   * - Two requests can be merged only if they have the same (brokerEpoch, maxBrokerEpoch, controllerEpoch) because
+   *   otherwise we may mistakenly convert a stale request into a non-stale request.
+   *
+   * - For S/L enqueued after U, it is not an requirement to make sure they are seen by the broker after U
+   *   because reordering S/L and U in this case will only cause delay for the broker on learning about the changes
+   *   made by S/L, which is always the case since the U reflecting changes made by S/L always comes after S/L.
+   *   Moreover, with the coalescing pattern describe above, we will end up minimizing that delay. For example,
+   *   "U L U U L" will be coalesced into "U L", not "U U U L" so the U reflecting changes made by L will be delayed
+   *   only by one request.
+   *
+   */
   def put(item: QueueItem): Unit = {
     lock.lock()
     try {
       val newWrappedItem: Option[QueueItemWrapper] = item.apiKey match {
         case ApiKeys.LEADER_AND_ISR =>
-          // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
-          openUpdateMetadataRequestItem = None
-
           // Update the openLeaderAndIsrRequestItem
           openLeaderAndIsrRequestItem match {
             case Some(openItem) =>
               val openBuilder = openItem.queueItem.request.asInstanceOf[LeaderAndIsrRequest.Builder]
               val newBuilder = item.request.asInstanceOf[LeaderAndIsrRequest.Builder]
-              if (!openBuilder.merge(newBuilder)) Some(wrapItem(item))
+              if (!openBuilder.merge(newBuilder)) {
+                // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
+                openUpdateMetadataRequestItem = None
+                openLeaderAndIsrRequestItem = Some(wrapItem(item))
+                openLeaderAndIsrRequestItem
+              }
               else None
-            case None => Some(wrapItem(item))
+            case None =>
+              // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
+              openUpdateMetadataRequestItem = None
+              openLeaderAndIsrRequestItem = Some(wrapItem(item))
+              openLeaderAndIsrRequestItem
           }
         case ApiKeys.UPDATE_METADATA =>
           openUpdateMetadataRequestItem match {
             case Some(openItem) =>
               val openBuilder = openItem.queueItem.request.asInstanceOf[UpdateMetadataRequest.Builder]
               val newBuilder = item.request.asInstanceOf[UpdateMetadataRequest.Builder]
-              if (!openBuilder.merge(newBuilder)) Some(wrapItem(item))
+              if (!openBuilder.merge(newBuilder)) {
+                openUpdateMetadataRequestItem = Some(wrapItem(item))
+                openUpdateMetadataRequestItem
+              }
               else None
-            case None => Some(wrapItem(item))
+            case None => {
+              openUpdateMetadataRequestItem = Some(wrapItem(item))
+              openUpdateMetadataRequestItem
+            }
           }
         case ApiKeys.STOP_REPLICA =>
           // Seal the openLeaderAndIsrRequestItem and openUpdateMetadataRequestItem
@@ -715,16 +767,16 @@ class RequestSendQueue {
   def take(): QueueItem = {
     lock.lock()
     try {
-      while(queue.isEmpty()) {
+      while (queue.isEmpty()) {
         notEmpty.await();
       }
-      val wrappedItem = queue.removeFirst()
+      val QueueItemWrapper(queueItem, id) = queue.removeFirst()
       count.getAndDecrement()
-      if (openLeaderAndIsrRequestItem.isDefined && openLeaderAndIsrRequestItem.get.id == wrappedItem.id)
+      if (openLeaderAndIsrRequestItem.isDefined && openLeaderAndIsrRequestItem.get.id == id)
         openLeaderAndIsrRequestItem = None
-      else if (openUpdateMetadataRequestItem.isDefined && openUpdateMetadataRequestItem.get.id == wrappedItem.id)
+      else if (openUpdateMetadataRequestItem.isDefined && openUpdateMetadataRequestItem.get.id == id)
         openUpdateMetadataRequestItem = None
-      wrappedItem.queueItem
+      queueItem
     } finally {
       lock.unlock()
     }

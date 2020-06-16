@@ -84,7 +84,6 @@ import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.util.{Failure, Success, Try}
 
-
 /**
  * Logic to handle the various Kafka requests
  */

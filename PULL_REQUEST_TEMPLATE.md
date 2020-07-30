@@ -1,14 +1,15 @@
-*More detailed description of your change,
-if necessary. The PR title and PR message become
-the squashed commit message, so use a separate
-comment to ping reviewers.*
+# Title (one Line SUMMARY)
+# for cherry-pick, add Cherry-Pick keyword to the title
+# e.g., Cherry-Pick KAFKA-7288: Fix for SslSelectorTest.testCloseConnectionInClosingState 
 
-*Summary of testing strategy (including rationale)
-for the feature or bug fix. Unit and/or integration
-tests are expected for any behaviour change and
-system tests should be considered for larger changes.*
 
-### Committer Checklist (excluded from commit message)
-- [ ] Verify design and implementation 
-- [ ] Verify test coverage and CI build status
-- [ ] Verify documentation (including upgrade notes)
+# Commit message body
+DESCRIPTION (Required)
+# What/why/how was this change made?
+
+COMPLETION CRITERIA  (Required)
+# Condition under which this Hot-Fix patch is not needed anymore.
+# If Cherry-Pick, please specify the first release that we don’t need to cherry-pick this patch
+
+UPSTREAM TICKET (Required if need Upstream)
+# A companion upstream ticket (KAFKA-xxxx) which tracks the upstream commit status of this patch)

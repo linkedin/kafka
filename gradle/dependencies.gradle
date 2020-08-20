@@ -141,5 +141,5 @@ libs += [
   zookeeper: "org.apache.zookeeper:zookeeper:$versions.zookeeper",
   jfreechart: "jfreechart:jfreechart:$versions.jfreechart",
   mavenArtifact: "org.apache.maven:maven-artifact:$versions.mavenArtifact",
-  conscrypt: "org.conscrypt:conscrypt-openjdk:$versions.conscrypt:" + osdetector.classifier
+  conscrypt: "org.conscrypt:conscrypt-openjdk-uber:$versions.conscrypt"
 ]

@@ -34,7 +34,6 @@ buildscript {
     classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.4'
     classpath 'org.owasp:dependency-check-gradle:3.2.1'
     classpath "com.diffplug.spotless:spotless-plugin-gradle:3.10.0"
-    classpath 'com.google.gradle:osdetector-gradle-plugin:1.4.0'
   }
 }
 
@@ -45,9 +44,6 @@ spotless {
     scalafmt('1.5.1').configFile('checkstyle/.scalafmt.conf')
   }
 }
-
-// Use the osdetector-gradle-plugin in combination with the consrypt library
-apply plugin: "com.google.osdetector"
 
 apply from: "$rootDir/gradle/dependencies.gradle"
 

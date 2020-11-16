@@ -25,6 +25,7 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.utils.Utils
 
 import scala.collection.mutable
+import scala.collection.parallel.CollectionConverters.{ImmutableMapIsParallelizable, MutableHashMapIsParallelizable}
 import scala.collection.{Map, Set}
 
 abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: String, clientId: String, numFetchers: Int)
@@ -107,7 +108,9 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
   def resizeThreadPool(newSize: Int): Unit = {
     def migratePartitions(newSize: Int): Unit = {
-      fetcherThreadMapView.foreach { (id, thread) =>
+      fetcherThreadMapView.foreach { entry =>
+        val id = entry._1
+        val thread = entry._2
         val removedPartitions = thread.partitionsAndOffsets
         removeFetcherForPartitions(removedPartitions.keySet)
         if (id.fetcherId >= newSize)
@@ -193,7 +196,9 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
         (brokerIdAndFetcherId, fetcherThread)
       }
 
-      fetcherThreadMap.addAll(fetcherIdAndUpdatedThreads)
+      // fetcherThreadMap.addAll(fetcherIdAndUpdatedThreads)
+      //fetcherThreadMap ++= fetcherIdAndUpdatedThreads
+      fetcherThreadMap ++= fetcherIdAndUpdatedThreads
     }
   }
 

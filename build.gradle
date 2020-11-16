@@ -1550,6 +1550,7 @@ project(':jmh-benchmarks') {
     compile project(':clients')
     compile project(':streams')
     compile project(':core')
+    compile project(':jmh-benchmarks-scala')
     compile project(':clients').sourceSets.test.output
     compile project(':core').sourceSets.test.output
     compile libs.jmhCore
@@ -1583,6 +1584,17 @@ project(':jmh-benchmarks') {
 
   javadoc {
      enabled = false
+  }
+}
+
+project(':jmh-benchmarks-scala') {
+  apply plugin: 'scala'
+  dependencies {
+    compile project(':core')
+    compile project(':core').sourceSets.test.output
+    compile project(':clients')
+    compile project(':clients').sourceSets.test.output
+    compile libs.easymock
   }
 }
 

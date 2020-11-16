@@ -48,7 +48,7 @@ import scala.collection.{Map, Seq, mutable}
  * easier to migrate away from `ZkUtils` (since removed). We should revisit this. We should also consider whether a
  * monolithic [[kafka.zk.ZkData]] is the way to go.
  */
-class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boolean, time: Time) extends AutoCloseable with
+class KafkaZkClient (zooKeeperClient: ZooKeeperClient, isSecure: Boolean, time: Time) extends AutoCloseable with
   Logging with KafkaMetricsGroup {
 
   override def metricName(name: String, metricTags: scala.collection.Map[String, String]): MetricName = {

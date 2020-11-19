@@ -2174,7 +2174,7 @@ class Log(@volatile private var _dir: File,
             leaderEpochCache.foreach(_.truncateFromEnd(targetOffset))
             loadProducerState(targetOffset, reloadFromCleanShutdown = false)
           }
-          info(s"Truncated to offset $targetOffset from the log end offset $originalLogEndOffset " +
+          warn(s"Truncated to offset $targetOffset from the log end offset $originalLogEndOffset " +
             s"with ${originalLogEndOffset - targetOffset} messages and $bytesTruncated bytes truncated")
           true
         }

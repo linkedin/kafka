@@ -17,22 +17,28 @@
 
 package kafka.server
 
+import java.util.concurrent.ForkJoinPool
+
 import kafka.utils.Logging
 import kafka.cluster.BrokerEndPoint
 import kafka.metrics.KafkaMetricsGroup
 import com.yammer.metrics.core.Gauge
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.utils.Utils
-
 import scala.collection.mutable
-import scala.collection.parallel.CollectionConverters.{ImmutableMapIsParallelizable, MutableHashMapIsParallelizable}
+
+import scala.collection.parallel.CollectionConverters.ImmutableMapIsParallelizable
+import scala.collection.parallel.ForkJoinTaskSupport
 import scala.collection.{Map, Set}
 
 abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: String, clientId: String, numFetchers: Int)
   extends Logging with KafkaMetricsGroup {
   // map of (source broker_id, fetcher_id per source broker) => fetcher.
   // package private for test
-  private[server] val fetcherThreadMap = new mutable.HashMap[BrokerIdAndFetcherId, T]
+  private[server] val fetcherThreadMap = new scala.collection.parallel.mutable.ParHashMap[BrokerIdAndFetcherId, T]
+  val forkJoinPool = new ForkJoinPool()
+  fetcherThreadMap.tasksupport = new ForkJoinTaskSupport(forkJoinPool)
+
   private val lock = new Object
   private val numFetchersPerBroker = numFetchers
   val failedPartitions = new FailedPartitions
@@ -42,7 +48,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
     "MaxLag",
     new Gauge[Long] {
       // current max lag across all fetchers/topics/partitions
-      def value: Long = fetcherThreadMapView.foldLeft(0L)((curMaxAll, fetcherThreadMapEntry) => {
+      def value: Long = fetcherThreadMap.foldLeft(0L)((curMaxAll, fetcherThreadMapEntry) => {
         fetcherThreadMapEntry._2.fetcherLagStats.stats.foldLeft(0L)((curMaxThread, fetcherLagStatsEntry) => {
           curMaxThread.max(fetcherLagStatsEntry._2.lag)
         }).max(curMaxAll)
@@ -57,9 +63,9 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
       // current min fetch rate across all fetchers/topics/partitions
       def value: Double = {
         val headRate: Double =
-          fetcherThreadMapView.headOption.map(_._2.fetcherStats.requestRate.oneMinuteRate).getOrElse(0)
+          fetcherThreadMap.headOption.map(_._2.fetcherStats.requestRate.oneMinuteRate).getOrElse(0)
 
-        fetcherThreadMapView.foldLeft(headRate)((curMinAll, fetcherThreadMapEntry) => {
+        fetcherThreadMap.foldLeft(headRate)((curMinAll, fetcherThreadMapEntry) => {
           fetcherThreadMapEntry._2.fetcherStats.requestRate.oneMinuteRate.min(curMinAll)
         })
       }
@@ -74,9 +80,9 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
         // fetch failure rate sum across all fetchers/topics/partitions
         def value: Double = {
           val headRate: Double =
-            fetcherThreadMapView.headOption.map(_._2.fetcherStats.requestFailureRate.oneMinuteRate).getOrElse(0)
+            fetcherThreadMap.headOption.map(_._2.fetcherStats.requestFailureRate.oneMinuteRate).getOrElse(0)
 
-          fetcherThreadMapView.foldLeft(headRate)((curSum, fetcherThreadMapEntry) => {
+          fetcherThreadMap.foldLeft(headRate)((curSum, fetcherThreadMapEntry) => {
             fetcherThreadMapEntry._2.fetcherStats.requestRate.oneMinuteRate + curSum
           })
         }
@@ -102,9 +108,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
     }
   }, Map("clientId" -> clientId))
 
-  def fetcherThreadMapView = fetcherThreadMap.par
-
-  private[server] def deadThreadCount: Int = lock synchronized { fetcherThreadMapView.values.count(_.isThreadFailed) }
+  private[server] def deadThreadCount: Int = lock synchronized { fetcherThreadMap.values.count(_.isThreadFailed) }
 
   def resizeThreadPool(newSize: Int): Unit = {
     /*
@@ -141,7 +145,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
   // Visible for testing
   private[server] def getFetcher(topicPartition: TopicPartition): Option[T] = {
     lock synchronized {
-      fetcherThreadMapView.values.find { fetcherThread =>
+      fetcherThreadMap.values.find { fetcherThread =>
         fetcherThread.fetchState(topicPartition).isDefined
       }
     }
@@ -215,7 +219,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
   def removeFetcherForPartitions(partitions: Set[TopicPartition]): Unit = {
     lock synchronized {
-      for (fetcher <- fetcherThreadMapView.values)
+      for (fetcher <- fetcherThreadMap.values)
         fetcher.removePartitions(partitions)
       failedPartitions.removeAll(partitions)
     }
@@ -225,7 +229,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
   def shutdownIdleFetcherThreads(): Unit = {
     lock synchronized {
-      val keysToBeRemoved = for ((key, fetcher) <- fetcherThreadMapView if fetcher.idle) yield {
+      val keysToBeRemoved = for ((key, fetcher) <- fetcherThreadMap if fetcher.idle) yield {
         fetcher.shutdown()
         key
       }
@@ -236,14 +240,15 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
   def closeAllFetchers(): Unit = {
     lock synchronized {
-      for ( (_, fetcher) <- fetcherThreadMapView) {
+      for ( (_, fetcher) <- fetcherThreadMap) {
         fetcher.initiateShutdown()
       }
 
-      for ( (_, fetcher) <- fetcherThreadMapView) {
+      for ( (_, fetcher) <- fetcherThreadMap) {
         fetcher.shutdown()
       }
       fetcherThreadMap.clear()
+      forkJoinPool.shutdown()
     }
   }
 }

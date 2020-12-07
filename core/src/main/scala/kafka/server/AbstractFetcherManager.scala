@@ -34,7 +34,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
   // package private for test
   private[server] val fetcherThreadMap = new mutable.HashMap[BrokerIdAndFetcherId, T]
   private val lock = new Object
-  @volatile private var numFetchersPerBroker = numFetchers
+  private val numFetchersPerBroker = numFetchers
   val failedPartitions = new FailedPartitions
   this.logIdent = "[" + name + "] "
 
@@ -176,11 +176,8 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
       def startFetcherThread(brokerAndFetcherId: BrokerAndFetcherId,
                                    brokerIdAndFetcherId: BrokerIdAndFetcherId): T = {
-        info(s"creating fetcher thread $brokerIdAndFetcherId")
         val fetcherThread = createFetcherThread(brokerAndFetcherId.fetcherId, brokerAndFetcherId.broker)
-        info(s"starting fetcher thread $brokerIdAndFetcherId")
         fetcherThread.start()
-        info(s"started fetcher thread $brokerIdAndFetcherId")
         fetcherThread
       }
 
@@ -189,26 +186,20 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
         val brokerIdAndFetcherId = BrokerIdAndFetcherId(brokerAndFetcherId.broker.id, brokerAndFetcherId.fetcherId)
         val fetcherThread = fetcherThreadMap.get(brokerIdAndFetcherId) match {
           case Some(currentFetcherThread) if currentFetcherThread.sourceBroker == brokerAndFetcherId.broker =>
-            info("a. reusing the same thread")
             // reuse the fetcher thread
             currentFetcherThread
           case Some(f) =>
-            info("b. shutting down fetcher thread")
             f.shutdown()
-            info("b. starting fetcher thread")
             startFetcherThread(brokerAndFetcherId, brokerIdAndFetcherId)
           case None =>
-            info("c. starting fetcher thread")
             startFetcherThread(brokerAndFetcherId, brokerIdAndFetcherId)
         }
-        info(s"got fetcher thread")
 
         val initialOffsetAndEpochs = initialFetchOffsets.map { case (tp, brokerAndInitOffset) =>
           tp -> OffsetAndEpoch(brokerAndInitOffset.initOffset, brokerAndInitOffset.currentLeaderEpoch)
         }
 
         addPartitionsToFetcherThread(fetcherThread, initialOffsetAndEpochs)
-        info(s"done adding partitions to fetcher thread")
         (brokerIdAndFetcherId, fetcherThread)
       }
 
@@ -234,7 +225,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
   def shutdownIdleFetcherThreads(): Unit = {
     lock synchronized {
-      val keysToBeRemoved = for ((key, fetcher) <- fetcherThreadMapView if fetcher.partitionCount <= 0) yield {
+      val keysToBeRemoved = for ((key, fetcher) <- fetcherThreadMapView if fetcher.idle) yield {
         fetcher.shutdown()
         key
       }

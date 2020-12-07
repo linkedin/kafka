@@ -52,18 +52,13 @@ class ReplicaFetcherThread(name: String,
                                 failedPartitions,
                                 fetchBackOffMs = brokerConfig.replicaFetchBackoffMs,
                                 isInterruptible = false) {
-  info("1. ReplicaFetcherThread")
   private val replicaId = brokerConfig.brokerId
-  info("2. ReplicaFetcherThread")
   private val logContext = new LogContext(s"[ReplicaFetcher replicaId=$replicaId, leaderId=${sourceBroker.id}, " +
     s"fetcherId=$fetcherId] ")
-  info("3. ReplicaFetcherThread")
   this.logIdent = logContext.logPrefix
-  info("4. ReplicaFetcherThread")
   private val leaderEndpoint = leaderEndpointBlockingSend.getOrElse(
     new ReplicaFetcherBlockingSend(sourceBroker, brokerConfig, metrics, time, fetcherId,
       s"broker-$replicaId-fetcher-$fetcherId", logContext))
-  info("5. ReplicaFetcherThread")
   // Visible for testing
   private[server] val fetchRequestVersion: Short =
     if (brokerConfig.interBrokerProtocolVersion >= KAFKA_2_3_IV1) 11
@@ -99,7 +94,6 @@ class ReplicaFetcherThread(name: String,
   private val fetchSize = brokerConfig.replicaFetchMaxBytes
   private val brokerSupportsLeaderEpochRequest = brokerConfig.interBrokerProtocolVersion >= KAFKA_0_11_0_IV2
   private val fetchSessionHandler = new FetchSessionHandler(logContext, sourceBroker.id)
-  info("6. ReplicaFetcherThread")
   override protected def latestEpoch(topicPartition: TopicPartition): Option[Int] = {
     replicaMgr.localLogOrException(topicPartition).latestEpoch
   }

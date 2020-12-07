@@ -26,8 +26,8 @@ import java.time.Duration
 import java.util
 import java.util.{Collections, Properties}
 import java.util.concurrent._
-
 import javax.management.ObjectName
+
 import com.yammer.metrics.Metrics
 import com.yammer.metrics.core.MetricName
 import kafka.admin.ConfigCommand
@@ -62,7 +62,6 @@ import org.apache.kafka.test.{TestSslUtils, TestUtils => JTestUtils}
 import org.junit.Assert._
 import org.junit.{After, Before, Ignore, Test}
 import org.scalatest.Assertions.intercept
-import sun.management.VMManagement
 
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
@@ -743,46 +742,27 @@ class DynamicBrokerReconfigurationTest extends ZooKeeperTestHarness with SaslSet
       maybeVerifyThreadPoolSize(propName, newSize, threadPrefix)
     }
 
-    def getPid(): Integer = {
-      val runtime = java.lang.management.ManagementFactory.getRuntimeMXBean
-      val jvm = runtime.getClass.getDeclaredField("jvm")
-      jvm.setAccessible(true)
-      val mgmt = jvm.get(runtime).asInstanceOf[VMManagement]
-      val pid_method = mgmt.getClass.getDeclaredMethod("getProcessId")
-      pid_method.setAccessible(true)
-
-      val pid = pid_method.invoke(mgmt).asInstanceOf[Integer]
-      pid
-    }
-
     def verifyThreadPoolResize(propName: String, currentSize: => Int, threadPrefix: String, mayReceiveDuplicates: Boolean): Unit = {
       maybeVerifyThreadPoolSize(propName, currentSize, threadPrefix)
       val numRetries = if (mayReceiveDuplicates) 100 else 0
       val (producerThread, consumerThread) = startProduceConsume(retries = numRetries)
       var threadPoolSize = currentSize
-      //(1 to 2).foreach { _ =>
-
-      //  threadPoolSize = reducePoolSize(propName, threadPoolSize, threadPrefix)
-//        Thread.sleep(100)
-      val pid = getPid()
-      println(s"----------before increasePoolSize in process $pid")
+      (1 to 2).foreach { _ =>
+        threadPoolSize = reducePoolSize(propName, threadPoolSize, threadPrefix)
+        Thread.sleep(100)
         threadPoolSize = increasePoolSize(propName, threadPoolSize, threadPrefix)
         Thread.sleep(100)
-      println("----------after increasePoolSize")
-      //}
+      }
       stopAndVerifyProduceConsume(producerThread, consumerThread, mayReceiveDuplicates)
       // Verify that all threads are alive
       maybeVerifyThreadPoolSize(propName, threadPoolSize, threadPrefix)
     }
 
     val config = servers.head.config
-    /*verifyThreadPoolResize(KafkaConfig.NumIoThreadsProp, config.numIoThreads,
+    verifyThreadPoolResize(KafkaConfig.NumIoThreadsProp, config.numIoThreads,
       requestHandlerPrefix, mayReceiveDuplicates = false)
-
-     */
     verifyThreadPoolResize(KafkaConfig.NumReplicaFetchersProp, config.numReplicaFetchers,
       fetcherThreadPrefix, mayReceiveDuplicates = false)
-    /*
     verifyThreadPoolResize(KafkaConfig.BackgroundThreadsProp, config.backgroundThreads,
       "kafka-scheduler-", mayReceiveDuplicates = false)
     verifyThreadPoolResize(KafkaConfig.NumRecoveryThreadsPerDataDirProp, config.numRecoveryThreadsPerDataDir,
@@ -793,10 +773,9 @@ class DynamicBrokerReconfigurationTest extends ZooKeeperTestHarness with SaslSet
 
     verifyProcessorMetrics()
     verifyMarkPartitionsForTruncation()
-
-     */
   }
-*/
+  */
+
   private def isProcessorMetric(metricName: MetricName): Boolean = {
     val mbeanName = metricName.getMBeanName
     mbeanName.contains(s"${Processor.NetworkProcessorMetricTag}=") || mbeanName.contains(s"${RequestChannel.ProcessorMetricTag}=")

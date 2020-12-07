@@ -47,13 +47,12 @@ class ReplicaFetcherBlockingSend(sourceBroker: BrokerEndPoint,
                                  time: Time,
                                  fetcherId: Int,
                                  clientId: String,
-                                 logContext: LogContext) extends BlockingSend with Logging {
+                                 logContext: LogContext) extends BlockingSend {
 
   private val sourceNode = new Node(sourceBroker.id, sourceBroker.host, sourceBroker.port)
   private val socketTimeout: Int = brokerConfig.replicaSocketTimeoutMs
 
   private val (networkClient, reconfigurableChannelBuilder) = {
-    info("\t1. ReplicaFetcherBlockingSend")
     val channelBuilder = ChannelBuilders.clientChannelBuilder(
       brokerConfig.interBrokerSecurityProtocol,
       JaasContext.Type.SERVER,
@@ -63,14 +62,12 @@ class ReplicaFetcherBlockingSend(sourceBroker: BrokerEndPoint,
       time,
       brokerConfig.saslInterBrokerHandshakeRequestEnable
     )
-    info(s"\t2. ReplicaFetcherBlockingSend got channelBuilder $channelBuilder")
     val reconfigurableChannelBuilder = channelBuilder match {
       case reconfigurable: Reconfigurable =>
         brokerConfig.addReconfigurable(reconfigurable)
         Some(reconfigurable)
       case _ => None
     }
-    info("\t3. ReplicaFetcherBlockingSend")
     val selector = new Selector(
       NetworkReceive.UNLIMITED,
       brokerConfig.connectionsMaxIdleMs,
@@ -82,7 +79,6 @@ class ReplicaFetcherBlockingSend(sourceBroker: BrokerEndPoint,
       channelBuilder,
       logContext
     )
-    info("\t4. ReplicaFetcherBlockingSend")
     val networkClient = new NetworkClient(
       selector,
       new ManualMetadataUpdater(),
@@ -99,7 +95,6 @@ class ReplicaFetcherBlockingSend(sourceBroker: BrokerEndPoint,
       new ApiVersions,
       logContext
     )
-    info("\t5. ReplicaFetcherBlockingSend")
     (networkClient, reconfigurableChannelBuilder)
   }
 

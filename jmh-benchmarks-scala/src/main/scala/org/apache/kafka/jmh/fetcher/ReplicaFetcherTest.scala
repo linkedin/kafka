@@ -72,7 +72,6 @@ class ReplicaFetcherTest(partitionCount: Int, brokerCount: Int, numReplicaFetche
     metrics = new Metrics()
     val time = new MockTime()
     val zkClient : KafkaZkClient = mock(classOf[KafkaZkClient])
-    // TODO: improve this get entity so that it's only called once?
     expect(zkClient.getEntityConfigs("topics", topic0)).andReturn(new Properties()).times(partitionCount)
 
     replay(zkClient)

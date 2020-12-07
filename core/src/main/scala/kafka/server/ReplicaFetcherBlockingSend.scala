@@ -19,7 +19,6 @@ package kafka.server
 import java.net.SocketTimeoutException
 
 import kafka.cluster.BrokerEndPoint
-import kafka.utils.Logging
 import org.apache.kafka.clients._
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network._

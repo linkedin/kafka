@@ -51,23 +51,13 @@ class MockReplicaFetcherThread(name: String,
   leaderEndpointBlockingSend = leaderEndpointBlockingSend) {
 
   override protected def fetchFromLeader(fetchRequest: FetchRequest.Builder): Seq[(TopicPartition, FetchData)] = {
-    // fetching 10MiB over a 1Gbps link takes about 0.08s (80ms)
-    // here we sleep for 80ms to simulate the network fetch
-    debug("begin fetchFromLeader")
-    //Thread.sleep(80)
     val fetchData = new FetchResponse.PartitionData[Records](Errors.NONE, 0L, 0L, 0, null, null)
-    debug("completed fetchFromLeader")
     fetchRequest.fetchData.asScala.map{case (partition, _) => (partition, fetchData)}.toSeq
   }
 
-  // process fetched data
   override def processPartitionData(topicPartition: TopicPartition,
                                      fetchOffset: Long,
                                      partitionData: FetchData): Option[LogAppendInfo] = {
-    // Assuming it takes an average of 2ms to append the fetched log
-    debug("begin processPartitionData")
-    //Thread.sleep(2)
-    debug("completed processPartitionData")
     None
   }
 

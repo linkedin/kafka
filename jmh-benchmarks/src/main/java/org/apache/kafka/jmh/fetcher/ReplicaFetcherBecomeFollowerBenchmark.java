@@ -36,10 +36,10 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * This benchmark measures the time it takes to run the ReplicaManager#becomeLeaderOrFollower method,
+ * We are benchmarking a hypothetical case where a broker (broker 100) needs to become the follower for x
+ * number of partitions due to the very first LeaderAndIsr request it receives.
+ * It measures the time it takes to run the ReplicaManager#becomeLeaderOrFollower method,
  * which roughly corresponds the LeaderAndIsr request local processing time.
- * We are using a hypothetical case where a follower broker (broker 100) needs to switch 50% of its partitions' leaders
- * from broker 101 to broker 102 or vice versa.
  */
 @Warmup(iterations = 2)
 @Measurement(iterations = 2)

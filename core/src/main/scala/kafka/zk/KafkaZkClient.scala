@@ -465,6 +465,40 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
   def getSortedBrokerList: Seq[Int] = getChildren(BrokerIdsZNode.path).map(_.toInt).sorted
 
   /**
+   * Get the map of brokerId -> brokerEpoch. This is the last known controlled shutdown performed for each broker.
+   */
+  def getBrokerShutdownEntries: Map[Int, Long] = {
+    getChildren(BrokerShutdownNode.path)
+      .map(_.toInt)
+      .map(brokerId => {
+        val getDataRequest = GetDataRequest(BrokerShutdownIdZNode.path(brokerId))
+        val getDataResponse = retryRequestUntilConnected(getDataRequest)
+        getDataResponse.resultCode match {
+          case Code.OK =>
+            brokerId -> BrokerShutdownIdZNode.decode(getDataResponse.data)
+          case Code.NONODE =>
+            brokerId -> -1L
+          case _ => throw getDataResponse.resultException.get
+        }
+      })
+      .toMap
+  }
+
+  /*
+   * Record that @brokerId has started the controlled shutdown process at @brokerEpoch.
+   */
+  def recordBrokerShutdown(brokerId: Int, brokerEpoch: Long, expectedControllerEpochZkVersion: Int): Unit = {
+    val zNodePath = BrokerShutdownIdZNode.path(brokerId)
+    val encodedZNodeValue = BrokerShutdownIdZNode.encode(brokerEpoch)
+
+    val setDataRequest = SetDataRequest(zNodePath, encodedZNodeValue, ZkVersion.MatchAnyVersion)
+    val response = retryRequestUntilConnected(setDataRequest, expectedControllerEpochZkVersion)
+    if (response.resultCode == KeeperException.Code.NONODE) {
+      createRecursive(zNodePath, encodedZNodeValue)
+    }
+  }
+
+  /**
     * Gets the list of preferred controller Ids
     */
   def getPreferredControllerList: Seq[Int] = getChildren(PreferredControllersZNode.path).map(_.toInt)

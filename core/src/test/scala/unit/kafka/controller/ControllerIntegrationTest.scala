@@ -29,9 +29,10 @@ import kafka.zk._
 import org.junit.{After, Before, Test}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.{ControllerMovedException, StaleBrokerEpochException}
+import org.apache.kafka.common.errors.{ControllerMovedException, NotEnoughReplicasException, StaleBrokerEpochException}
 import org.apache.log4j.Level
 import kafka.utils.LogCaptureAppender
+import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.metrics.KafkaMetric
 import org.scalatest.Assertions.fail
 
@@ -533,6 +534,55 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     assertEquals(1, partitionsRemaining.size)
     // leader doesn't change since all the replicas are shut down
     assertTrue(servers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.leader == 0))
+  }
+
+  @Test
+  def testControlledShutdownRejectRequestForAvailabilityRisk(): Unit = {
+    val expectedReplicaAssignment = Map(0  -> List(0, 1, 2))
+    val topic = "test"
+    val partition = 0
+    // create brokers
+    val serverConfigs = TestUtils.createBrokerConfigs(3, zkConnect, false, enableControlledShutdownSafetyCheck = true)
+      .map(KafkaConfig.fromProps)
+    servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
+
+    // create the topic with min ISR of 2, which should allow one broker to shut down but should block subsequent
+    // shutdowns.
+    val topicConfig = new Properties()
+    topicConfig.setProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "2")
+    TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment = expectedReplicaAssignment, servers = servers, topicConfig = topicConfig)
+
+    val controllerId = zkClient.getControllerId.get
+    val controller = servers.find(p => p.config.brokerId == controllerId).get.kafkaController
+    val resultQueue = new LinkedBlockingQueue[Try[collection.Set[TopicPartition]]]()
+
+    // Attempt to shut down one broker, which should be allowed with the ISR at 3 and the min ISR of 2
+    val controlledShutdownCallback = (controlledShutdownResult: Try[collection.Set[TopicPartition]]) => resultQueue.put(controlledShutdownResult)
+    controller.controlledShutdown(2, servers.find(_.config.brokerId == 2).get.kafkaController.brokerEpoch, controlledShutdownCallback)
+    var partitionsRemaining = resultQueue.take().get
+    var activeServers = servers.filter(s => s.config.brokerId != 2)
+    // wait for the update metadata request to trickle to the brokers
+    TestUtils.waitUntilTrue(() =>
+      activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 3),
+      "Topic test not created after timeout")
+    assertEquals(0, partitionsRemaining.size)
+    var partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
+    var leaderAfterShutdown = partitionStateInfo.leader
+    assertEquals(0, leaderAfterShutdown)
+    assertEquals(2, partitionStateInfo.isr.size)
+    assertEquals(List(0,1), partitionStateInfo.isr.asScala)
+
+    // Now attempt to shut down a second broker which should fail with NotEnoughReplicasException
+    @volatile var notEnoughReplicasDetected = false
+    controller.controlledShutdown(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, {
+      case scala.util.Failure(exception) if exception.isInstanceOf[NotEnoughReplicasException] => notEnoughReplicasDetected = true
+      case _ =>
+    })
+
+    TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
+
+    val expectedShutdownEntries = Map(2 -> 27)
+    assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
   }
 
   @Test

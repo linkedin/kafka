@@ -61,7 +61,7 @@ case class ReplicaAssignment(replicas: Seq[Int],
 class ControllerContext {
   val stats = new ControllerStats
   var offlinePartitionCount = 0
-  var shuttingDownBrokerIds: mutable.Set[Int] = mutable.Set.empty
+  var shuttingDownBrokerIds: Map[Int, Long] = Map.empty
   private var liveBrokers: Set[Broker] = Set.empty
   private var liveBrokerEpochs: Map[Int, Long] = Map.empty
   var epoch: Int = KafkaController.InitialControllerEpoch
@@ -181,11 +181,16 @@ class ControllerContext {
     liveBrokers = liveBrokers ++ brokerAndEpochs.keySet
     liveBrokerEpochs = liveBrokerEpochs ++
       (brokerAndEpochs map { case (broker, brokerEpoch) => (broker.id, brokerEpoch)})
+
+    shuttingDownBrokerIds = shuttingDownBrokerIds.filter(b =>
+      liveBrokerEpochs.contains(b._1) && b._2 < liveBrokerEpochs(b._1))
   }
 
   def removeLiveBrokers(brokerIds: Set[Int]): Unit = {
     liveBrokers = liveBrokers.filter(broker => !brokerIds.contains(broker.id))
     liveBrokerEpochs = liveBrokerEpochs.filter { case (id, _) => !brokerIds.contains(id) }
+
+    shuttingDownBrokerIds = shuttingDownBrokerIds.filterKeys(brokerIds.contains)
   }
 
   def updateBrokerMetadata(oldMetadata: Broker, newMetadata: Broker): Unit = {
@@ -198,7 +203,7 @@ class ControllerContext {
   }
 
   // getter
-  def liveBrokerIds: Set[Int] = liveBrokerEpochs.keySet -- shuttingDownBrokerIds
+  def liveBrokerIds: Set[Int] = liveBrokerEpochs.filter(b => b._2 > (shuttingDownBrokerIds.getOrElse(b._1, -1): Long)).keySet
   def liveOrShuttingDownBrokerIds: Set[Int] = liveBrokerEpochs.keySet
   def liveOrShuttingDownBrokers: Set[Broker] = liveBrokers
   def liveBrokerIdAndEpochs: Map[Int, Long] = liveBrokerEpochs
@@ -287,7 +292,7 @@ class ControllerContext {
     topicsToBeDeleted.clear()
     topicsWithDeletionStarted.clear()
     topicsIneligibleForDeletion.clear()
-    shuttingDownBrokerIds.clear()
+    shuttingDownBrokerIds = Map.empty
     epoch = 0
     epochZkVersion = 0
     clearTopicsState()

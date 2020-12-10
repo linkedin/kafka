@@ -17,7 +17,6 @@
 package kafka.controller
 
 import java.util.concurrent.TimeUnit
-
 import com.yammer.metrics.core.Gauge
 import kafka.admin.{AdminOperationException, AdminUtils}
 import kafka.api._
@@ -32,8 +31,9 @@ import kafka.zookeeper.{StateChangeHandler, ZNodeChangeHandler, ZNodeChildChange
 import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, StaleBrokerEpochException}
-import org.apache.kafka.common.errors.PolicyViolationException
+import org.apache.kafka.common.cache.BoundedTimedCache
+import org.apache.kafka.common.config.TopicConfig
+import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, ApiError, LeaderAndIsrResponse}
@@ -42,6 +42,8 @@ import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.KeeperException.Code
 import org.apache.kafka.server.policy.CreateTopicPolicy
 
+import java.time.Duration
+import java.util.Properties
 import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.collection.mutable.ArrayBuffer
@@ -531,7 +533,11 @@ class KafkaController(val config: KafkaConfig,
     info(s"Broker failure callback for ${deadBrokers.mkString(",")}")
     deadBrokers.foreach(controllerContext.replicasOnOfflineDirs.remove)
     val deadBrokersThatWereShuttingDown =
-      deadBrokers.filter(id => controllerContext.shuttingDownBrokerIds.remove(id))
+      deadBrokers.filter(id => {
+        val wasShuttingDown = controllerContext.shuttingDownBrokerIds.contains(id)
+        controllerContext.shuttingDownBrokerIds -= id
+        wasShuttingDown
+      })
     if (deadBrokersThatWereShuttingDown.nonEmpty)
       info(s"Removed ${deadBrokersThatWereShuttingDown.mkString(",")} from list of shutting down brokers.")
     val allReplicasOnDeadBrokers = controllerContext.replicasOnBrokers(deadBrokers.toSet)
@@ -860,7 +866,7 @@ class KafkaController(val config: KafkaConfig,
           controllerContext.partitionsBeingReassigned.add(topicPartition)
     }
     controllerContext.partitionLeadershipInfo.clear()
-    controllerContext.shuttingDownBrokerIds = mutable.Set.empty[Int]
+    controllerContext.shuttingDownBrokerIds = zkClient.getBrokerShutdownEntries
     // register broker modifications handlers
     registerBrokerModificationsHandler(controllerContext.liveOrShuttingDownBrokerIds)
     // update the leader and isr cache for all existing partitions from Zookeeper
@@ -963,7 +969,7 @@ class KafkaController(val config: KafkaConfig,
         }
       }
     } catch {
-      case e =>
+      case e : Throwable =>
         error("Error during rearranging partition and replica assignment for new topics for maintenance brokers :" + e.getMessage)
     }
   }
@@ -1261,6 +1267,44 @@ class KafkaController(val config: KafkaConfig,
     controlledShutdownCallback(controlledShutdownResult)
   }
 
+  private val topicConfigCache = new BoundedTimedCache[String, Properties](
+    config.controlledShutdownTopicConfigCacheSize,
+    Duration.ofMillis(config.controlledShutdownTopicConfigCacheTTLMs))
+
+  private def fetchTopicConfig(topicName: String): Properties = {
+    val cachedConfig = topicConfigCache.get(topicName)
+    if (cachedConfig != null) {
+      return cachedConfig
+    }
+
+    val config = zkClient.getEntityConfigs(ConfigType.Topic, topicName)
+    topicConfigCache.put(topicName, config)
+    return config
+  }
+
+  private def safeToShutdown(id: Int, brokerEpoch: Long): Boolean = {
+    // If a topic doesn't have min.insync.replicas configured, default to 1
+    val defaultMinISRPropertyValue = "1"
+
+    val atRiskPartitions = controllerContext.partitionsOnBroker(id).filter { partition =>
+      // Look up minISR for this topic, or use the default if not configured.
+      val minISR: Int = fetchTopicConfig(partition.topic())
+        .getOrDefault(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, defaultMinISRPropertyValue)
+        .toString.toInt
+
+      // See which replicas are known alive and not pending shutdown for this partition
+      val liveReplicas = controllerContext.partitionReplicaAssignment(partition).count( { replicaBrokerId =>
+        controllerContext.liveBrokerIdAndEpochs.contains(replicaBrokerId) && !controllerContext.shuttingDownBrokerIds.contains(replicaBrokerId)
+      })
+
+      // Consider this topic-partition at-risk if removing one broker will result in the ISR shrinking below minISR
+      debug(s"Broker $id (epoch $brokerEpoch) has $liveReplicas live replicas and $partition has min.insync.replicas=$minISR")
+      (liveReplicas - 1) < minISR
+    }
+
+    atRiskPartitions.isEmpty
+  }
+
   private def doControlledShutdown(id: Int, brokerEpoch: Long): Set[TopicPartition] = {
     if (!isActive) {
       throw new ControllerMovedException("Controller moved to another broker. Aborting controlled shutdown")
@@ -1278,12 +1322,19 @@ class KafkaController(val config: KafkaConfig,
       }
     }
 
-    info(s"Shutting down broker $id")
+    if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, brokerEpoch)) {
+      info(s"Controlled shutdown safety has prevented broker $id (broker epoch $brokerEpoch) from shutting down.")
+      throw new NotEnoughReplicasException(
+        s"Broker id $id cannot initiate shutdown without an impact on topic availability.")
+    }
 
     if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
       throw new BrokerNotAvailableException(s"Broker id $id does not exist.")
 
-    controllerContext.shuttingDownBrokerIds.add(id)
+    info(s"Shutting down broker $id")
+
+    zkClient.recordBrokerShutdown(id, brokerEpoch, controllerContext.epochZkVersion)
+    controllerContext.shuttingDownBrokerIds += (id -> brokerEpoch)
     debug(s"All shutting down brokers: ${controllerContext.shuttingDownBrokerIds.mkString(",")}")
     debug(s"Live brokers: ${controllerContext.liveBrokerIds.mkString(",")}")
 

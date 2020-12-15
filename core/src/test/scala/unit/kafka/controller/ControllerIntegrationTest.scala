@@ -545,6 +545,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     val serverConfigs = TestUtils.createBrokerConfigs(4, zkConnect, false, enableControlledShutdownSafetyCheck = true)
       .map(KafkaConfig.fromProps)
     servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
+    TestUtils.waitUntilControllerElected(zkClient)
 
     // create the topic with min ISR of 2, which should allow one broker to shut down but should block subsequent
     // shutdowns.
@@ -582,6 +583,36 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
 
     val expectedShutdownEntries = Map(2 -> 49)
+    assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
+
+    // Now ensure that after the controller moves, shutdown is still rejected.
+    /*testControllerMove(() => {
+      @volatile var notEnoughReplicasDetected = false
+      controller.controlledShutdown(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, {
+        case scala.util.Failure(exception) if exception.isInstanceOf[NotEnoughReplicasException] => notEnoughReplicasDetected = true
+        case _ =>
+      })
+
+      TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
+
+      val expectedShutdownEntries = Map(2 -> 49)
+      assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
+    })*/
+
+    // Now ensure that after the controller moves, shutdown is still rejected.
+    zkClient.deleteController(controller.controllerContext.epochZkVersion)
+    TestUtils.waitUntilTrue(() => !controller.isActive, "Controller fails to resign")
+
+    val newControllerId = zkClient.getControllerId.get
+    val newController = servers.find(p => p.config.brokerId == newControllerId).get.kafkaController
+
+    // Controller moved, try to shut down again. We should get rejected in the same way.
+    notEnoughReplicasDetected = false
+    newController.controlledShutdown(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, {
+      case scala.util.Failure(exception) if exception.isInstanceOf[NotEnoughReplicasException] => notEnoughReplicasDetected = true
+      case _ =>
+    })
+    TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
     assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
   }
 

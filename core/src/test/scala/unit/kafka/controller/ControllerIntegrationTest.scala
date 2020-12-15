@@ -538,11 +538,11 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
 
   @Test
   def testControlledShutdownRejectRequestForAvailabilityRisk(): Unit = {
-    val expectedReplicaAssignment = Map(0  -> List(0, 1, 2))
+    val expectedReplicaAssignment = Map(0  -> List(0, 1, 2, 3))
     val topic = "test"
     val partition = 0
     // create brokers
-    val serverConfigs = TestUtils.createBrokerConfigs(3, zkConnect, false, enableControlledShutdownSafetyCheck = true)
+    val serverConfigs = TestUtils.createBrokerConfigs(4, zkConnect, false, enableControlledShutdownSafetyCheck = true)
       .map(KafkaConfig.fromProps)
     servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
 
@@ -563,14 +563,14 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     var activeServers = servers.filter(s => s.config.brokerId != 2)
     // wait for the update metadata request to trickle to the brokers
     TestUtils.waitUntilTrue(() =>
-      activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 3),
+      activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 4),
       "Topic test not created after timeout")
     assertEquals(0, partitionsRemaining.size)
     var partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
     var leaderAfterShutdown = partitionStateInfo.leader
     assertEquals(0, leaderAfterShutdown)
-    assertEquals(2, partitionStateInfo.isr.size)
-    assertEquals(List(0,1), partitionStateInfo.isr.asScala)
+    assertEquals(3, partitionStateInfo.isr.size)
+    assertEquals(List(0, 1, 3), partitionStateInfo.isr.asScala)
 
     // Now attempt to shut down a second broker which should fail with NotEnoughReplicasException
     @volatile var notEnoughReplicasDetected = false
@@ -581,7 +581,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
 
     TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
 
-    val expectedShutdownEntries = Map(2 -> 27)
+    val expectedShutdownEntries = Map(2 -> 49)
     assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
   }
 

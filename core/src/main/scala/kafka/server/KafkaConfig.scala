@@ -167,6 +167,7 @@ object Defaults {
   val ControlledShutdownRetryBackoffMs = 5000
   val ControlledShutdownEnable = true
   val ControlledShutdownSafetyCheckEnable = false
+  val ControlledShutdownSafetyCheckRedundancyFactor = 2
   val ControlledShutdownTopicConfigCacheSize = 1000
   val ControlledShutdownTopicConfigCacheTTLMs = 60000L
 
@@ -415,6 +416,7 @@ object KafkaConfig {
   val ControlledShutdownRetryBackoffMsProp = "controlled.shutdown.retry.backoff.ms"
   val ControlledShutdownEnableProp = "controlled.shutdown.enable"
   val ControlledShutdownSafetyCheckEnableProp = "controlled.shutdown.safety.check.enable"
+  val ControlledShutdownSafetyCheckRedundancyFactorProp = "controlled.shutdown.safety.check.redundancy.factor"
   val ControlledShutdownTopicConfigCacheSizeProp = "controlled.shutdown.topic.cache.size"
   val ControlledShutdownTopicConfigCacheTTLMsProp = "controlled.shutdown.topic.config.cache.ttl.ms"
   /** ********* Group coordinator configuration ***********/
@@ -770,6 +772,7 @@ object KafkaConfig {
   val ControlledShutdownRetryBackoffMsDoc = "Before each retry, the system needs time to recover from the state that caused the previous failure (Controller fail over, replica lag etc). This config determines the amount of time to wait before retrying."
   val ControlledShutdownEnableDoc = "Enable controlled shutdown of the server"
   val ControlledShutdownSafetyCheckEnableDoc = s"Perform a safety check in the controller before allowing a controlled shutdown to begin. The controller will try to confirm that allowing the broker requesting shutdown to shut down will not result in any partitions going offline by shrinking the ISR below min.in.sync.replicas. This only works if $ControlledShutdownEnableProp is true."
+  val ControlledShutdownSafetyCheckRedundancyFactorDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, this configures the required redundancy for the safety check. If there are fewer than min.insync.replicas + $ControlledShutdownSafetyCheckRedundancyFactorProp replicas in the ISR, shutdown will not be allowed."
   val ControlledShutdownTopicConfigCacheSizeDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, the controller will need to look up topic configs during controlled shutdown. This specifies how many topic configurations fetched while performing the safety check should be cached by the controller."
   val ControlledShutdownTopicConfigCacheTTLMsDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, the controller will need to look up topic configs during controlled shutdown. This specifies how long in milliseconds the controller should cache topic configs fetched while performing the safety check."
   /** ********* Group coordinator configuration ***********/
@@ -1063,6 +1066,7 @@ object KafkaConfig {
       .define(ControlledShutdownRetryBackoffMsProp, LONG, Defaults.ControlledShutdownRetryBackoffMs, MEDIUM, ControlledShutdownRetryBackoffMsDoc)
       .define(ControlledShutdownEnableProp, BOOLEAN, Defaults.ControlledShutdownEnable, MEDIUM, ControlledShutdownEnableDoc)
       .define(ControlledShutdownSafetyCheckEnableProp, BOOLEAN, Defaults.ControlledShutdownSafetyCheckEnable, MEDIUM, ControlledShutdownSafetyCheckEnableDoc)
+      .define(ControlledShutdownSafetyCheckRedundancyFactorProp, INT, Defaults.ControlledShutdownSafetyCheckRedundancyFactor, MEDIUM, ControlledShutdownSafetyCheckRedundancyFactorDoc)
       .define(ControlledShutdownTopicConfigCacheSizeProp, INT, Defaults.ControlledShutdownTopicConfigCacheSize, MEDIUM, ControlledShutdownTopicConfigCacheSizeDoc)
       .define(ControlledShutdownTopicConfigCacheTTLMsProp, LONG, Defaults.ControlledShutdownTopicConfigCacheTTLMs, MEDIUM, ControlledShutdownTopicConfigCacheTTLMsDoc)
 
@@ -1386,6 +1390,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val controlledShutdownRetryBackoffMs = getLong(KafkaConfig.ControlledShutdownRetryBackoffMsProp)
   val controlledShutdownEnable = getBoolean(KafkaConfig.ControlledShutdownEnableProp)
   val controlledShutdownSafetyCheckEnable = getBoolean(KafkaConfig.ControlledShutdownSafetyCheckEnableProp)
+  val controlledShutdownSafetyCheckRedundancyFactor = getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
   val controlledShutdownTopicConfigCacheSize = getInt(KafkaConfig.ControlledShutdownTopicConfigCacheSizeProp)
   val controlledShutdownTopicConfigCacheTTLMs = getLong(KafkaConfig.ControlledShutdownTopicConfigCacheTTLMsProp)
 

@@ -1322,19 +1322,27 @@ class KafkaController(val config: KafkaConfig,
       }
     }
 
-    if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, brokerEpoch)) {
-      info(s"Controlled shutdown safety has prevented broker $id (broker epoch $brokerEpoch) from shutting down.")
+    if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
+      throw new BrokerNotAvailableException(s"Broker id $id does not exist.")
+
+    val actualBrokerEpoch: Long =
+      if (brokerEpoch == AbstractControlRequest.UNKNOWN_BROKER_EPOCH) {
+        val knownBrokerEpoch = controllerContext.liveBrokerIdAndEpochs.getOrElse(id, -1L)
+        info(s"Received ControlledShutdown request for broker id $id without a brokerEpoch. Using last known epoch of $knownBrokerEpoch")
+        knownBrokerEpoch
+      }
+      else brokerEpoch
+
+    if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, actualBrokerEpoch)) {
+      info(s"Controlled shutdown safety has prevented broker $id (broker epoch $actualBrokerEpoch) from shutting down.")
       throw new NotEnoughReplicasException(
         s"Broker id $id cannot initiate shutdown without an impact on topic availability.")
     }
 
-    if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
-      throw new BrokerNotAvailableException(s"Broker id $id does not exist.")
-
-    info(s"Shutting down broker $id")
-
     zkClient.recordBrokerShutdown(id, brokerEpoch, controllerContext.epochZkVersion)
     controllerContext.shuttingDownBrokerIds += (id -> brokerEpoch)
+    info(s"Shutting down broker $id")
+
     debug(s"All shutting down brokers: ${controllerContext.shuttingDownBrokerIds.mkString(",")}")
     debug(s"Live brokers: ${controllerContext.liveBrokerIds.mkString(",")}")
 

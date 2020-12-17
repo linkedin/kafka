@@ -498,6 +498,11 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
     }
   }
 
+  def removeBrokerShutdown(brokerId: Int, expectedControllerEpochZkVersion: Int): Unit = {
+    val deleteRequest = DeleteRequest(BrokerShutdownIdZNode.path(brokerId), ZkVersion.MatchAnyVersion)
+    retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
+  }
+
   /**
     * Gets the list of preferred controller Ids
     */

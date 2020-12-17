@@ -588,6 +588,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     // Now ensure that after the controller moves, shutdown is still rejected.
     zkClient.deleteController(controller.controllerContext.epochZkVersion)
     TestUtils.waitUntilTrue(() => !controller.isActive, "Controller fails to resign")
+    TestUtils.waitUntilTrue(() => zkClient.getControllerId.isDefined, "New controller failed to start")
 
     val newControllerId = zkClient.getControllerId.get
     val newController = servers.find(p => p.config.brokerId == newControllerId).get.kafkaController

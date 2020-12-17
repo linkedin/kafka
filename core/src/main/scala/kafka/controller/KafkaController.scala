@@ -1294,7 +1294,7 @@ class KafkaController(val config: KafkaConfig,
 
       // See which replicas are known alive and not pending shutdown for this partition
       val liveReplicas = controllerContext.partitionReplicaAssignment(partition).count( { replicaBrokerId =>
-        controllerContext.liveBrokerIdAndEpochs.contains(replicaBrokerId) && !controllerContext.shuttingDownBrokerIds.contains(replicaBrokerId)
+        controllerContext.liveBrokerIds.contains(replicaBrokerId)
       })
 
       // Consider this topic-partition at-risk if removing one broker will result in the ISR shrinking below minISR

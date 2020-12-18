@@ -557,6 +557,9 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     val controller = servers.find(p => p.config.brokerId == controllerId).get.kafkaController
     val resultQueue = new LinkedBlockingQueue[Try[collection.Set[TopicPartition]]]()
 
+    controller.setMinInSyncReplicas(topic, 2)
+    TestUtils.waitUntilTrue(() => controller.controllerContext.topicMinIsrConfig.getOrElse(topic, -1) == 2, "Controller never saw min.insync.replicas config change for topic.")
+
     // Attempt to shut down one broker, which should be allowed with the ISR at 3 and the min ISR of 2
     val controlledShutdownCallback = (controlledShutdownResult: Try[collection.Set[TopicPartition]]) => resultQueue.put(controlledShutdownResult)
     controller.controlledShutdown(2, servers.find(_.config.brokerId == 2).get.kafkaController.brokerEpoch, controlledShutdownCallback)
@@ -592,6 +595,9 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
 
     val newControllerId = zkClient.getControllerId.get
     val newController = servers.find(p => p.config.brokerId == newControllerId).get.kafkaController
+
+    newController.setMinInSyncReplicas(topic, 2)
+    TestUtils.waitUntilTrue(() => newController.controllerContext.topicMinIsrConfig.getOrElse(topic, -1) == 2, "Controller never saw min.insync.replicas config change for topic.")
 
     // Controller moved, try to shut down again. We should get rejected in the same way.
     notEnoughReplicasDetected = false

@@ -168,8 +168,6 @@ object Defaults {
   val ControlledShutdownEnable = true
   val ControlledShutdownSafetyCheckEnable = false
   val ControlledShutdownSafetyCheckRedundancyFactor = 2
-  val ControlledShutdownTopicConfigCacheSize = 1000
-  val ControlledShutdownTopicConfigCacheTTLMs = 60000L
 
   /** ********* Group coordinator configuration ***********/
   val GroupMinSessionTimeoutMs = 6000
@@ -417,8 +415,6 @@ object KafkaConfig {
   val ControlledShutdownEnableProp = "controlled.shutdown.enable"
   val ControlledShutdownSafetyCheckEnableProp = "controlled.shutdown.safety.check.enable"
   val ControlledShutdownSafetyCheckRedundancyFactorProp = "controlled.shutdown.safety.check.redundancy.factor"
-  val ControlledShutdownTopicConfigCacheSizeProp = "controlled.shutdown.topic.cache.size"
-  val ControlledShutdownTopicConfigCacheTTLMsProp = "controlled.shutdown.topic.config.cache.ttl.ms"
   /** ********* Group coordinator configuration ***********/
   val GroupMinSessionTimeoutMsProp = "group.min.session.timeout.ms"
   val GroupMaxSessionTimeoutMsProp = "group.max.session.timeout.ms"
@@ -773,8 +769,6 @@ object KafkaConfig {
   val ControlledShutdownEnableDoc = "Enable controlled shutdown of the server"
   val ControlledShutdownSafetyCheckEnableDoc = s"Perform a safety check in the controller before allowing a controlled shutdown to begin. The controller will try to confirm that allowing the broker requesting shutdown to shut down will not result in any partitions going offline by shrinking the ISR below min.in.sync.replicas. This only works if $ControlledShutdownEnableProp is true."
   val ControlledShutdownSafetyCheckRedundancyFactorDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, this configures the required redundancy for the safety check. If there are fewer than min.insync.replicas + $ControlledShutdownSafetyCheckRedundancyFactorProp replicas in the ISR, shutdown will not be allowed."
-  val ControlledShutdownTopicConfigCacheSizeDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, the controller will need to look up topic configs during controlled shutdown. This specifies how many topic configurations fetched while performing the safety check should be cached by the controller."
-  val ControlledShutdownTopicConfigCacheTTLMsDoc = s"If $ControlledShutdownSafetyCheckEnableProp is enabled, the controller will need to look up topic configs during controlled shutdown. This specifies how long in milliseconds the controller should cache topic configs fetched while performing the safety check."
   /** ********* Group coordinator configuration ***********/
   val GroupMinSessionTimeoutMsDoc = "The minimum allowed session timeout for registered consumers. Shorter timeouts result in quicker failure detection at the cost of more frequent consumer heartbeating, which can overwhelm broker resources."
   val GroupMaxSessionTimeoutMsDoc = "The maximum allowed session timeout for registered consumers. Longer timeouts give consumers more time to process messages in between heartbeats at the cost of a longer time to detect failures."
@@ -1067,8 +1061,6 @@ object KafkaConfig {
       .define(ControlledShutdownEnableProp, BOOLEAN, Defaults.ControlledShutdownEnable, MEDIUM, ControlledShutdownEnableDoc)
       .define(ControlledShutdownSafetyCheckEnableProp, BOOLEAN, Defaults.ControlledShutdownSafetyCheckEnable, MEDIUM, ControlledShutdownSafetyCheckEnableDoc)
       .define(ControlledShutdownSafetyCheckRedundancyFactorProp, INT, Defaults.ControlledShutdownSafetyCheckRedundancyFactor, MEDIUM, ControlledShutdownSafetyCheckRedundancyFactorDoc)
-      .define(ControlledShutdownTopicConfigCacheSizeProp, INT, Defaults.ControlledShutdownTopicConfigCacheSize, MEDIUM, ControlledShutdownTopicConfigCacheSizeDoc)
-      .define(ControlledShutdownTopicConfigCacheTTLMsProp, LONG, Defaults.ControlledShutdownTopicConfigCacheTTLMs, MEDIUM, ControlledShutdownTopicConfigCacheTTLMsDoc)
 
       /** ********* Group coordinator configuration ***********/
       .define(GroupMinSessionTimeoutMsProp, INT, Defaults.GroupMinSessionTimeoutMs, MEDIUM, GroupMinSessionTimeoutMsDoc)
@@ -1391,8 +1383,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val controlledShutdownEnable = getBoolean(KafkaConfig.ControlledShutdownEnableProp)
   val controlledShutdownSafetyCheckEnable = getBoolean(KafkaConfig.ControlledShutdownSafetyCheckEnableProp)
   val controlledShutdownSafetyCheckRedundancyFactor = getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
-  val controlledShutdownTopicConfigCacheSize = getInt(KafkaConfig.ControlledShutdownTopicConfigCacheSizeProp)
-  val controlledShutdownTopicConfigCacheTTLMs = getLong(KafkaConfig.ControlledShutdownTopicConfigCacheTTLMsProp)
 
   /** ********* Group coordinator configuration ***********/
   val groupMinSessionTimeoutMs = getInt(KafkaConfig.GroupMinSessionTimeoutMsProp)

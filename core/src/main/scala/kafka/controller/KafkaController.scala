@@ -31,7 +31,6 @@ import kafka.zookeeper.{StateChangeHandler, ZNodeChangeHandler, ZNodeChildChange
 import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.cache.BoundedTimedCache
 import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException}
 import org.apache.kafka.common.metrics.Metrics
@@ -42,7 +41,6 @@ import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.KeeperException.Code
 import org.apache.kafka.server.policy.CreateTopicPolicy
 
-import java.time.Duration
 import java.util.Properties
 import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq, Set, immutable, mutable}
@@ -321,6 +319,10 @@ class KafkaController(val config: KafkaConfig,
 
   private[kafka] def enablePreferredControllerFallback(): Unit = {
     eventManager.put(PreferredControllerChange)
+  }
+
+  private[kafka] def setMinInSyncReplicas(topicName: String, minInSyncReplicas: Int): Unit = {
+    eventManager.put(TopicMinInSyncReplicasConfigChange(topicName, minInSyncReplicas))
   }
 
   private def state: ControllerState = eventManager.state
@@ -1261,6 +1263,10 @@ class KafkaController(val config: KafkaConfig,
     partitionStateMachine.triggerOnlinePartitionStateChange(topic)
   }
 
+  private def processTopicMinInSyncReplicasConfigChange(topic: String, minInSyncReplicas: Int): Unit = {
+    controllerContext.topicMinIsrConfig += topic -> minInSyncReplicas
+  }
+
   private def preemptControlledShutdown(id: Int, brokerEpoch: Long, controlledShutdownCallback: Try[Set[TopicPartition]] => Unit): Unit = {
     controlledShutdownCallback(Failure(new ControllerMovedException("Controller moved to another broker")))
   }
@@ -1270,30 +1276,13 @@ class KafkaController(val config: KafkaConfig,
     controlledShutdownCallback(controlledShutdownResult)
   }
 
-  private val topicConfigCache = new BoundedTimedCache[String, Properties](
-    config.controlledShutdownTopicConfigCacheSize,
-    Duration.ofMillis(config.controlledShutdownTopicConfigCacheTTLMs))
-
-  private def fetchTopicConfig(topicName: String): Properties = {
-    val cachedConfig = topicConfigCache.get(topicName)
-    if (cachedConfig != null) {
-      return cachedConfig
-    }
-
-    val config = zkClient.getEntityConfigs(ConfigType.Topic, topicName)
-    topicConfigCache.put(topicName, config)
-    return config
-  }
-
   private def safeToShutdown(id: Int, brokerEpoch: Long): Boolean = {
     // If a topic doesn't have min.insync.replicas configured, default to 1
-    val defaultMinISRPropertyValue = "1"
+    val defaultMinISRPropertyValue = 1
 
     val atRiskPartitions = controllerContext.partitionsOnBroker(id).filter { partition =>
       // Look up minISR for this topic, or use the default if not configured.
-      val minISR: Int = fetchTopicConfig(partition.topic())
-        .getOrDefault(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, defaultMinISRPropertyValue)
-        .toString.toInt
+      val minISR: Int = controllerContext.topicMinIsrConfig.getOrElse(partition.topic(), defaultMinISRPropertyValue)
 
       // See which replicas are known alive and not pending shutdown for this partition
       var liveReplicasInIsr = controllerContext.partitionLeadershipInfo(partition).leaderAndIsr.isr.count({ replicaBrokerId =>
@@ -2109,6 +2098,8 @@ class KafkaController(val config: KafkaConfig,
           processUncleanLeaderElectionEnable()
         case TopicUncleanLeaderElectionEnable(topic) =>
           processTopicUncleanLeaderElectionEnable(topic)
+        case TopicMinInSyncReplicasConfigChange(topic, minInSyncReplicas) =>
+          processTopicMinInSyncReplicasConfigChange(topic, minInSyncReplicas)
         case ControlledShutdown(id, brokerEpoch, callback) =>
           processControlledShutdown(id, brokerEpoch, callback)
         case LeaderAndIsrResponseReceived(response, brokerId) =>
@@ -2343,6 +2334,10 @@ case object UncleanLeaderElectionEnable extends ControllerEvent {
 
 case class TopicUncleanLeaderElectionEnable(topic: String) extends ControllerEvent {
   def state = ControllerState.TopicUncleanLeaderElectionEnable
+}
+
+case class TopicMinInSyncReplicasConfigChange(topic: String, minInSyncReplicas: Int) extends ControllerEvent {
+  def state: ControllerState.TopicMinInSyncReplicasConfigChange.type = ControllerState.TopicMinInSyncReplicasConfigChange
 }
 
 case class ControlledShutdown(id: Int, brokerEpoch: Long, controlledShutdownCallback: Try[Set[TopicPartition]] => Unit) extends ControllerEvent {

@@ -18,6 +18,7 @@
 package kafka.server
 
 import java.util.Properties
+
 import DynamicConfig.Broker._
 import kafka.api.ApiVersion
 import kafka.controller.KafkaController

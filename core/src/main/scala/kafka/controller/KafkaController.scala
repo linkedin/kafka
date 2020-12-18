@@ -1296,13 +1296,13 @@ class KafkaController(val config: KafkaConfig,
         .toString.toInt
 
       // See which replicas are known alive and not pending shutdown for this partition
-      val liveReplicas = controllerContext.partitionReplicaAssignment(partition).count( { replicaBrokerId =>
+      var liveReplicasInIsr = controllerContext.partitionLeadershipInfo(partition).leaderAndIsr.isr.count({ replicaBrokerId =>
         controllerContext.liveBrokerIds.contains(replicaBrokerId)
       })
 
       // Consider this topic-partition at-risk if removing one broker will result in the ISR shrinking below minISR
-      debug(s"Broker $id (epoch $brokerEpoch) has $liveReplicas live replicas and $partition has min.insync.replicas=$minISR, with redundancy factor ${config.controlledShutdownSafetyCheckRedundancyFactor}")
-      liveReplicas < (minISR + config.controlledShutdownSafetyCheckRedundancyFactor)
+      debug(s"$partition has min.insync.replicas=$minISR and a redundancy factor of ${config.controlledShutdownSafetyCheckRedundancyFactor}. Broker $id is a replica and the ISR contains $liveReplicasInIsr.")
+      liveReplicasInIsr < (minISR + config.controlledShutdownSafetyCheckRedundancyFactor)
     }
 
     atRiskPartitions.isEmpty

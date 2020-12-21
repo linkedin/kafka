@@ -1284,7 +1284,7 @@ class KafkaController(val config: KafkaConfig,
       val minISR: Int = controllerContext.topicMinIsrConfig.getOrElse(partition.topic(), defaultMinISRPropertyValue)
 
       // See which replicas are known alive and not pending shutdown for this partition
-      var liveReplicasInIsr = controllerContext.partitionLeadershipInfo(partition).leaderAndIsr.isr.count({ replicaBrokerId =>
+      val liveReplicasInIsr = controllerContext.partitionLeadershipInfo(partition).leaderAndIsr.isr.count({ replicaBrokerId =>
         controllerContext.liveBrokerIds.contains(replicaBrokerId)
       })
 

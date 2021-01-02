@@ -41,8 +41,8 @@ import java.util.concurrent.TimeUnit;
  * It measures the time it takes to run the ReplicaManager#becomeLeaderOrFollower method,
  * which roughly corresponds the LeaderAndIsr request local processing time.
  */
-@Warmup(iterations = 2)
-@Measurement(iterations = 2)
+@Warmup(iterations = 1)
+@Measurement(iterations = 1)
 @Fork(1)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)

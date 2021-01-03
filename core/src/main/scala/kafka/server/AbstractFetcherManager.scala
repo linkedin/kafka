@@ -185,8 +185,11 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
         fetcherThread
       }
 
+      warn("# of entries in partitionsPerFetcher:" + partitionsPerFetcher.size)
+      @volatile var times : List[Long] = List.empty
       val fetcherIdAndUpdatedThreads = for ((brokerAndFetcherId, initialFetchOffsets) <- partitionsPerFetcher.par) yield {
         info(s"adding partitions to fetcher $brokerAndFetcherId")
+        val fetcherStart = System.currentTimeMillis()
         val brokerIdAndFetcherId = BrokerIdAndFetcherId(brokerAndFetcherId.broker.id, brokerAndFetcherId.fetcherId)
         val fetcherThread = fetcherThreadMap.get(brokerIdAndFetcherId) match {
           case Some(currentFetcherThread) if currentFetcherThread.sourceBroker == brokerAndFetcherId.broker =>
@@ -204,10 +207,12 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
         }
 
         addPartitionsToFetcherThread(fetcherThread, initialOffsetAndEpochs)
+        times = (System.currentTimeMillis() - fetcherStart) :: times
         (brokerIdAndFetcherId, fetcherThread)
       }
 
       fetcherThreadMap.addAll(fetcherIdAndUpdatedThreads)
+      warn("average time spent in the block " + (times.sum / times.length) + " and the total time is " + times.sum)
     }
   }
 

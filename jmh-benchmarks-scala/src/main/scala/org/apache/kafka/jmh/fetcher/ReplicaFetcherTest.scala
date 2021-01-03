@@ -92,10 +92,10 @@ class ReplicaFetcherTest(partitionCount: Int, brokerCount: Int, numReplicaFetche
 
   }
 
-  def becomeLeaderOrFollower(): Unit = {
+  def becomeLeaderOrFollower(startTime: Long): Unit = {
     val leaderAndIsrRequest = createLeaderAndIsrRequest()
     val correlationId = 0
-    replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, (_, _) => {})
+    replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, (_, _) => {}, startTime)
   }
 
   private def initPartitionStates(): Unit = {

@@ -73,6 +73,7 @@ public class ReplicaFetcherBecomeFollowerBenchmark {
     @Benchmark
     @BenchmarkMode(Mode.SingleShotTime)
     public void testProcessFirstLeaderAndIsr() {
-        replicaFetcherTest.becomeLeaderOrFollower();
+        long startTime = System.currentTimeMillis();
+        replicaFetcherTest.becomeLeaderOrFollower(startTime);
     }
 }

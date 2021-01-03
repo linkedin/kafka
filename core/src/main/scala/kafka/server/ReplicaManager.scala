@@ -1210,7 +1210,8 @@ class ReplicaManager(val config: KafkaConfig,
 
   def becomeLeaderOrFollower(correlationId: Int,
                              leaderAndIsrRequest: LeaderAndIsrRequest,
-                             onLeadershipChange: (Iterable[Partition], Iterable[Partition]) => Unit): LeaderAndIsrResponse = {
+                             onLeadershipChange: (Iterable[Partition], Iterable[Partition]) => Unit,
+                             startTime: Long = System.currentTimeMillis()): LeaderAndIsrResponse = {
     if (stateChangeLogger.isTraceEnabled) {
       leaderAndIsrRequest.partitionStates.asScala.foreach { partitionState =>
         stateChangeLogger.trace(s"Received LeaderAndIsr request $partitionState " +
@@ -1297,11 +1298,14 @@ class ReplicaManager(val config: KafkaConfig,
             highWatermarkCheckpoints)
         else
           Set.empty[Partition]
+
+        warn("1 before makeFollowers " + (System.currentTimeMillis() - startTime))
         val partitionsBecomeFollower = if (partitionsToBeFollower.nonEmpty)
           makeFollowers(controllerId, controllerEpoch, partitionsToBeFollower, correlationId, responseMap,
-            highWatermarkCheckpoints)
+            highWatermarkCheckpoints, startTime)
         else
           Set.empty[Partition]
+        warn("2 after makeFollowers " + (System.currentTimeMillis() - startTime))
 
         /*
          * KAFKA-8392
@@ -1331,6 +1335,7 @@ class ReplicaManager(val config: KafkaConfig,
         // we initialize highwatermark thread after the first leaderisrrequest. This ensures that all the partitions
         // have been completely populated before starting the checkpointing there by avoiding weird race conditions
         startHighWatermarkCheckPointThread()
+        warn("3 started startHighWatermarkCheckPointThread " + (System.currentTimeMillis() - startTime))
 
         val futureReplicasAndInitialOffset = new mutable.HashMap[TopicPartition, InitialFetchState]
         for (partition <- updatedPartitions) {
@@ -1354,7 +1359,9 @@ class ReplicaManager(val config: KafkaConfig,
         }
         replicaAlterLogDirsManager.addFetcherForPartitions(futureReplicasAndInitialOffset)
 
+        warn("4 before shutdownIdleFetcherThreads " + (System.currentTimeMillis() - startTime))
         replicaFetcherManager.shutdownIdleFetcherThreads()
+        warn("5 after shutdownIdleFetcherThreads " + (System.currentTimeMillis() - startTime))
         replicaAlterLogDirsManager.shutdownIdleFetcherThreads()
         onLeadershipChange(partitionsBecomeLeader, partitionsBecomeFollower)
         val responsePartitions = responseMap.iterator.map { case (tp, error) =>
@@ -1363,6 +1370,7 @@ class ReplicaManager(val config: KafkaConfig,
             .setPartitionIndex(tp.partition)
             .setErrorCode(error.code)
         }.toBuffer
+        warn("6 end of becomeLeaderOrFollower " + (System.currentTimeMillis() - startTime))
         new LeaderAndIsrResponse(new LeaderAndIsrResponseData()
           .setErrorCode(Errors.NONE.code)
           .setPartitionErrors(responsePartitions.asJava))
@@ -1469,7 +1477,8 @@ class ReplicaManager(val config: KafkaConfig,
                             partitionStates: Map[Partition, LeaderAndIsrPartitionState],
                             correlationId: Int,
                             responseMap: mutable.Map[TopicPartition, Errors],
-                            highWatermarkCheckpoints: OffsetCheckpoints) : Set[Partition] = {
+                            highWatermarkCheckpoints: OffsetCheckpoints,
+                            startTime: Long) : Set[Partition] = {
     partitionStates.foreach { case (partition, partitionState) =>
       stateChangeLogger.trace(s"Handling LeaderAndIsr request correlationId $correlationId from controller $controllerId " +
         s"epoch $controllerEpoch starting the become-follower transition for partition ${partition.topicPartition} with leader " +
@@ -1521,7 +1530,9 @@ class ReplicaManager(val config: KafkaConfig,
         }
       }
 
+      warn("1.1 before removeFetcherForPartitions " + (System.currentTimeMillis() - startTime))
       replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
+      warn("1.2 after removeFetcherForPartitions " + (System.currentTimeMillis() - startTime))
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Stopped fetchers as part of become-follower request from controller $controllerId " +
           s"epoch $controllerEpoch with correlation id $correlationId for partition ${partition.topicPartition} with leader " +
@@ -1531,7 +1542,7 @@ class ReplicaManager(val config: KafkaConfig,
       partitionsToMakeFollower.foreach { partition =>
         completeDelayedFetchOrProduceRequests(partition.topicPartition)
       }
-
+      warn("1.3 done completeDelayedFetchOrProduceRequests " + (System.currentTimeMillis() - startTime))
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Truncated logs and checkpointed recovery boundaries for partition " +
           s"${partition.topicPartition} as part of become-follower request with correlation id $correlationId from " +
@@ -1552,9 +1563,11 @@ class ReplicaManager(val config: KafkaConfig,
             .brokerEndPoint(config.interBrokerListenerName)
           val fetchOffset = partition.localLogOrException.highWatermark
           partition.topicPartition -> InitialFetchState(leader, partition.getLeaderEpoch, fetchOffset)
-       }.toMap
+        }.toMap
 
+        warn("1.4 before addFetcherForPartitions " + (System.currentTimeMillis() - startTime))
         replicaFetcherManager.addFetcherForPartitions(partitionsToMakeFollowerWithLeaderAndOffset)
+        warn("1.5 after addFetcherForPartitions " + (System.currentTimeMillis() - startTime))
         partitionsToMakeFollowerWithLeaderAndOffset.foreach { case (partition, initialFetchState) =>
           stateChangeLogger.trace(s"Started fetcher to new leader as part of become-follower " +
             s"request from controller $controllerId epoch $controllerEpoch with correlation id $correlationId for " +

@@ -172,6 +172,8 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
   // to be defined in subclass to create a specific fetcher
   def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): T
 
+  case class LwTimes(createThreadTime: Long, addPartitionsTime : Long)
+
   def addFetcherForPartitions(partitionAndOffsets: Map[TopicPartition, InitialFetchState]): Unit = {
     lock synchronized {
       val partitionsPerFetcher = partitionAndOffsets.groupBy { case (topicPartition, brokerAndInitialFetchOffset) =>
@@ -186,7 +188,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
       }
 
       warn("# of entries in partitionsPerFetcher:" + partitionsPerFetcher.size)
-      @volatile var times : List[Long] = List.empty
+      @volatile var times : List[LwTimes] = List.empty
       val fetcherIdAndUpdatedThreads = for ((brokerAndFetcherId, initialFetchOffsets) <- partitionsPerFetcher.par) yield {
         info(s"adding partitions to fetcher $brokerAndFetcherId")
         val fetcherStart = System.currentTimeMillis()
@@ -202,18 +204,28 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
             startFetcherThread(brokerAndFetcherId, brokerIdAndFetcherId)
         }
 
+        val createThreadFinishTime = System.currentTimeMillis()
         val initialOffsetAndEpochs = initialFetchOffsets.map { case (tp, brokerAndInitOffset) =>
           tp -> OffsetAndEpoch(brokerAndInitOffset.initOffset, brokerAndInitOffset.currentLeaderEpoch)
         }
 
         addPartitionsToFetcherThread(fetcherThread, initialOffsetAndEpochs)
-        times = (System.currentTimeMillis() - fetcherStart) :: times
+        val addPartitionsFinishTime = System.currentTimeMillis()
+        times = (LwTimes(createThreadFinishTime - fetcherStart, addPartitionsFinishTime - createThreadFinishTime)) :: times
         (brokerIdAndFetcherId, fetcherThread)
       }
 
       fetcherThreadMap.addAll(fetcherIdAndUpdatedThreads)
-      warn("average time spent in the block " + (times.sum / times.length) + " and the total time is " + times.sum)
+      val createThreadTimes = times.map(_.createThreadTime)
+      val addPartitionTimes = times.map(_.addPartitionsTime)
+      warn("entries in times " + times.size)
+      warn("average create thread times " + (getAvg(createThreadTimes)) + " and the total time is " + createThreadTimes.sum)
+      warn("average create thread times " + (getAvg(addPartitionTimes)) + " and the total time is " + addPartitionTimes.sum)
     }
+  }
+
+  def getAvg(times: List[Long]) = {
+    times.sum / times.length
   }
 
   protected def addPartitionsToFetcherThread(fetcherThread: T,

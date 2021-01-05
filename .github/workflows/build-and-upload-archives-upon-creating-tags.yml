@@ -44,10 +44,10 @@ jobs:
       - name: Set up release version env variable
         run: |
           echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: Verify the release version
+        run: |
           echo "Release version: ${{ env.RELEASE_VERSION }}"
       - name: Build with Gradle and run all tests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # exclude the streams test and connect test
         run: ./gradlew cleanTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
       - name: Upload archive

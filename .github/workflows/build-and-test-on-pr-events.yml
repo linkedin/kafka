@@ -26,7 +26,7 @@ on:
       # Push events on the 2.4-li-dev-* branch
       - '2.4-li-dev-*'
   pull_request:
-    types: [opened, reopened, edited, synchronize]
+    types: [opened, reopened, synchronize]
 
 jobs:
   build:
@@ -50,4 +50,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # exclude the streams test and connect test
-        run: ./gradlew cleanTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+        run: ./gradlew cleanTest :clients:unitTest :core:unitTest --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed

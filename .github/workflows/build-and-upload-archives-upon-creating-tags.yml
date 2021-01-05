@@ -42,7 +42,6 @@ jobs:
         with:
           java-version: 1.8
       - name: Set up release version env variable
-        uses: actions/checkout@v2
         run: |
           echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
           echo "Release version: ${{ env.RELEASE_VERSION }}"
@@ -52,7 +51,6 @@ jobs:
         # exclude the streams test and connect test
         run: ./gradlew cleanTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
       - name: Upload archive
-        uses: actions/checkout@v2
         run: |
           # TODO: uncomment the below command which uploads the archive once we have verified below things:
           #       1. This workflow gets triggered upon tag creation/push

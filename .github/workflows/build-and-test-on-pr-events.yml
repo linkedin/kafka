@@ -19,12 +19,6 @@ name: Pull Request Build and Test Workflow
 
 # Run this workflow every time a new pull request is created in the repository
 on:
-  push:
-    branches:
-      # Push events on the 2.4-li branch
-      - '2.4-li'
-      # Push events on the 2.4-li-dev-* branch
-      - '2.4-li-dev-*'
   pull_request:
     types: [opened, reopened, synchronize]
 

@@ -26,7 +26,7 @@ on:
 jobs:
   build:
     # Name the Job
-    name: Build tagged commit
+    name: Build tagged commit and upload an archive
     # Set the type of machine to run on
     runs-on: ubuntu-latest
     steps:
@@ -41,8 +41,14 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
-      - name: Build with Gradle
+      - name: Build with Gradle and run all tests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # exclude the streams test and connect test
-        run: ./gradlew cleanTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed; ./gradlew -Pversion=$TRAVIS_TAG :clients:uploadArchives :core:uploadArchives --no-daemon
+        run: ./gradlew cleanTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+      - name: Upload archive
+        uses: actions/checkout@v2
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo "Version of the archive to upload: ${{ env.RELEASE_VERSION }}"
+          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:uploadArchives :core:uploadArchives --no-daemon

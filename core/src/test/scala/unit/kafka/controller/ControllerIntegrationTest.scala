@@ -607,6 +607,30 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     })
     TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
     assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
+
+    // Tell the controller to skip shutdown for this brokerEpoch, simulating LiControlledShutdownSkipSafetyCheckRequest.
+    // After that the controller should allow the shutdown that it just rejected.
+    @volatile var skipSafetyCheckSucceeded = false
+    newController.skipControlledShutdownSafetyCheck(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, {
+      case scala.util.Failure(exception) =>
+      case _ => skipSafetyCheckSucceeded = true
+    })
+    TestUtils.waitUntilTrue(() => skipSafetyCheckSucceeded, "Failed to skip shutdown safety check")
+
+    // Now shutting down broker id 1 should succeed.
+    newController.controlledShutdown(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, controlledShutdownCallback)
+    partitionsRemaining = resultQueue.take().get
+    activeServers = servers.filter(s => s.config.brokerId != 1)
+    // wait for the update metadata request to trickle to the brokers
+    TestUtils.waitUntilTrue(() =>
+      activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 3),
+      "Topic test not created after timeout")
+    assertEquals(0, partitionsRemaining.size)
+    partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
+    leaderAfterShutdown = partitionStateInfo.leader
+    assertEquals(0, leaderAfterShutdown)
+    assertEquals(2, partitionStateInfo.isr.size)
+    assertEquals(List(0, 3), partitionStateInfo.isr.asScala)
   }
 
   @Test

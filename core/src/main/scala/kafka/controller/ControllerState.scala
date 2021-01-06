@@ -116,8 +116,12 @@ object ControllerState {
     def value = 18
   }
 
+  case object SkipControlledShutdownSafetyCheck extends ControllerState {
+    def value = 19
+  }
+
   val values: Seq[ControllerState] = Seq(Idle, ControllerChange, BrokerChange, TopicChange, TopicDeletion,
     AlterPartitionReassignment, AutoLeaderBalance, ManualLeaderBalance, ControlledShutdown, IsrChange, LeaderAndIsrResponseReceived,
     LogDirChange, ControllerShutdown, UncleanLeaderElectionEnable, TopicUncleanLeaderElectionEnable, ListPartitionReassignment,
-    TopicDeletionFlagChange, PreferredControllerChange, TopicMinInSyncReplicasConfigChange)
+    TopicDeletionFlagChange, PreferredControllerChange, TopicMinInSyncReplicasConfigChange, SkipControlledShutdownSafetyCheck)
 }

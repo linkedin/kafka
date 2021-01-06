@@ -17,7 +17,6 @@
 package kafka.controller
 
 import java.util.concurrent.TimeUnit
-
 import com.yammer.metrics.core.Gauge
 import kafka.admin.{AdminOperationException, AdminUtils}
 import kafka.api._
@@ -32,7 +31,7 @@ import kafka.zookeeper.{StateChangeHandler, ZNodeChangeHandler, ZNodeChildChange
 import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, StaleBrokerEpochException}
+import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, ApiError, LeaderAndIsrResponse}
@@ -299,6 +298,11 @@ class KafkaController(val config: KafkaConfig,
   def controlledShutdown(id: Int, brokerEpoch: Long, controlledShutdownCallback: Try[Set[TopicPartition]] => Unit): Unit = {
     val controlledShutdownEvent = ControlledShutdown(id, brokerEpoch, controlledShutdownCallback)
     eventManager.put(controlledShutdownEvent)
+  }
+
+  def skipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long, skipControlledShutdownSafetyCheckCallback: Try[Unit] => Unit): Unit = {
+    val skipControlledShutdownEvent = SkipControlledShutdownSafetyCheck(id, brokerEpoch, skipControlledShutdownSafetyCheckCallback)
+    eventManager.put(skipControlledShutdownEvent)
   }
 
   private[kafka] def updateBrokerInfo(newBrokerInfo: BrokerInfo): Unit = {
@@ -1275,6 +1279,30 @@ class KafkaController(val config: KafkaConfig,
     controlledShutdownCallback(controlledShutdownResult)
   }
 
+  private def processSkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long, skipControlledShutdownSafetyCheckCallback: Try[Unit] => Unit): Unit = {
+    val controlledShutdownResult = Try { doSkipControlledShutdownSafetyCheck(id, brokerEpoch) }
+    skipControlledShutdownSafetyCheckCallback(controlledShutdownResult)
+  }
+
+  private def doSkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long): Unit = {
+    if (!isActive) {
+      throw new ControllerMovedException("Controller moved to another broker. Aborting skip shutdown safety check operation.")
+    }
+
+    val cachedBrokerEpoch = controllerContext.liveBrokerIdAndEpochs(id)
+    if (brokerEpoch < cachedBrokerEpoch) {
+      val stateBrokerEpochErrorMessage = "Received skip shutdown safety check request for an old broker epoch " +
+        s"$brokerEpoch for broker $id. Current broker epoch is $cachedBrokerEpoch."
+      info(stateBrokerEpochErrorMessage)
+      throw new StaleBrokerEpochException(stateBrokerEpochErrorMessage)
+    }
+
+    if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
+      throw new BrokerNotAvailableException(s"Broker id $id does not exist.")
+
+    controllerContext.skipShutdownSafetyCheck += (id -> brokerEpoch)
+  }
+
   private def safeToShutdown(id: Int, brokerEpoch: Long): Boolean = {
     // If a topic doesn't have min.insync.replicas configured, default to 1
     val defaultMinISRPropertyValue = 1
@@ -1325,9 +1353,13 @@ class KafkaController(val config: KafkaConfig,
       else brokerEpoch
 
     if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, actualBrokerEpoch)) {
-      info(s"Controlled shutdown safety has prevented broker $id (broker epoch $actualBrokerEpoch) from shutting down.")
-      throw new NotEnoughReplicasException(
-        s"Broker id $id cannot initiate shutdown without an impact on topic availability.")
+      if (controllerContext.skipShutdownSafetyCheck.getOrElse(id, -1L) >= actualBrokerEpoch) {
+        info(s"Controlled shutdown safety check has been skipped for broker $id (broker epoch $actualBrokerEpoch). Allowing shutdown even though it is not safe to do so.")
+      } else {
+        info(s"Controlled shutdown safety has prevented broker $id (broker epoch $actualBrokerEpoch) from shutting down.")
+        throw new NotEnoughReplicasException(
+          s"Broker id $id cannot initiate shutdown without an impact on topic availability.")
+      }
     }
 
     zkClient.recordBrokerShutdown(id, brokerEpoch, controllerContext.epochZkVersion)
@@ -2141,6 +2173,8 @@ class KafkaController(val config: KafkaConfig,
           processIsrChangeNotification()
         case Startup =>
           processStartup()
+        case SkipControlledShutdownSafetyCheck(id, brokerEpoch, callback) =>
+          processSkipControlledShutdownSafetyCheck(id, brokerEpoch, callback)
       }
     } catch {
       case e: ControllerMovedException =>
@@ -2341,6 +2375,10 @@ case class TopicMinInSyncReplicasConfigChange(topic: String, minInSyncReplicas: 
 
 case class ControlledShutdown(id: Int, brokerEpoch: Long, controlledShutdownCallback: Try[Set[TopicPartition]] => Unit) extends ControllerEvent {
   def state = ControllerState.ControlledShutdown
+}
+
+case class SkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long, skipControlledShutdownSafetyCheckCallback: Try[Unit] => Unit) extends ControllerEvent {
+  def state: ControllerState.SkipControlledShutdownSafetyCheck.type = ControllerState.SkipControlledShutdownSafetyCheck
 }
 
 case class LeaderAndIsrResponseReceived(LeaderAndIsrResponseObj: AbstractResponse, brokerId: Int) extends ControllerEvent {

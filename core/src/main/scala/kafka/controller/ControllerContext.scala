@@ -62,6 +62,7 @@ class ControllerContext {
   val stats = new ControllerStats
   var offlinePartitionCount = 0
   var shuttingDownBrokerIds: Map[Int, Long] = Map.empty
+  var skipShutdownSafetyCheck: Map[Int, Long] = Map.empty
   private var liveBrokers: Set[Broker] = Set.empty
   private var liveBrokerEpochs: Map[Int, Long] = Map.empty
   var epoch: Int = KafkaController.InitialControllerEpoch

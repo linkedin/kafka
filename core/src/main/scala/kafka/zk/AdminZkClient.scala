@@ -53,7 +53,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced): Unit = {
     val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
-    val noNewPartitionBrokerIds = getMaintenanceBrokerList()
+    val noNewPartitionBrokerIds = getMaintenanceBrokerList() ++ zkClient.getPreferredControllerList
     val replicaAssignment = assignReplicasToAvailableBrokers(brokerMetadatas, noNewPartitionBrokerIds.toSet, partitions, replicationFactor)
     createTopicWithAssignment(topic, topicConfig, replicaAssignment)
   }
@@ -235,7 +235,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                     numPartitions: Int = 1,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                     validateOnly: Boolean = false): Map[Int, Seq[Int]] = {
-    val noNewPartitionBrokerIds = getMaintenanceBrokerList()
+    val noNewPartitionBrokerIds = getMaintenanceBrokerList() ++ zkClient.getPreferredControllerList
     addPartitions(topic, existingAssignment, allBrokers, numPartitions, replicaAssignment, validateOnly, noNewPartitionBrokerIds.toSet)
   }
 

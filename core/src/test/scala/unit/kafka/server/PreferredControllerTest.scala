@@ -33,6 +33,7 @@ import org.scalatest.Assertions.fail
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
+import scala.collection.immutable
 
 class PreferredControllerTest extends ZooKeeperTestHarness {
 
@@ -69,6 +70,34 @@ class PreferredControllerTest extends ZooKeeperTestHarness {
       ensureTopicNotInBrokers("topic1", Set(1)))
 
     client.close()
+  }
+
+  @Test
+  def testPartitionCreatedByAdminZkClientShouldNotBeAssignedToPreferredControllers(): Unit = {
+    val brokerConfigs = Seq((0, false), (1, true), (2, false))
+    createBrokersWithPreferredControllers(brokerConfigs, true)
+
+    val brokerList = TestUtils.bootstrapServers(brokers, ListenerName.forSecurityProtocol(SecurityProtocol.PLAINTEXT))
+    TestUtils.waitUntilControllerElected(zkClient)
+    // create topic using admin client
+    val topic = "topic1"
+    TestUtils.createTopic(zkClient, topic, 3, 2, brokers)
+
+    assertTrue("topic1 should not be in broker 1", ensureTopicNotInBrokers("topic1", Set(1)))
+
+    val existingAssignment = zkClient.getFullReplicaAssignmentForTopics(immutable.Set(topic)).map {
+      case (topicPartition, assignment) => topicPartition.partition -> assignment
+    }
+    val allBrokers = adminZkClient.getBrokerMetadatas()
+    val newPartitionsCount = 5
+    adminZkClient.addPartitions(topic, existingAssignment, allBrokers, 5)
+    (0 until newPartitionsCount).map { i =>
+      TestUtils.waitUntilMetadataIsPropagated(brokers, topic, i)
+      i -> TestUtils.waitUntilLeaderIsElectedOrChanged(zkClient, topic, i)
+    }
+
+    assertTrue("topic1 should not be in broker 1 after increasing partition count",
+      ensureTopicNotInBrokers("topic1", Set(1)))
   }
 
   @Test

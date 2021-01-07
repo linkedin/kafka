@@ -77,7 +77,6 @@ class PreferredControllerTest extends ZooKeeperTestHarness {
     val brokerConfigs = Seq((0, false), (1, true), (2, false))
     createBrokersWithPreferredControllers(brokerConfigs, true)
 
-    val brokerList = TestUtils.bootstrapServers(brokers, ListenerName.forSecurityProtocol(SecurityProtocol.PLAINTEXT))
     TestUtils.waitUntilControllerElected(zkClient)
     // create topic using admin client
     val topic = "topic1"

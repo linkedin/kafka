@@ -220,7 +220,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
       val addPartitionTimes = times.map(_.addPartitionsTime)
       warn("entries in times " + times.size)
       warn("average create thread times " + (getAvg(createThreadTimes)) + " and the total time is " + createThreadTimes.sum)
-      warn("average create thread times " + (getAvg(addPartitionTimes)) + " and the total time is " + addPartitionTimes.sum)
+      warn("average add partition times " + (getAvg(addPartitionTimes)) + " and the total time is " + addPartitionTimes.sum)
     }
   }
 

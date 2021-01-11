@@ -1299,13 +1299,13 @@ class ReplicaManager(val config: KafkaConfig,
         else
           Set.empty[Partition]
 
-        warn("1 before makeFollowers " + (System.currentTimeMillis() - startTime))
+        warn( correlationId + " " + (System.currentTimeMillis() - startTime) + " 1 before makeFollowers")
         val partitionsBecomeFollower = if (partitionsToBeFollower.nonEmpty)
           makeFollowers(controllerId, controllerEpoch, partitionsToBeFollower, correlationId, responseMap,
             highWatermarkCheckpoints, startTime)
         else
           Set.empty[Partition]
-        warn("2 after makeFollowers " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 2 after makeFollowers ")
 
         /*
          * KAFKA-8392
@@ -1335,7 +1335,7 @@ class ReplicaManager(val config: KafkaConfig,
         // we initialize highwatermark thread after the first leaderisrrequest. This ensures that all the partitions
         // have been completely populated before starting the checkpointing there by avoiding weird race conditions
         startHighWatermarkCheckPointThread()
-        warn("3 started startHighWatermarkCheckPointThread " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 3 started startHighWatermarkCheckPointThread ")
 
         val futureReplicasAndInitialOffset = new mutable.HashMap[TopicPartition, InitialFetchState]
         for (partition <- updatedPartitions) {
@@ -1359,9 +1359,9 @@ class ReplicaManager(val config: KafkaConfig,
         }
         replicaAlterLogDirsManager.addFetcherForPartitions(futureReplicasAndInitialOffset)
 
-        warn("4 before shutdownIdleFetcherThreads " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 4 before shutdownIdleFetcherThreads ")
         replicaFetcherManager.shutdownIdleFetcherThreads()
-        warn("5 after shutdownIdleFetcherThreads " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 5 after shutdownIdleFetcherThreads ")
         replicaAlterLogDirsManager.shutdownIdleFetcherThreads()
         onLeadershipChange(partitionsBecomeLeader, partitionsBecomeFollower)
         val responsePartitions = responseMap.iterator.map { case (tp, error) =>
@@ -1370,7 +1370,7 @@ class ReplicaManager(val config: KafkaConfig,
             .setPartitionIndex(tp.partition)
             .setErrorCode(error.code)
         }.toBuffer
-        warn("6 end of becomeLeaderOrFollower " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 6 end of becomeLeaderOrFollower ")
         new LeaderAndIsrResponse(new LeaderAndIsrResponseData()
           .setErrorCode(Errors.NONE.code)
           .setPartitionErrors(responsePartitions.asJava))
@@ -1530,9 +1530,9 @@ class ReplicaManager(val config: KafkaConfig,
         }
       }
 
-      warn("1.1 before removeFetcherForPartitions " + (System.currentTimeMillis() - startTime))
+      warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 1.1 before removeFetcherForPartitions ")
       replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
-      warn("1.2 after removeFetcherForPartitions " + (System.currentTimeMillis() - startTime))
+      warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 1.2 after removeFetcherForPartitions ")
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Stopped fetchers as part of become-follower request from controller $controllerId " +
           s"epoch $controllerEpoch with correlation id $correlationId for partition ${partition.topicPartition} with leader " +
@@ -1542,7 +1542,7 @@ class ReplicaManager(val config: KafkaConfig,
       partitionsToMakeFollower.foreach { partition =>
         completeDelayedFetchOrProduceRequests(partition.topicPartition)
       }
-      warn("1.3 done completeDelayedFetchOrProduceRequests " + (System.currentTimeMillis() - startTime))
+      warn(correlationId + " " + (System.currentTimeMillis() - startTime) + " 1.3 done completeDelayedFetchOrProduceRequests ")
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Truncated logs and checkpointed recovery boundaries for partition " +
           s"${partition.topicPartition} as part of become-follower request with correlation id $correlationId from " +
@@ -1565,9 +1565,9 @@ class ReplicaManager(val config: KafkaConfig,
           partition.topicPartition -> InitialFetchState(leader, partition.getLeaderEpoch, fetchOffset)
         }.toMap
 
-        warn("1.4 before addFetcherForPartitions " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + "1.4 before addFetcherForPartitions ")
         replicaFetcherManager.addFetcherForPartitions(partitionsToMakeFollowerWithLeaderAndOffset)
-        warn("1.5 after addFetcherForPartitions " + (System.currentTimeMillis() - startTime))
+        warn(correlationId + " " + (System.currentTimeMillis() - startTime) + "1.5 after addFetcherForPartitions ")
         partitionsToMakeFollowerWithLeaderAndOffset.foreach { case (partition, initialFetchState) =>
           stateChangeLogger.trace(s"Started fetcher to new leader as part of become-follower " +
             s"request from controller $controllerId epoch $controllerEpoch with correlation id $correlationId for " +

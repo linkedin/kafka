@@ -240,7 +240,7 @@ object TestUtils extends Logging {
   def createBrokerConfig(nodeId: Int,
                          zkConnect: String,
                          enableControlledShutdown: Boolean = true,
-                         enableControlledShutdownSafetyCheck: Boolean = true,
+                         enableControlledShutdownSafetyCheck: Boolean = false,
                          enableDeleteTopic: Boolean = true,
                          port: Int = RandomPort,
                          interBrokerSecurityProtocol: Option[SecurityProtocol] = None,

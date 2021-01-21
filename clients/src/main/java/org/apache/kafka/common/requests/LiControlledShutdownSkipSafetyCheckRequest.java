@@ -22,14 +22,12 @@ import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Struct;
 
-import java.nio.ByteBuffer;
-
 public class LiControlledShutdownSkipSafetyCheckRequest extends AbstractRequest {
     public static class Builder extends AbstractRequest.Builder<LiControlledShutdownSkipSafetyCheckRequest> {
         private final LiControlledShutdownSkipSafetyCheckRequestData data;
 
-        public Builder(LiControlledShutdownSkipSafetyCheckRequestData data, short desiredVersion) {
-            super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, desiredVersion);
+        public Builder(LiControlledShutdownSkipSafetyCheckRequestData data, short allowedVersion) {
+            super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, allowedVersion);
             this.data = data;
         }
 
@@ -45,23 +43,20 @@ public class LiControlledShutdownSkipSafetyCheckRequest extends AbstractRequest 
     }
 
     private final LiControlledShutdownSkipSafetyCheckRequestData data;
-    private final short version;
 
     public LiControlledShutdownSkipSafetyCheckRequest(LiControlledShutdownSkipSafetyCheckRequestData data, short version) {
         super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, version);
         this.data = data;
-        this.version = version;
     }
 
     public LiControlledShutdownSkipSafetyCheckRequest(Struct struct, short version) {
         super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, version);
         this.data = new LiControlledShutdownSkipSafetyCheckRequestData(struct, version);
-        this.version = version;
     }
 
     @Override
     protected Struct toStruct() {
-        return data.toStruct(version);
+        return data.toStruct(this.version());
     }
 
     @Override
@@ -69,11 +64,6 @@ public class LiControlledShutdownSkipSafetyCheckRequest extends AbstractRequest 
         LiControlledShutdownSkipSafetyCheckResponseData data = new LiControlledShutdownSkipSafetyCheckResponseData()
             .setErrorCode(Errors.forException(e).code());
         return new LiControlledShutdownSkipSafetyCheckResponse(data);
-    }
-
-    public static LiControlledShutdownSkipSafetyCheckRequest parse(ByteBuffer buffer, short version) {
-        return new LiControlledShutdownSkipSafetyCheckRequest(
-            ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK.parseRequest(version, buffer), version);
     }
 
     public LiControlledShutdownSkipSafetyCheckRequestData data() {

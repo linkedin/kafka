@@ -19,8 +19,6 @@ package org.apache.kafka.clients.admin;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.annotation.InterfaceStability;
 
-import java.util.concurrent.ExecutionException;
-
 /**
  * The result of {@link Admin#skipShutdownSafetyCheck(SkipShutdownSafetyCheckOptions)}.
  *
@@ -34,13 +32,7 @@ public final class SkipShutdownSafetyCheckResult {
         this.future = future;
     }
 
-    public void all() {
-        try {
-            future.get();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e.getCause());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+    public KafkaFuture<Void> all() {
+        return future;
     }
 }

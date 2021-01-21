@@ -17,11 +17,9 @@
 package org.apache.kafka.common.requests;
 
 import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckResponseData;
-import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Struct;
 
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
 
@@ -58,12 +56,6 @@ public class LiControlledShutdownSkipSafetyCheckResponse extends AbstractRespons
 
     public LiControlledShutdownSkipSafetyCheckResponseData data() {
         return data;
-    }
-
-    public static LiControlledShutdownSkipSafetyCheckResponse parse(ByteBuffer buffer, short version) {
-        return new LiControlledShutdownSkipSafetyCheckResponse(
-            ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK.parseResponse(version, buffer),
-            version);
     }
 
     public static LiControlledShutdownSkipSafetyCheckResponse prepareResponse(Errors error) {

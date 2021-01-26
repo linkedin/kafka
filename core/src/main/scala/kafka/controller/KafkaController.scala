@@ -506,7 +506,7 @@ class KafkaController(val config: KafkaConfig,
     registerBrokerModificationsHandler(newBrokers)
 
     // Clean up any shutdown znodes that may be left behind from when these brokers had shut down before.
-    newBrokers.foreach(zkClient.removeBrokerShutdown(_, controllerContext.epochZkVersion))
+    zkClient.removeBrokerShutdown(newBrokers, controllerContext.epochZkVersion)
   }
 
   private def maybeResumeReassignments(shouldResume: (TopicPartition, ReplicaAssignment) => Boolean): Unit = {

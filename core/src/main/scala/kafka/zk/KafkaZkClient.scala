@@ -500,9 +500,10 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
     }
   }
 
-  def removeBrokerShutdown(brokerId: Int, expectedControllerEpochZkVersion: Int): Unit = {
-    val deleteRequest = DeleteRequest(BrokerShutdownIdZNode.path(brokerId), ZkVersion.MatchAnyVersion)
-    retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
+  def removeBrokerShutdown(brokerIds: Seq[Int], expectedControllerEpochZkVersion: Int): Unit = {
+    val deleteRequests = brokerIds.map(brokerId =>
+      DeleteRequest(BrokerShutdownIdZNode.path(brokerId), ZkVersion.MatchAnyVersion))
+    retryRequestsUntilConnected(deleteRequests, expectedControllerEpochZkVersion)
   }
 
   /**

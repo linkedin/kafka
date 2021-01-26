@@ -468,20 +468,22 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
    * Get the map of brokerId -> brokerEpoch. This is the last known controlled shutdown performed for each broker.
    */
   def getBrokerShutdownEntries: Map[Int, Long] = {
-    getChildren(BrokerShutdownNode.path)
-      .map(_.toInt)
-      .map(brokerId => {
-        val getDataRequest = GetDataRequest(BrokerShutdownIdZNode.path(brokerId))
-        val getDataResponse = retryRequestUntilConnected(getDataRequest)
-        getDataResponse.resultCode match {
-          case Code.OK =>
-            brokerId -> BrokerShutdownIdZNode.decode(getDataResponse.data)
-          case Code.NONODE =>
-            brokerId -> -1L
-          case _ => throw getDataResponse.resultException.get
-        }
-      })
-      .toMap
+    val brokerIds = getChildren(BrokerShutdownNode.path).map(_.toInt).sorted;
+
+    val getDataRequests = brokerIds.map(brokerId => GetDataRequest(
+      BrokerShutdownIdZNode.path(brokerId),
+      ctx = Some(brokerId)))
+
+    val getDataResponses = retryRequestsUntilConnected(getDataRequests)
+    getDataResponses.flatMap { getDataResponse =>
+      val brokerId = getDataResponse.ctx.get.asInstanceOf[Int]
+      getDataResponse.resultCode match {
+        case Code.OK =>
+          Some(brokerId, BrokerShutdownIdZNode.decode(getDataResponse.data))
+        case Code.NONODE => None
+        case _ => throw getDataResponse.resultException.get
+      }
+    }.toMap
   }
 
   /*

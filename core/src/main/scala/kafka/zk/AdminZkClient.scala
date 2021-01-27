@@ -105,6 +105,9 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
 
     // create the partition assignment
     writeTopicPartitionAssignment(topic, partitionReplicaAssignment.mapValues(ReplicaAssignment(_)).toMap, isUpdate = false)
+
+    // create the change notification
+    zkClient.createConfigChangeNotification(ConfigType.Topic + '/' + topic)
   }
 
   /**

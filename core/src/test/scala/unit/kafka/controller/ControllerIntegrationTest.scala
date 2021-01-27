@@ -572,7 +572,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     assertEquals(0, partitionsRemaining.size)
     var partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
     var leaderAfterShutdown = partitionStateInfo.leader
-    assertEquals(0, leaderAfterShutdown)
+    assertTrue(Set(0, 1, 3).contains(leaderAfterShutdown))
     assertEquals(3, partitionStateInfo.isr.size)
     assertEquals(List(0, 1, 3), partitionStateInfo.isr.asScala)
 

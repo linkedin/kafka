@@ -585,6 +585,9 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
 
     TestUtils.waitUntilTrue(() => notEnoughReplicasDetected, "Fail to detect expected NotEnoughReplicasException")
 
+    // The epoch for broker 2 will be 49 every time. This is because every time a test case is run in this suite, a
+    // fresh ZooKeeper state is created, and the epoch comes from the czxid of the broker znode. Since this test always
+    // registers the brokers one at a time in the same order, from 3 to 0, the epochs will be consistent across runs.
     val expectedShutdownEntries = Map(2 -> 49)
     assertEquals(expectedShutdownEntries, zkClient.getBrokerShutdownEntries)
 

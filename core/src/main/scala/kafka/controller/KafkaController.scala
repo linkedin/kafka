@@ -43,7 +43,7 @@ import org.apache.kafka.server.policy.CreateTopicPolicy
 import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 sealed trait ElectionTrigger
 final case object AutoTriggered extends ElectionTrigger
@@ -1686,6 +1686,22 @@ class KafkaController(val config: KafkaConfig,
       s"[$addedPartitionReplicaAssignment]")
     if (addedPartitionReplicaAssignment.nonEmpty)
       onNewPartitionCreation(addedPartitionReplicaAssignment.keySet)
+
+    // Get the configuration for all newly created topics. We need this in order to update
+    // controllerContext.topicMinIsrConfig, a topicName => min.insync.replicas map. This map is already updated using
+    // DynamicConfigManager. Its TopicConfigHandler calls kafka.controller.KafkaController.setMinInSyncReplicas for
+    // all existing topics on broker startup, and also any time the configuration of a topic changes. It does not,
+    // however, notify the controller of newly created topics.
+    //
+    // So to get the min.insync.replicas of newly created topics we need to get the configuration of the newly created
+    // topics we were just notified of here.
+    newTopics.foreach(topicName => {
+      val properties = zkClient.getEntityConfigs(ConfigType.Topic, topicName)
+      Try(properties.getProperty(KafkaConfig.MinInSyncReplicasProp).toInt) match {
+        case Success(minInSyncReplicas) => controllerContext.topicMinIsrConfig += topicName -> minInSyncReplicas
+        case _ =>
+      }
+    })
   }
 
   private def processLogDirEventNotification(): Unit = {

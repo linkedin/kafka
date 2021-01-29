@@ -1096,16 +1096,6 @@ public class NetworkClient implements KafkaClient {
             Map<String, Errors> errors = response.errors();
             if (!errors.isEmpty()) {
                 log.warn("Error while fetching metadata with correlation id {} : {}", requestHeader.correlationId(), errors);
-                // Print additional debugging information such as leader id and epoch for partitions fail metadata fetch
-                // with UNKNOWN_TOPIC_OR_PARTITION error
-                if (errors.containsValue(Errors.UNKNOWN_TOPIC_OR_PARTITION)) {
-                    List<MetadataResponse.PartitionMetadata> partitionMetadataList = response.topicMetadata().stream()
-                        .flatMap(topicMetadata -> topicMetadata.partitionMetadata().stream()
-                            .filter(partitionMetadata -> partitionMetadata.error() == Errors.UNKNOWN_TOPIC_OR_PARTITION))
-                        .collect(Collectors.toList());
-                    log.warn("Unable to fetch metadata from source {} with correlation id {} for topic partitions with these metadata"
-                        + " {}", source, requestHeader.correlationId(), partitionMetadataList);
-                }
             }
 
             // Don't update the cluster if there are no valid nodes...the topic we want may still be in the process of being

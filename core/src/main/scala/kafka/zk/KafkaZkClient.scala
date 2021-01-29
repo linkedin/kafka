@@ -347,6 +347,30 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
   }
 
   /**
+   * Get entity configs for a given sequence of entities
+   * @param rootEntityType entity type
+   * @param sanitizedEntityNames The names of all of the entities
+   * @return The sucesssfully gathered configurations. Any which are not found or cannot be decoded will be omitted.
+   */
+  def getMultipleEntityConfigs(rootEntityType: String, sanitizedEntityNames: Seq[String]): Map[String, Properties] = {
+    val getDataRequests = sanitizedEntityNames.map(entityName =>
+      GetDataRequest(ConfigEntityZNode.path(rootEntityType, entityName), ctx = Some(entityName)))
+    retryRequestsUntilConnected(getDataRequests)
+      .flatMap { getDataResponse =>
+        val entityName = getDataResponse.ctx.get.asInstanceOf[String]
+        getDataResponse.resultCode match {
+          case Code.OK =>
+            Some(entityName, ConfigEntityZNode.decode(getDataResponse.data))
+          case Code.NONODE => None
+          case _ => {
+            error(s"Unable to deserialize $rootEntityType entity config ${ConfigEntityZNode.path(rootEntityType, entityName)}")
+            throw getDataResponse.resultException.get
+          }
+        }
+      }.toMap
+  }
+
+  /**
    * Sets or creates the entity znode path with the given configs depending
    * on whether it already exists or not.
    *

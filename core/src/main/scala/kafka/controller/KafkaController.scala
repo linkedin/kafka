@@ -865,6 +865,21 @@ class KafkaController(val config: KafkaConfig,
     info(s"Initialized broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
 
     controllerContext.allTopics = zkClient.getAllTopicsInCluster
+
+    // Load the min.insync.replicas config for each topic. This updates the controllerContext.topicMinIsrConfig map.
+    //
+    // The goal is to keep this map up to date with all existing topics. Unfortunately it has to be updated in three
+    // differnt places to make that possible.
+    //
+    // 1. DynamicConfigManager and its TopicConfigHandler calls kafka.controller.KafkaController.setMinInSyncReplicas
+    //    for all existing topics on broker startup, and also any time the configuration of a topic changes. It does
+    //    not, however, notify the controller of newly created topics.
+    // 2. kafka.controller.KafkaController.processTopicChange is called by a ZooKeeper watch on /topics any time a new
+    //    topic is created. This handles newly created topics, but this handler *only* works in the active controller.
+    // 3. Right here when the controller is initialized after failover. This handles any topics which were created
+    //    between the moment this broker started and right now when it becomes controller again.
+    loadMinIsrForTopics(controllerContext.allTopics)
+
     rearrangePartitionReplicaAssignmentForNewTopics(controllerContext.allTopics.toSet)
     registerPartitionModificationsHandlers(controllerContext.allTopics.toSeq)
     getReplicaAssignmentPolicyCompliant(controllerContext.allTopics.toSet).foreach {
@@ -1687,21 +1702,20 @@ class KafkaController(val config: KafkaConfig,
     if (addedPartitionReplicaAssignment.nonEmpty)
       onNewPartitionCreation(addedPartitionReplicaAssignment.keySet)
 
-    // Get the configuration for all newly created topics. We need this in order to update
-    // controllerContext.topicMinIsrConfig, a topicName => min.insync.replicas map. This map is already updated using
-    // DynamicConfigManager. Its TopicConfigHandler calls kafka.controller.KafkaController.setMinInSyncReplicas for
-    // all existing topics on broker startup, and also any time the configuration of a topic changes. It does not,
-    // however, notify the controller of newly created topics.
+    // Load the min.insync.replicas config for each topic. This updates the controllerContext.topicMinIsrConfig map.
     //
-    // So to get the min.insync.replicas of newly created topics we need to get the configuration of the newly created
-    // topics we were just notified of here.
-    newTopics.foreach(topicName => {
-      val properties = zkClient.getEntityConfigs(ConfigType.Topic, topicName)
-      Try(properties.getProperty(KafkaConfig.MinInSyncReplicasProp).toInt) match {
-        case Success(minInSyncReplicas) => controllerContext.topicMinIsrConfig += topicName -> minInSyncReplicas
-        case _ =>
-      }
-    })
+    // The goal is to keep this map up to date with all existing topics. Unfortunately it has to be updated in three
+    // differnt places to make that possible.
+    //
+    // 1. DynamicConfigManager and its TopicConfigHandler calls kafka.controller.KafkaController.setMinInSyncReplicas
+    //    for all existing topics on broker startup, and also any time the configuration of a topic changes. It does
+    //    not, however, notify the controller of newly created topics.
+    // 2. This handler is called by a ZooKeeper watch on /topics any time a new topic is created. This handles newly
+    //    created topics, but this handler *only* works in the active controller.
+    // 3. kafka.controller.KafkaController.initializeControllerContext when the controller is initialized after
+    //    failover. This handles any topics which were created between the moment this broker started and right now when
+    //    it becomes controller again.
+    loadMinIsrForTopics(newTopics)
   }
 
   private def processLogDirEventNotification(): Unit = {
@@ -2128,6 +2142,15 @@ class KafkaController(val config: KafkaConfig,
         case(partition, replicas)=> (new TopicPartition(topic, partition), replicas)
       }
     }
+  }
+
+  private def loadMinIsrForTopics(topicNames: Set[String]): Unit = {
+    zkClient.getMultipleEntityConfigs(ConfigType.Topic, topicNames.toSeq).foreach(entity => {
+      Try(entity._2.getProperty(KafkaConfig.MinInSyncReplicasProp).toInt) match {
+        case Success(minInSyncReplicas) => controllerContext.topicMinIsrConfig += entity._1 -> minInSyncReplicas
+        case _ =>
+      }
+    })
   }
 
   override def process(event: ControllerEvent): Unit = {

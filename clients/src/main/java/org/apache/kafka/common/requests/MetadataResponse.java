@@ -60,6 +60,7 @@ public class MetadataResponse extends AbstractResponse {
     private final MetadataResponseData data;
     private volatile Holder holder;
     private final boolean hasReliableLeaderEpochs;
+    private volatile String source;
 
     public MetadataResponse(MetadataResponseData data) {
         this(data, true);
@@ -224,6 +225,21 @@ public class MetadataResponse extends AbstractResponse {
         return this.data.clusterId();
     }
 
+    /**
+     * The source broker id of the broker that returned this metadata response
+     * @return broker id
+     */
+    public String source() {
+        return this.source;
+    }
+
+    /**
+     * Set the source broker id
+     * @param source broker id
+     */
+    public void setSource(String source) {
+        this.source = source;
+    }
     /**
      * Check whether the leader epochs returned from the response can be relied on
      * for epoch validation in Fetch, ListOffsets, and OffsetsForLeaderEpoch requests.

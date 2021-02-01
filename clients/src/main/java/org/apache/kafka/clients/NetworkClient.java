@@ -863,9 +863,10 @@ public class NetworkClient implements KafkaClient {
             AbstractResponse body = AbstractResponse.
                     parseResponse(req.header.apiKey(), responseStruct, req.header.apiVersion());
             maybeThrottle(body, req.header.apiVersion(), req.destination, now);
-            if (req.isInternalRequest && body instanceof MetadataResponse)
+            if (req.isInternalRequest && body instanceof MetadataResponse) {
+                ((MetadataResponse) body).setSource(source);
                 metadataUpdater.handleSuccessfulResponse(req.header, now, (MetadataResponse) body);
-            else if (req.isInternalRequest && body instanceof ApiVersionsResponse)
+            } else if (req.isInternalRequest && body instanceof ApiVersionsResponse)
                 handleApiVersionsResponse(responses, req, now, (ApiVersionsResponse) body);
             else
                 responses.add(req.completed(body, now));
@@ -1098,13 +1099,13 @@ public class NetworkClient implements KafkaClient {
                 log.warn("Error while fetching metadata with correlation id {} : {}", requestHeader.correlationId(), errors);
                 // Print additional debugging information such as leader id and epoch for partitions fail metadata fetch
                 // with UNKNOWN_TOPIC_OR_PARTITION error
-                if (errors.containsKey(Errors.UNKNOWN_TOPIC_OR_PARTITION)) {
+                if (errors.containsValue(Errors.UNKNOWN_TOPIC_OR_PARTITION)) {
                     List<MetadataResponse.PartitionMetadata> partitionMetadataList = response.topicMetadata().stream()
                         .flatMap(topicMetadata -> topicMetadata.partitionMetadata().stream()
                             .filter(partitionMetadata -> partitionMetadata.error() == Errors.UNKNOWN_TOPIC_OR_PARTITION))
                         .collect(Collectors.toList());
-                    log.warn("Unable to fetch metadata with correlation id {} for topic partitions with these metadata"
-                        + " {}", requestHeader.correlationId(), partitionMetadataList);
+                    log.warn("Unable to fetch metadata from source {} with correlation id {} for topic partitions with these metadata"
+                        + " {}", response.source(), requestHeader.correlationId(), partitionMetadataList);
                 }
             }
 

@@ -864,8 +864,7 @@ public class NetworkClient implements KafkaClient {
                     parseResponse(req.header.apiKey(), responseStruct, req.header.apiVersion());
             maybeThrottle(body, req.header.apiVersion(), req.destination, now);
             if (req.isInternalRequest && body instanceof MetadataResponse) {
-                ((MetadataResponse) body).setSource(source);
-                metadataUpdater.handleSuccessfulResponse(req.header, now, (MetadataResponse) body);
+                metadataUpdater.handleSuccessfulResponse(req.header, now, (MetadataResponse) body, source);
             } else if (req.isInternalRequest && body instanceof ApiVersionsResponse)
                 handleApiVersionsResponse(responses, req, now, (ApiVersionsResponse) body);
             else
@@ -1078,7 +1077,7 @@ public class NetworkClient implements KafkaClient {
         }
 
         @Override
-        public void handleSuccessfulResponse(RequestHeader requestHeader, long now, MetadataResponse response) {
+        public void handleSuccessfulResponse(RequestHeader requestHeader, long now, MetadataResponse response, String source) {
             // If any partition has leader with missing listeners, log up to ten of these partitions
             // for diagnosing broker configuration issues.
             // This could be a transient issue if listeners were added dynamically to brokers.
@@ -1105,7 +1104,7 @@ public class NetworkClient implements KafkaClient {
                             .filter(partitionMetadata -> partitionMetadata.error() == Errors.UNKNOWN_TOPIC_OR_PARTITION))
                         .collect(Collectors.toList());
                     log.warn("Unable to fetch metadata from source {} with correlation id {} for topic partitions with these metadata"
-                        + " {}", response.source(), requestHeader.correlationId(), partitionMetadataList);
+                        + " {}", source, requestHeader.correlationId(), partitionMetadataList);
                 }
             }
 

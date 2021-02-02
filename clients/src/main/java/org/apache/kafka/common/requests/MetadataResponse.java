@@ -226,21 +226,6 @@ public class MetadataResponse extends AbstractResponse {
     }
 
     /**
-     * The source broker id of the broker that returned this metadata response
-     * @return broker id
-     */
-    public String source() {
-        return this.source;
-    }
-
-    /**
-     * Set the source broker id
-     * @param source broker id
-     */
-    public void setSource(String source) {
-        this.source = source;
-    }
-    /**
      * Check whether the leader epochs returned from the response can be relied on
      * for epoch validation in Fetch, ListOffsets, and OffsetsForLeaderEpoch requests.
      * If not, then the client will not retain the leader epochs and hence will not

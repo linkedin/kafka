@@ -60,7 +60,6 @@ public class MetadataResponse extends AbstractResponse {
     private final MetadataResponseData data;
     private volatile Holder holder;
     private final boolean hasReliableLeaderEpochs;
-    private volatile String source;
 
     public MetadataResponse(MetadataResponseData data) {
         this(data, true);

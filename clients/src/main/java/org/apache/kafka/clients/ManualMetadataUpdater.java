@@ -81,7 +81,8 @@ public class ManualMetadataUpdater implements MetadataUpdater {
     }
 
     @Override
-    public void handleCompletedMetadataResponse(RequestHeader requestHeader, long now, MetadataResponse response) {
+    public void handleCompletedMetadataResponse(RequestHeader requestHeader, long now, MetadataResponse response,
+        String destination) {
         // Do nothing
     }
 

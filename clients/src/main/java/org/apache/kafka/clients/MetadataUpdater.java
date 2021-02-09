@@ -76,7 +76,8 @@ public interface MetadataUpdater extends Closeable {
      * This provides a mechanism for the `MetadataUpdater` implementation to use the NetworkClient instance for its own
      * requests with special handling for completed receives of such requests.
      */
-    void handleCompletedMetadataResponse(RequestHeader requestHeader, long now, MetadataResponse metadataResponse);
+    void handleCompletedMetadataResponse(RequestHeader requestHeader, long now, MetadataResponse metadataResponse,
+        String destination);
 
     /**
      * Schedules an update of the current cluster metadata info. A subsequent call to `maybeUpdate` would trigger the

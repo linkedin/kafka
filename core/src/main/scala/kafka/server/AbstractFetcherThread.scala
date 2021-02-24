@@ -20,13 +20,12 @@ package kafka.server
 import java.nio.ByteBuffer
 import java.util.Optional
 import java.util.concurrent.locks.ReentrantLock
-
 import kafka.cluster.BrokerEndPoint
 import kafka.utils.{DelayedItem, Pool, ShutdownableThread}
 import org.apache.kafka.common.errors._
 import org.apache.kafka.common.requests.EpochEndOffset._
 import kafka.common.ClientIdAndBroker
-import kafka.metrics.KafkaMetricsGroup
+import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
 import kafka.utils.CoreUtils.inLock
 import org.apache.kafka.common.protocol.Errors
 import AbstractFetcherThread._
@@ -36,7 +35,6 @@ import scala.collection.JavaConverters._
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.Consumer
-
 import com.yammer.metrics.core.Gauge
 import kafka.log.LogAppendInfo
 import org.apache.kafka.common.{InvalidRecordException, TopicPartition}
@@ -780,6 +778,12 @@ class FetcherStats(metricId: ClientIdAndBroker) extends KafkaMetricsGroup {
 
   val byteRate = newMeter(FetcherMetrics.BytesPerSec, "bytes", TimeUnit.SECONDS, tags)
 
+  val rateAndTimeMetrics: Map[FetcherState, KafkaTimer] = FetcherState.values.flatMap { state =>
+    state.rateAndTimeMetricName.map { metricName =>
+      state -> new KafkaTimer(newTimer(metricName, TimeUnit.MILLISECONDS, TimeUnit.SECONDS, tags))
+    }
+  }.toMap
+
   def unregister(): Unit = {
     removeMetric(FetcherMetrics.RequestsPerSec, tags)
     removeMetric(FetcherMetrics.RequestFailuresPerSec, tags)
@@ -795,6 +799,10 @@ case class ClientIdTopicPartition(clientId: String, topicPartition: TopicPartiti
 sealed trait ReplicaState
 case object Truncating extends ReplicaState
 case object Fetching extends ReplicaState
+
+sealed trait ReplicaLifeCycleState
+case object ReplicaInitial extends ReplicaLifeCycleState
+case object ReplicaPastTruncation extends ReplicaLifeCycleState
 
 object PartitionFetchState {
   def apply(offset: Long, currentLeaderEpoch: Int, state: ReplicaState): PartitionFetchState = {

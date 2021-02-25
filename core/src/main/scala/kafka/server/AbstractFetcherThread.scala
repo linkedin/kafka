@@ -426,7 +426,7 @@ abstract class AbstractFetcherThread(name: String,
       failedPartitions.add(topicPartition)
       removePartitions(Set(topicPartition))
     } finally partitionMapLock.unlock()
-    warn(s"Partition $topicPartition marked as failed")
+    warnsets(s"Partition $topicPartition marked as failed")
   }
 
   def addPartitions(initialFetchStates: Map[TopicPartition, OffsetAndEpoch]): Set[TopicPartition] = {

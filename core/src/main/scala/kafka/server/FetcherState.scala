@@ -28,9 +28,13 @@ object FetcherState {
     def value = 2
   }
 
-  case object TruncateAndFetch extends FetcherState {
+  case object GetPartitionCount extends FetcherState {
     def value = 3
   }
 
-  val values: Seq[FetcherState] = Seq(Idle, AddPartitions, RemovePartitions, TruncateAndFetch)
+  case object TruncateAndFetch extends FetcherState {
+    def value = 4
+  }
+
+  val values: Seq[FetcherState] = Seq(Idle, AddPartitions, RemovePartitions, GetPartitionCount, TruncateAndFetch)
 }

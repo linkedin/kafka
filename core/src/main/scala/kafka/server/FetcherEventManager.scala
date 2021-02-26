@@ -74,9 +74,9 @@ class FetcherEventManager(fetcherId: String,
     future
   }
 
-  def shutdownIfIdle(): KafkaFuture[Boolean] = {
-    val future = new KafkaFutureImpl[Boolean]{}
-    put(ShutdownIfIdle(future))
+  def getPartitionsCount(): KafkaFuture[Int] = {
+    val future = new KafkaFutureImpl[Int]{}
+    put(GetPartitionCount(future))
     future
   }
 

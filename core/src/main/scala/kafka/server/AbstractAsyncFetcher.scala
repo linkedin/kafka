@@ -50,10 +50,16 @@ case class RemovePartitions(topicPartitions: Set[TopicPartition], future: KafkaF
   override def state = FetcherState.RemovePartitions
 }
 
+case class GetPartitionCount(future: KafkaFutureImpl[Int]) extends FetcherEvent {
+  override def priority = 2
+  override def state = FetcherState.GetPartitionCount
+}
+
 case object TruncateAndFetch extends FetcherEvent {
   override def priority = 1
   override def state = FetcherState.TruncateAndFetch
 }
+
 
 class DelayedFetcherEvent(delay: Long) extends DelayedItem(delayMs = delay) {
 }

@@ -24,10 +24,8 @@ import com.yammer.metrics.core.Gauge
 import org.apache.kafka.common.{KafkaFuture, TopicPartition}
 import org.apache.kafka.common.utils.Utils
 
-import scala.collection.mutable
+import scala.collection.{Map, Set, mutable}
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.{Map, Set}
-import scala.concurrent.{Future, future}
 
 abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String, clientId: String, numFetchers: Int)
   extends Logging with KafkaMetricsGroup {
@@ -221,33 +219,25 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
 
   def shutdownIdleFetcherThreads(): Unit = {
     lock synchronized {
-      var futures : mutable.Buffer[KafkaFuture[Void]] = new ArrayBuffer()
+      val futures : mutable.HashMap[BrokerIdAndFetcherId, KafkaFuture[Int]] = mutable.HashMap.empty
+
       for ((key, fetcher) <- fetcherThreadMap) {
-        futures += fetcher.shutdownIfIdle().thenApply(new KafkaFuture.Function[Boolean, Void]{
-          override def apply(isThreadShutdown: Boolean): Void = {
-            if (isThreadShutdown) {
-              fetcherThreadMap -= key
-            }
-            null
-          }
-        })
+        futures.put(key,fetcher.getPartitionsCount())
       }
 
-      val keysToBeRemoved = new mutable.HashSet[BrokerIdAndFetcherId]
-      for ((key, fetcher) <- fetcherThreadMap) {
-        if (fetcher.idle) {
-          fetcher.shutdown()
-          keysToBeRemoved += key
+      for ((key, partitionCountFuture) <- futures) {
+        if (partitionCountFuture.get() == 0) {
+          fetcherThreadMap.get(key).get.close()
+          fetcherThreadMap -= key
         }
       }
-      fetcherThreadMap --= keysToBeRemoved
     }
   }
 
   def closeAllFetchers(): Unit = {
     lock synchronized {
       for ( (_, fetcher) <- fetcherThreadMap) {
-        fetcher.initiateShutdown()
+        fetcher.close()
       }
 
       for ( (_, fetcher) <- fetcherThreadMap) {

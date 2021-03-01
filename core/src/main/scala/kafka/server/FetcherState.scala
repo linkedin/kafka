@@ -1,7 +1,5 @@
 package kafka.server
 
-import kafka.controller.ControllerState
-
 sealed abstract class FetcherState {
   def value: Byte
 

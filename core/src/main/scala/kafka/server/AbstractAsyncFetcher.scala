@@ -15,22 +15,23 @@ package kafka.server
 import kafka.cluster.BrokerEndPoint
 import kafka.common.ClientIdAndBroker
 import kafka.log.LogAppendInfo
+import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
 import kafka.server.AbstractFetcherThread.ResultWithPartitions
-import kafka.utils.{DelayedItem, Logging}
-import org.apache.kafka.common.{InvalidRecordException, KafkaFuture, TopicPartition}
+import kafka.utils.{DelayedItem, Logging, Pool}
 import org.apache.kafka.common.errors._
-import org.apache.kafka.common.requests.EpochEndOffset._
 import org.apache.kafka.common.internals.{KafkaFutureImpl, PartitionStates}
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.record.Records
+import org.apache.kafka.common.requests.EpochEndOffset._
 import org.apache.kafka.common.requests.{EpochEndOffset, FetchRequest, FetchResponse, OffsetsForLeaderEpochRequest}
 import org.apache.kafka.common.utils.Time
+import org.apache.kafka.common.{InvalidRecordException, TopicPartition}
 
 import java.util.Optional
-import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
-import scala.collection.{Map, Seq, Set, mutable}
 import scala.collection.JavaConverters._
+import scala.collection.{Map, Seq, Set, mutable}
 import scala.math.min
 
 
@@ -61,10 +62,7 @@ case object TruncateAndFetch extends FetcherEvent {
 }
 
 
-class DelayedFetcherEvent(delay: Long) extends DelayedItem(delayMs = delay) {
-}
-
-class BackoffEvent(delay: Long) extends DelayedFetcherEvent(delay) {
+class DelayedFetcherEvent(delay: Long, val fetcherEvent: FetcherEvent) extends DelayedItem(delayMs = delay) {
 }
 
 abstract class AbstractAsyncFetcher(fetcherId: String,
@@ -87,8 +85,8 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
   }
 
   private val metricId = ClientIdAndBroker(clientId, sourceBroker.host, sourceBroker.port)
-  val fetcherStats = new FetcherStats(metricId)
-  val fetcherLagStats = new FetcherLagStats(metricId)
+  val fetcherStats = new AsyncFetcherStats(metricId)
+  val fetcherLagStats = new AsyncFetcherLagStats(metricId)
   var idle = false
 
   // process fetched data
@@ -129,7 +127,7 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
   def doWork(): Unit = {
     maybeTruncate()
     if (maybeFetch()) {
-      fetcherEventManager.schedule(new BackoffEvent(fetchBackOffMs))
+      fetcherEventManager.schedule(new DelayedFetcherEvent(fetchBackOffMs, TruncateAndFetch))
     } else {
       // enqueue the TruncateAndFetch to start the next round of fetching
       fetcherEventManager.put(TruncateAndFetch)
@@ -175,6 +173,8 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
       case RemovePartitions(topicPartitions, future) =>
         removePartitions(topicPartitions)
         future.complete(null)
+      case GetPartitionCount(future) =>
+        future.complete(partitionStates.size())
       case TruncateAndFetch =>
         doWork()
     }
@@ -684,4 +684,58 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
     idle = partitionStates.size() <= 0
   }
 
+}
+
+
+class AsyncFetcherStats(metricId: ClientIdAndBroker) extends KafkaMetricsGroup {
+  val tags = Map("clientId" -> metricId.clientId,
+    "brokerHost" -> metricId.brokerHost,
+    "brokerPort" -> metricId.brokerPort.toString)
+
+  val requestRate = newMeter(FetcherMetrics.RequestsPerSec, "requests", TimeUnit.SECONDS, tags)
+
+  val requestFailureRate = newMeter(FetcherMetrics.RequestFailuresPerSec, "requestFailures", TimeUnit.SECONDS, tags)
+
+  val byteRate = newMeter(FetcherMetrics.BytesPerSec, "bytes", TimeUnit.SECONDS, tags)
+
+  val rateAndTimeMetrics: Map[FetcherState, KafkaTimer] = FetcherState.values.flatMap { state =>
+    state.rateAndTimeMetricName.map { metricName =>
+      state -> new KafkaTimer(newTimer(metricName, TimeUnit.MILLISECONDS, TimeUnit.SECONDS))
+    }
+  }.toMap
+
+  def unregister(): Unit = {
+    removeMetric(FetcherMetrics.RequestsPerSec, tags)
+    removeMetric(FetcherMetrics.RequestFailuresPerSec, tags)
+    removeMetric(FetcherMetrics.BytesPerSec, tags)
+  }
+
+}
+
+class AsyncFetcherLagStats(metricId: ClientIdAndBroker) {
+  private val valueFactory = (k: ClientIdTopicPartition) => new FetcherLagMetrics(k)
+  val stats = new Pool[ClientIdTopicPartition, FetcherLagMetrics](Some(valueFactory))
+
+  def getAndMaybePut(topicPartition: TopicPartition): FetcherLagMetrics = {
+    stats.getAndMaybePut(ClientIdTopicPartition(metricId.clientId, topicPartition))
+  }
+
+  def isReplicaInSync(topicPartition: TopicPartition): Boolean = {
+    val fetcherLagMetrics = stats.get(ClientIdTopicPartition(metricId.clientId, topicPartition))
+    if (fetcherLagMetrics != null)
+      fetcherLagMetrics.lag <= 0
+    else
+      false
+  }
+
+  def unregister(topicPartition: TopicPartition): Unit = {
+    val lagMetrics = stats.remove(ClientIdTopicPartition(metricId.clientId, topicPartition))
+    if (lagMetrics != null) lagMetrics.unregister()
+  }
+
+  def unregister(): Unit = {
+    stats.keys.toBuffer.foreach { key: ClientIdTopicPartition =>
+      unregister(key.topicPartition)
+    }
+  }
 }

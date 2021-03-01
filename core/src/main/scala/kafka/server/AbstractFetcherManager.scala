@@ -33,7 +33,7 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
   // package private for test
   private[server] val fetcherThreadMap = new mutable.HashMap[BrokerIdAndFetcherId, T]
   private val lock = new Object
-  private var numFetchersPerBroker = numFetchers
+  private val numFetchersPerBroker = numFetchers
   val failedPartitions = new FailedPartitions
   this.logIdent = "[" + name + "] "
 
@@ -182,7 +182,7 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
             // reuse the fetcher thread
             currentFetcherThread
           case Some(f) =>
-            f.shutdown()
+            f.close()
             addAndStartFetcherThread(brokerAndFetcherId, brokerIdAndFetcherId)
           case None =>
             addAndStartFetcherThread(brokerAndFetcherId, brokerIdAndFetcherId)
@@ -205,7 +205,7 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
   }
 
   def removeFetcherForPartitions(partitions: Set[TopicPartition]): KafkaFuture[Void] = {
-    var futures : mutable.Buffer[KafkaFuture[Void]] = new ArrayBuffer()
+    val futures : mutable.Buffer[KafkaFuture[Void]] = new ArrayBuffer()
     lock synchronized {
       for (fetcher <- fetcherThreadMap.values)
         futures += fetcher.removePartitions(partitions)
@@ -240,9 +240,6 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
         fetcher.close()
       }
 
-      for ( (_, fetcher) <- fetcherThreadMap) {
-        fetcher.shutdown()
-      }
       fetcherThreadMap.clear()
     }
   }

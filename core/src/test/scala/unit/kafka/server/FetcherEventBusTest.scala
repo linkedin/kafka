@@ -1,12 +1,15 @@
 package unit.kafka.server
 
-import kafka.server.{AddPartitions, DelayedFetcherEvent, FetcherEventBus, QueuedFetcherEvent, RemovePartitions}
+import kafka.server
+import kafka.server.{AddPartitions, DelayedFetcherEvent, FetcherEvent, FetcherEventBus, QueuedFetcherEvent, RemovePartitions, TruncateAndFetch}
 import kafka.utils.MockTime
 import org.apache.kafka.common.utils.Time
-import org.junit.Assert.{assertTrue, fail}
+import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.Test
 
 import java.util.concurrent.{CountDownLatch, Executors}
+import scala.collection.Map
+import scala.collection.mutable.ArrayBuffer
 
 
 class FetcherEventBusTest {
@@ -51,6 +54,31 @@ class FetcherEventBusTest {
   }
 
   @Test
+  def testQueuedEventsWithDifferentPriorities(): Unit = {
+    val fetcherEventBus = new FetcherEventBus(new MockTime())
+
+    val lowPriorityTask = TruncateAndFetch
+    fetcherEventBus.put(lowPriorityTask)
+
+    val highPriorityTask = AddPartitions(Map.empty, null)
+    fetcherEventBus.put(highPriorityTask)
+
+    val expectedSequence = Seq(highPriorityTask, lowPriorityTask)
+
+    val actualSequence = ArrayBuffer[FetcherEvent]()
+
+    for (_ <- 0 until 2) {
+      fetcherEventBus.getNextEvent() match {
+        case Left(queuedFetcherEvent: QueuedFetcherEvent) =>
+          actualSequence += queuedFetcherEvent.event
+        case Right(_) => fail("a QueuedFetcherEvent should have been returned")
+      }
+    }
+
+    assertEquals(expectedSequence, actualSequence)
+  }
+
+  @Test
   def testDelayedEvent(): Unit = {
     val time = Time.SYSTEM
     val fetcherEventBus = new FetcherEventBus(time)
@@ -78,6 +106,39 @@ class FetcherEventBusTest {
     })
 
     future.get()
+    service.shutdown()
+  }
+
+  @Test
+  def testDelayedEventsWithDifferentDueTimes(): Unit = {
+    val time = Time.SYSTEM
+    val fetcherEventBus = new FetcherEventBus(time)
+    val secondTask = AddPartitions(Map.empty, null)
+    fetcherEventBus.schedule(new DelayedFetcherEvent(200, secondTask))
+
+    val firstTask = RemovePartitions(Set.empty, null)
+    fetcherEventBus.schedule(new DelayedFetcherEvent(100, firstTask))
+
+    val service = Executors.newSingleThreadExecutor()
+
+    val expectedSequence = Seq(firstTask, secondTask)
+
+    val actualSequence = ArrayBuffer[FetcherEvent]()
+    val future = service.submit(new Runnable {
+      override def run(): Unit = {
+        for (_ <- 0 until 2) {
+          fetcherEventBus.getNextEvent() match {
+            case Left(_) => fail("a DelayedFetcherEvent should have been returned")
+            case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
+              actualSequence += delayedFetcherEvent.fetcherEvent
+            }
+          }
+        }
+      }
+    })
+
+    future.get()
+    assertEquals(expectedSequence, actualSequence)
     service.shutdown()
   }
 

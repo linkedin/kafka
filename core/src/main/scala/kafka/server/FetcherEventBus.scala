@@ -14,9 +14,20 @@ class FetcherEventBus(time: Time) {
 
   private val queue = new PriorityQueue[QueuedFetcherEvent]
   private val scheduler = new SimpleScheduler[DelayedFetcherEvent]
+  @volatile private var shutdownInitialized = false
 
   def size() = {
     queue.size()
+  }
+
+  /**
+   * close should be called in a thread different from the one calling getNextEvent()
+   */
+  def close(): Unit = {
+    shutdownInitialized = true
+    inLock(eventLock) {
+      newEventCondition.signalAll()
+    }
   }
 
   def put(event: FetcherEvent): QueuedFetcherEvent = {
@@ -51,7 +62,7 @@ class FetcherEventBus(time: Time) {
       var result : Either[QueuedFetcherEvent, DelayedFetcherEvent] = null
 
       breakable {
-        while (true) {
+        while (!shutdownInitialized) {
           val (delayedFetcherEvent, delayMs) = scheduler.peek()
 
 //          println(s"delayed ${delayedFetcherEvent.nonEmpty}, queue:${!queue.isEmpty}")

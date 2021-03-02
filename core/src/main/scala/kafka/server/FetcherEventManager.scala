@@ -26,10 +26,11 @@ trait FetcherEventProcessor {
 
 
 class QueuedFetcherEvent(val event: FetcherEvent,
-                         val enqueueTimeMs: Long)
+                         val enqueueTimeMs: Long) extends Comparable[QueuedFetcherEvent] {
+  override def compareTo(other: QueuedFetcherEvent): Int = event.compareTo(other.event)
+}
 
 object FetcherEventManager {
-  val FetcherEventThreadName = "fetcher-event-thread"
   val EventQueueTimeMetricName = "EventQueueTimeMs"
   val EventQueueSizeMetricName = "EventQueueSize"
 }
@@ -96,7 +97,7 @@ class FetcherEventManager(name: String,
   }.toMap
 
   @volatile private var _state: FetcherState = FetcherState.Idle
-  private[server] val thread = new FetcherEventThread(FetcherEventThreadName)
+  private[server] val thread = new FetcherEventThread(name)
 
   def fetcherStats: AsyncFetcherStats = processor.fetcherStats
   def fetcherLagStats : AsyncFetcherLagStats = processor.fetcherLagStats
@@ -142,6 +143,7 @@ class FetcherEventManager(name: String,
   def close(): Unit = {
     try {
       thread.initiateShutdown()
+      fetcherEventBus.close()
       thread.awaitShutdown()
     } finally {
       removeMetric(EventQueueTimeMetricName)

@@ -1,6 +1,6 @@
 package unit.kafka.server
 
-import kafka.server.FetcherEventBus
+import kafka.server.{AddPartitions, DelayedFetcherEvent, FetcherEventBus, QueuedFetcherEvent, RemovePartitions}
 import kafka.utils.MockTime
 import org.apache.kafka.common.utils.Time
 import org.junit.Assert.{assertTrue, fail}

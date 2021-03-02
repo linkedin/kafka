@@ -35,9 +35,12 @@ import scala.collection.{Map, Seq, Set, mutable}
 import scala.math.min
 
 
-sealed trait FetcherEvent {
-  def priority: Int
+sealed trait FetcherEvent extends Comparable[FetcherEvent] {
+  def priority: Int // a higher priority value means being more important
   def state: FetcherState
+  override def compareTo(other: FetcherEvent): Int = {
+    other.priority - this.priority
+  }
 }
 
 // TODO: modify the AddPartitions event to include remove partitions as well
@@ -75,13 +78,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
   type EpochData = OffsetsForLeaderEpochRequest.PartitionData
 
   private val partitionStates = new PartitionStates[PartitionFetchState]
-
-  private var fetcherEventManager: FetcherEventManager = _
-
-  // TODO: set the fetcherEventManager accordingly
-  def setFetcherEventManager(eventManager: FetcherEventManager): Unit = {
-    fetcherEventManager = eventManager
-  }
 
   private val metricId = ClientIdAndBroker(clientId, sourceBroker.host, sourceBroker.port)
   val fetcherStats = new AsyncFetcherStats(metricId)

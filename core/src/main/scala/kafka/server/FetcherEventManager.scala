@@ -21,6 +21,7 @@ trait FetcherEventProcessor {
   def fetcherStats: AsyncFetcherStats
   def fetcherLagStats : AsyncFetcherLagStats
   def sourceBroker: BrokerEndPoint
+  def close(): Unit
 }
 
 
@@ -62,18 +63,20 @@ class SimpleScheduler[T <: DelayedItem] {
 }
 
 // TODO: add locks to the addPartitions, removePartitions, getPartitionsCount methods
-class FetcherEventManager(fetcherId: String,
+class FetcherEventManager(name: String,
+                          fetcherEventBus: FetcherEventBus,
                           processor: FetcherEventProcessor,
-                          time: Time,
-                          rateAndTimeMetrics: Map[FetcherState, KafkaTimer]) extends KafkaMetricsGroup {
+                          time: Time) extends KafkaMetricsGroup {
+
   import FetcherEventManager._
 
-  @volatile private var _state: FetcherState = FetcherState.Idle
-  private val eventLock = new ReentrantLock()
-  private val newEventCondition = eventLock.newCondition()
+  val rateAndTimeMetrics: Map[FetcherState, KafkaTimer] = FetcherState.values.flatMap { state =>
+    state.rateAndTimeMetricName.map { metricName =>
+      state -> new KafkaTimer(newTimer(metricName, TimeUnit.MILLISECONDS, TimeUnit.SECONDS))
+    }
+  }.toMap
 
-  private val queue = new PriorityQueue[QueuedFetcherEvent]
-  private val scheduler = new SimpleScheduler[DelayedFetcherEvent]
+  @volatile private var _state: FetcherState = FetcherState.Idle
   private[server] val thread = new FetcherEventThread(FetcherEventThreadName)
 
   def fetcherStats: AsyncFetcherStats = processor.fetcherStats
@@ -87,30 +90,33 @@ class FetcherEventManager(fetcherId: String,
     EventQueueSizeMetricName,
     new Gauge[Int] {
       def value: Int = {
-        queue.size()
+        fetcherEventBus.size()
       }
     }
   )
 
   def state: FetcherState = _state
 
-  def start(): Unit = thread.start()
+  def start(): Unit = {
+    fetcherEventBus.put(TruncateAndFetch)
+    thread.start()
+  }
 
   def addPartitions(initialFetchStates: Map[TopicPartition, OffsetAndEpoch]): KafkaFuture[Void] = {
     val future = new KafkaFutureImpl[Void] {}
-    put(AddPartitions(initialFetchStates, future))
+    fetcherEventBus.put(AddPartitions(initialFetchStates, future))
     future
   }
 
   def removePartitions(topicPartitions: Set[TopicPartition]): KafkaFuture[Void] = {
     val future = new KafkaFutureImpl[Void] {}
-    put(RemovePartitions(topicPartitions, future))
+    fetcherEventBus.put(RemovePartitions(topicPartitions, future))
     future
   }
 
   def getPartitionsCount(): KafkaFuture[Int] = {
     val future = new KafkaFutureImpl[Int]{}
-    put(GetPartitionCount(future))
+    fetcherEventBus.put(GetPartitionCount(future))
     future
   }
 
@@ -122,75 +128,20 @@ class FetcherEventManager(fetcherId: String,
       removeMetric(EventQueueTimeMetricName)
       removeMetric(EventQueueSizeMetricName)
     }
+
+    processor.close()
   }
 
-  def put(event: FetcherEvent): QueuedFetcherEvent = {
-    inLock(eventLock) {
-      val queuedEvent = new QueuedFetcherEvent(event, time.milliseconds())
-      queue.add(queuedEvent)
-      newEventCondition.signalAll()
-      queuedEvent
-    }
-  }
-
-  def schedule(delayedEvent: DelayedFetcherEvent) = {
-    inLock(eventLock) {
-      scheduler.schedule(delayedEvent)
-      newEventCondition.signalAll()
-    }
-  }
 
   class FetcherEventThread(name: String) extends ShutdownableThread(name = name, isInterruptible = false) {
-    logIdent = s"[FetcherEventThread fetcherId=$fetcherId] "
+    logIdent = s"[FetcherEventThread fetcherId=$name] "
 
-    /**
-     * There are 3 cases when the getNextEvent() method is called
-     * 1. There is at least one delayed event that has become current. If so, we return the delayed event with the earliest
-     * due time.
-     * 2. There is at least one event in the queue. If so, we return the event with the highest priority from the queue.
-     * 3. There are neither delayed events that have become current, nor queued events. We block until the earliest delayed
-     * event becomes current. A special case is that there are no delayed events at all, under which we would block
-     * indefinitely until being explicitly waken up by a new delayed or queued event.
-     *
-     * @return Either a QueuedFetcherEvent or a DelayedFetcherEvent that has become current
-     */
-    private def getNextEvent(): Either[QueuedFetcherEvent, DelayedFetcherEvent] = {
-      inLock(eventLock) {
-        var result : Either[QueuedFetcherEvent, DelayedFetcherEvent] = null
-
-        while (true) {
-          val (delayedFetcherEvent, delayMs) = scheduler.peek() match {
-            case Some(delayedEvent: DelayedFetcherEvent) => {
-              val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
-              if (delayMs == 0) {
-                (Some(delayedEvent), 0L)
-              } else {
-                (None, delayMs)
-              }
-            }
-            case _ => (None, Long.MaxValue)
-          }
-
-          if (delayedFetcherEvent.nonEmpty) {
-            result = Right(delayedFetcherEvent.get)
-            break
-          } else if (!queue.isEmpty) {
-            result = Left(queue.poll())
-            break
-          } else {
-            newEventCondition.wait(delayMs)
-          }
-        }
-
-        result
-      }
-    }
 
     /**
      * This method is repeatedly invoked until the thread shuts down or this method throws an exception
      */
     override def doWork(): Unit = {
-      val (fetcherEvent, optionalEnqueueTime) = getNextEvent() match {
+      val (fetcherEvent, optionalEnqueueTime) = fetcherEventBus.getNextEvent() match {
         case Left(dequeued: QueuedFetcherEvent) =>
           (dequeued.event, Some(dequeued.enqueueTimeMs))
 

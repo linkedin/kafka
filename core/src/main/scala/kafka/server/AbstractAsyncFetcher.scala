@@ -15,18 +15,18 @@ package kafka.server
 import kafka.cluster.BrokerEndPoint
 import kafka.common.ClientIdAndBroker
 import kafka.log.LogAppendInfo
-import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
+import kafka.metrics.KafkaMetricsGroup
 import kafka.server.AbstractFetcherThread.ResultWithPartitions
 import kafka.utils.{DelayedItem, Logging, Pool}
 import org.apache.kafka.common.errors._
 import org.apache.kafka.common.internals.{KafkaFutureImpl, PartitionStates}
 import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.record.Records
+import org.apache.kafka.common.record.{FileRecords, MemoryRecords, Records}
 import org.apache.kafka.common.requests.EpochEndOffset._
 import org.apache.kafka.common.requests.{EpochEndOffset, FetchRequest, FetchResponse, OffsetsForLeaderEpochRequest}
-import org.apache.kafka.common.utils.Time
 import org.apache.kafka.common.{InvalidRecordException, TopicPartition}
 
+import java.nio.ByteBuffer
 import java.util.Optional
 import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
@@ -65,12 +65,11 @@ case object TruncateAndFetch extends FetcherEvent {
 class DelayedFetcherEvent(delay: Long, val fetcherEvent: FetcherEvent) extends DelayedItem(delayMs = delay) {
 }
 
-abstract class AbstractAsyncFetcher(fetcherId: String,
-                                    clientId: String,
+abstract class AbstractAsyncFetcher(clientId: String,
                                     val sourceBroker: BrokerEndPoint,
                                     failedPartitions: FailedPartitions,
                                     fetchBackOffMs: Int = 0,
-                                    time: Time) extends FetcherEventProcessor with Logging {
+                                    fetcherEventBus: FetcherEventBus) extends FetcherEventProcessor with Logging {
 
   type FetchData = FetchResponse.PartitionData[Records]
   type EpochData = OffsetsForLeaderEpochRequest.PartitionData
@@ -116,21 +115,14 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
 
   protected def isOffsetForLeaderEpochSupported: Boolean
 
-  private[server] val eventManager = new FetcherEventManager(fetcherId, this, time,
-    fetcherStats.rateAndTimeMetrics)
-
-  def start(): Unit = {
-    fetcherEventManager.put(TruncateAndFetch)
-    eventManager.start()
-  }
 
   def doWork(): Unit = {
     maybeTruncate()
     if (maybeFetch()) {
-      fetcherEventManager.schedule(new DelayedFetcherEvent(fetchBackOffMs, TruncateAndFetch))
+      fetcherEventBus.schedule(new DelayedFetcherEvent(fetchBackOffMs, TruncateAndFetch))
     } else {
       // enqueue the TruncateAndFetch to start the next round of fetching
-      fetcherEventManager.put(TruncateAndFetch)
+      fetcherEventBus.put(TruncateAndFetch)
     }
   }
 
@@ -679,6 +671,16 @@ abstract class AbstractAsyncFetcher(fetcherId: String,
     maybeUpdateIdleFlag()
   }
 
+  protected def toMemoryRecords(records: Records): MemoryRecords = {
+    records match {
+      case r: MemoryRecords => r
+      case r: FileRecords =>
+        val buffer = ByteBuffer.allocate(r.sizeInBytes)
+        r.readInto(buffer, 0)
+        MemoryRecords.readableRecords(buffer)
+    }
+  }
+
   // This method should only be called when holding the partitionMapLock
   private def maybeUpdateIdleFlag(): Unit = {
     idle = partitionStates.size() <= 0
@@ -697,12 +699,6 @@ class AsyncFetcherStats(metricId: ClientIdAndBroker) extends KafkaMetricsGroup {
   val requestFailureRate = newMeter(FetcherMetrics.RequestFailuresPerSec, "requestFailures", TimeUnit.SECONDS, tags)
 
   val byteRate = newMeter(FetcherMetrics.BytesPerSec, "bytes", TimeUnit.SECONDS, tags)
-
-  val rateAndTimeMetrics: Map[FetcherState, KafkaTimer] = FetcherState.values.flatMap { state =>
-    state.rateAndTimeMetricName.map { metricName =>
-      state -> new KafkaTimer(newTimer(metricName, TimeUnit.MILLISECONDS, TimeUnit.SECONDS))
-    }
-  }.toMap
 
   def unregister(): Unit = {
     removeMetric(FetcherMetrics.RequestsPerSec, tags)

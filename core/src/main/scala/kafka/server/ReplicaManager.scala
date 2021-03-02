@@ -422,7 +422,7 @@ class ReplicaManager(val config: KafkaConfig,
         val partitions = stopReplicaRequest.partitions.asScala.toSet
         controllerEpoch = stopReplicaRequest.controllerEpoch
         // First stop fetchers for all partitions, then stop the corresponding replicas
-        replicaFetcherManager.removeFetcherForPartitions(partitions)
+        replicaFetcherManager.removeFetcherForPartitions(partitions).get()
 //        replicaAlterLogDirsManager.removeFetcherForPartitions(partitions)
         for (topicPartition <- partitions){
           try {
@@ -1402,7 +1402,7 @@ class ReplicaManager(val config: KafkaConfig,
 
     try {
       // First stop fetchers for all the partitions
-      replicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition))
+      replicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition)).get()
       // Update the partition information to be the leader
       partitionStates.foreach { case (partition, partitionState) =>
         try {
@@ -1521,7 +1521,7 @@ class ReplicaManager(val config: KafkaConfig,
         }
       }
 
-      replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
+      replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition)).get()
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Stopped fetchers as part of become-follower request from controller $controllerId " +
           s"epoch $controllerEpoch with correlation id $correlationId for partition ${partition.topicPartition} with leader " +
@@ -1682,7 +1682,7 @@ class ReplicaManager(val config: KafkaConfig,
         partition.futureLog.exists { _.parentDir == dir }
       }.toSet
 
-      replicaFetcherManager.removeFetcherForPartitions(newOfflinePartitions)
+      replicaFetcherManager.removeFetcherForPartitions(newOfflinePartitions).get()
 //      replicaAlterLogDirsManager.removeFetcherForPartitions(newOfflinePartitions ++ partitionsWithOfflineFutureReplica.map(_.topicPartition))
 
       partitionsWithOfflineFutureReplica.foreach(partition => partition.removeFutureLocalReplica(deleteFromLogDir = false))

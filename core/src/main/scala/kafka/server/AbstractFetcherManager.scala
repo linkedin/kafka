@@ -175,6 +175,7 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
         fetcherThread
       }
 
+      val addPartitionFutures = new ArrayBuffer[KafkaFuture[Void]]()
       for ((brokerAndFetcherId, initialFetchOffsets) <- partitionsPerFetcher) {
         val brokerIdAndFetcherId = BrokerIdAndFetcherId(brokerAndFetcherId.broker.id, brokerAndFetcherId.fetcherId)
         val fetcherThread = fetcherThreadMap.get(brokerIdAndFetcherId) match {
@@ -192,8 +193,11 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
           tp -> OffsetAndEpoch(brokerAndInitOffset.initOffset, brokerAndInitOffset.currentLeaderEpoch)
         }
 
-        addPartitionsToFetcherThread(fetcherThread, initialOffsetAndEpochs)
+        addPartitionFutures += addPartitionsToFetcherThread(fetcherThread, initialOffsetAndEpochs)
       }
+
+      // wait for all futures to finish
+      KafkaFuture.allOf(addPartitionFutures:_*).get()
     }
   }
 

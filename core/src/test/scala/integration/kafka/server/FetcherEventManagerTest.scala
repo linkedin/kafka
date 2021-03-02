@@ -1,9 +1,9 @@
 package integration.kafka.server
 
 import kafka.cluster.BrokerEndPoint
-import kafka.server.{AddPartitions, AsyncFetcherLagStats, AsyncFetcherStats, FetcherEvent, FetcherEventBus, FetcherEventManager, FetcherEventProcessor, GetPartitionCount, RemovePartitions, TruncateAndFetch}
+import kafka.server._
 import org.apache.kafka.common.utils.Time
-import org.easymock.EasyMock.{anyObject, createMock, expect, replay, verify}
+import org.easymock.EasyMock.{createMock, expect, replay, verify}
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -30,7 +30,7 @@ class FetcherEventManagerTest {
     val time = Time.SYSTEM
     val fetcherEventBus = new FetcherEventBus(time)
 
-    @volatile var addPartitiosProcessed = 0
+    @volatile var addPartitionsProcessed = 0
     @volatile var removePartitionsProcessed = 0
     @volatile var getPartitionsProcessed = 0
     @volatile var truncateAndFetchProcessed = 0
@@ -38,7 +38,7 @@ class FetcherEventManagerTest {
       override def process(event: FetcherEvent): Unit = {
         event match {
           case AddPartitions(initialFetchStates, future) =>
-            addPartitiosProcessed += 1
+            addPartitionsProcessed += 1
             future.complete(null)
           case RemovePartitions(topicPartitions, future) =>
             removePartitionsProcessed += 1
@@ -71,12 +71,10 @@ class FetcherEventManagerTest {
     removePartitionsFuture.get()
     getPartitionCountFuture.get()
 
-    assertEquals(1, addPartitiosProcessed)
+    assertEquals(1, addPartitionsProcessed)
     assertEquals(1, removePartitionsProcessed)
     assertEquals(1, getPartitionsProcessed)
     fetcherEventManager.close()
-
-
   }
 
 }

@@ -1,8 +1,8 @@
 package unit.kafka.server
 
-import kafka.server.{AddPartitions, FetcherEvent, FetcherEventBus, FetcherState, QueuedFetcherEvent}
+import kafka.server.FetcherEventBus
 import kafka.utils.MockTime
-import org.easymock.EasyMock
+import org.apache.kafka.common.utils.Time
 import org.junit.Assert.{assertTrue, fail}
 import org.junit.Test
 
@@ -52,7 +52,70 @@ class FetcherEventBusTest {
 
   @Test
   def testDelayedEvent(): Unit = {
+    val time = Time.SYSTEM
+    val fetcherEventBus = new FetcherEventBus(time)
+    val addPartitions = AddPartitions(Map.empty, null)
+    val delay = 500
+    fetcherEventBus.schedule(new DelayedFetcherEvent(delay, addPartitions))
 
+    val service = Executors.newSingleThreadExecutor()
+
+    val t1 = time.milliseconds()
+    val future = service.submit(new Runnable {
+      override def run(): Unit = {
+        // trying to call get will block for at least 500ms
+        fetcherEventBus.getNextEvent() match {
+          case Left(_) => fail("a DelayedFetcherEvent should have been returned")
+          case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
+            assertTrue(delayedFetcherEvent.fetcherEvent == addPartitions)
+          }
+        }
+        // verify that at least 500ms has passed
+
+        val t2 = time.milliseconds()
+        assertTrue(t2 - t1 >= delay)
+      }
+    })
+
+    future.get()
+    service.shutdown()
   }
 
+  @Test
+  def testBothDelayedAndQueuedEvent(): Unit = {
+    val time = Time.SYSTEM
+    val fetcherEventBus = new FetcherEventBus(time)
+
+    val queuedEvent = RemovePartitions(Set.empty, null)
+    fetcherEventBus.put(queuedEvent)
+
+    val delay = 10
+    val scheduledEvent = AddPartitions(Map.empty, null)
+    fetcherEventBus.schedule(new DelayedFetcherEvent(delay, scheduledEvent))
+
+    val service = Executors.newSingleThreadExecutor()
+
+    @volatile var receivedEvents = 0
+    val expectedEvents = 2
+    val future = service.submit(new Runnable {
+      override def run(): Unit = {
+        for (_ <- 0 until expectedEvents) {
+          fetcherEventBus.getNextEvent() match {
+            case Left(queuedFetcherEvent: QueuedFetcherEvent) => {
+              assertTrue(queuedFetcherEvent.event == queuedEvent)
+              receivedEvents += 1
+            }
+            case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
+              assertTrue(delayedFetcherEvent.fetcherEvent == scheduledEvent)
+              receivedEvents += 1
+            }
+          }
+        }
+      }
+    })
+
+    future.get()
+    assertTrue(receivedEvents == expectedEvents)
+    service.shutdown()
+  }
 }

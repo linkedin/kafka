@@ -50,15 +50,34 @@ class SimpleScheduler[T <: DelayedItem] {
   }
 
   /**
-   * @return Peek() returns the item with the earliest due time if there is at least one item.
-   *         Otherwise if there are no items, it returns None.
+   * peek can be used to get the earliest item that has become current.
+   * There are 3 cases when peek() is called
+   * 1. There are no items whatsoever.  peek would return (None, Long.MaxValue) to indicate that the caller needs to wait
+   *    indefinitely until an item is inserted.
+   * 2. There are items, and yet none has become current. peek would return (None, delay) where delay represents
+   *    the time to wait before the earliest item becomes current.
+   * 3. Some item has become current. peek would return (Some(item), 0L)
    */
-  def peek(): Option[T] = {
+  def peek(): (Option[T], Long) = {
     if (delayedQueue.isEmpty) {
-      None
+      (None, Long.MaxValue)
     } else {
-      Some(delayedQueue.poll())
+      val delayedEvent = delayedQueue.peek()
+      val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
+      if (delayMs == 0) {
+        (Some(delayedQueue.peek()), 0L)
+      } else {
+        (None, delayMs)
+      }
     }
+  }
+
+  /**
+   * poll() unconditionally removes the earliest item
+   * If there are no items whatsoever, poll() has no effect.
+   */
+  def poll(): Unit = {
+    delayedQueue.poll()
   }
 }
 

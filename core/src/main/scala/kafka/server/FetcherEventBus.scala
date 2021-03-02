@@ -52,25 +52,19 @@ class FetcherEventBus(time: Time) {
 
       breakable {
         while (true) {
-          val (delayedFetcherEvent, delayMs) = scheduler.peek() match {
-            case Some(delayedEvent: DelayedFetcherEvent) => {
-              val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
-              if (delayMs == 0) {
-                (Some(delayedEvent), 0L)
-              } else {
-                (None, delayMs)
-              }
-            }
-            case _ => (None, Long.MaxValue)
-          }
+          val (delayedFetcherEvent, delayMs) = scheduler.peek()
 
+//          println(s"delayed ${delayedFetcherEvent.nonEmpty}, queue:${!queue.isEmpty}")
           if (delayedFetcherEvent.nonEmpty) {
+            // remove the item from the scheduler
+            scheduler.poll()
             result = Right(delayedFetcherEvent.get)
             break
           } else if (!queue.isEmpty) {
             result = Left(queue.poll())
             break
           } else {
+//            println(s"sleeping for ${delayMs}")
             newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)
           }
         }

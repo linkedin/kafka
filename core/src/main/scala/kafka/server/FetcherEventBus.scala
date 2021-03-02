@@ -6,7 +6,7 @@ import org.apache.kafka.common.utils.Time
 import java.util.PriorityQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
-import scala.util.control.Breaks.break
+import scala.util.control.Breaks.{break, breakable}
 
 class FetcherEventBus(time: Time) {
   private val eventLock = new ReentrantLock()
@@ -50,27 +50,29 @@ class FetcherEventBus(time: Time) {
     inLock(eventLock) {
       var result : Either[QueuedFetcherEvent, DelayedFetcherEvent] = null
 
-      while (true) {
-        val (delayedFetcherEvent, delayMs) = scheduler.peek() match {
-          case Some(delayedEvent: DelayedFetcherEvent) => {
-            val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
-            if (delayMs == 0) {
-              (Some(delayedEvent), 0L)
-            } else {
-              (None, delayMs)
+      breakable {
+        while (true) {
+          val (delayedFetcherEvent, delayMs) = scheduler.peek() match {
+            case Some(delayedEvent: DelayedFetcherEvent) => {
+              val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
+              if (delayMs == 0) {
+                (Some(delayedEvent), 0L)
+              } else {
+                (None, delayMs)
+              }
             }
+            case _ => (None, Long.MaxValue)
           }
-          case _ => (None, Long.MaxValue)
-        }
 
-        if (delayedFetcherEvent.nonEmpty) {
-          result = Right(delayedFetcherEvent.get)
-          break
-        } else if (!queue.isEmpty) {
-          result = Left(queue.poll())
-          break
-        } else {
-          newEventCondition.wait(delayMs)
+          if (delayedFetcherEvent.nonEmpty) {
+            result = Right(delayedFetcherEvent.get)
+            break
+          } else if (!queue.isEmpty) {
+            result = Left(queue.poll())
+            break
+          } else {
+            newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)
+          }
         }
       }
 

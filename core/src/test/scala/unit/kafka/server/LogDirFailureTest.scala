@@ -106,36 +106,36 @@ class LogDirFailureTest extends IntegrationTestHarness {
     testProduceAfterLogDirFailureOnLeader(Checkpoint)
   }
 
-  @Test
-  def testReplicaFetcherThreadAfterLogDirFailureOnFollower(): Unit = {
-    this.producerConfig.setProperty(ProducerConfig.RETRIES_CONFIG, "0")
-    val producer = createProducer()
-    val partition = new TopicPartition(topic, 0)
-
-    val partitionInfo = producer.partitionsFor(topic).asScala.find(_.partition() == 0).get
-    val leaderServerId = partitionInfo.leader().id()
-    val leaderServer = servers.find(_.config.brokerId == leaderServerId).get
-    val followerServerId = partitionInfo.replicas().map(_.id()).find(_ != leaderServerId).get
-    val followerServer = servers.find(_.config.brokerId == followerServerId).get
-
-    followerServer.replicaManager.markPartitionOffline(partition)
-    // Send a message to another partition whose leader is the same as partition 0
-    // so that ReplicaFetcherThread on the follower will get response from leader immediately
-    val anotherPartitionWithTheSameLeader = (1 until partitionNum).find { i =>
-      leaderServer.replicaManager.nonOfflinePartition(new TopicPartition(topic, i))
-        .flatMap(_.leaderLogIfLocal).isDefined
-    }.get
-    val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, anotherPartitionWithTheSameLeader, topic.getBytes, "message".getBytes)
-    // When producer.send(...).get returns, it is guaranteed that ReplicaFetcherThread on the follower
-    // has fetched from the leader and attempts to append to the offline replica.
-    producer.send(record).get
-
-    assertEquals(brokerCount, leaderServer.replicaManager.nonOfflinePartition(new TopicPartition(topic, anotherPartitionWithTheSameLeader))
-      .get.inSyncReplicaIds.size)
-    followerServer.replicaManager.replicaFetcherManager.fetcherThreadMap.values.foreach { thread =>
-      assertFalse("ReplicaFetcherThread should still be working if its partition count > 0", thread.isShutdownComplete)
-    }
-  }
+//  @Test
+//  def testReplicaFetcherThreadAfterLogDirFailureOnFollower(): Unit = {
+//    this.producerConfig.setProperty(ProducerConfig.RETRIES_CONFIG, "0")
+//    val producer = createProducer()
+//    val partition = new TopicPartition(topic, 0)
+//
+//    val partitionInfo = producer.partitionsFor(topic).asScala.find(_.partition() == 0).get
+//    val leaderServerId = partitionInfo.leader().id()
+//    val leaderServer = servers.find(_.config.brokerId == leaderServerId).get
+//    val followerServerId = partitionInfo.replicas().map(_.id()).find(_ != leaderServerId).get
+//    val followerServer = servers.find(_.config.brokerId == followerServerId).get
+//
+//    followerServer.replicaManager.markPartitionOffline(partition)
+//    // Send a message to another partition whose leader is the same as partition 0
+//    // so that ReplicaFetcherThread on the follower will get response from leader immediately
+//    val anotherPartitionWithTheSameLeader = (1 until partitionNum).find { i =>
+//      leaderServer.replicaManager.nonOfflinePartition(new TopicPartition(topic, i))
+//        .flatMap(_.leaderLogIfLocal).isDefined
+//    }.get
+//    val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, anotherPartitionWithTheSameLeader, topic.getBytes, "message".getBytes)
+//    // When producer.send(...).get returns, it is guaranteed that ReplicaFetcherThread on the follower
+//    // has fetched from the leader and attempts to append to the offline replica.
+//    producer.send(record).get
+//
+//    assertEquals(brokerCount, leaderServer.replicaManager.nonOfflinePartition(new TopicPartition(topic, anotherPartitionWithTheSameLeader))
+//      .get.inSyncReplicaIds.size)
+//    followerServer.replicaManager.replicaFetcherManager.fetcherThreadMap.values.foreach { thread =>
+//      assertFalse("ReplicaFetcherThread should still be working if its partition count > 0", thread.isShutdownComplete)
+//    }
+//  }
 
   def testProduceErrorsFromLogDirFailureOnLeader(failureType: LogDirFailureType): Unit = {
     // Disable retries to allow exception to bubble up for validation

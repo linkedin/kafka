@@ -36,7 +36,7 @@ import org.apache.kafka.common.utils.{LogContext, Time}
 import scala.collection.JavaConverters._
 import scala.collection.{Map, mutable}
 
-class ReplicaFetcherThread(name: String,
+class ReplicaFetcher(name: String,
                            fetcherId: Int,
                            sourceBroker: BrokerEndPoint,
                            brokerConfig: KafkaConfig,

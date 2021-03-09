@@ -1,16 +1,21 @@
-package kafka.server
-
 /**
- * change categories:
- * - adding the async model
- * - returning a future when enqueuing an AddPartitions or RemovePartitions operation
- * - still using network blocking calls for adding partitions
- * - removing the partitionMapLock in all of the methods
- * - will handle backoff by scheduling future events
- * - will not support thread pool resizing
- * - does not support ReplicaAlterDirManager
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+package kafka.server
 
 import kafka.cluster.BrokerEndPoint
 import kafka.common.ClientIdAndBroker
@@ -36,14 +41,14 @@ import scala.math.min
 
 
 sealed trait FetcherEvent extends Comparable[FetcherEvent] {
-  def priority: Int // a higher priority value means being more important
+  def priority: Int // a event with a higher priority value is more important
   def state: FetcherState
   override def compareTo(other: FetcherEvent): Int = {
     other.priority - this.priority
   }
 }
 
-// TODO: modify the AddPartitions event to include remove partitions as well
+// TODO: merge the AddPartitions and RemovePartitions into a single event
 case class AddPartitions(initialFetchStates: Map[TopicPartition, OffsetAndEpoch], future: KafkaFutureImpl[Void]) extends FetcherEvent {
   override def priority = 2
   override def state = FetcherState.AddPartitions
@@ -82,7 +87,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
   private val metricId = ClientIdAndBroker(clientId, sourceBroker.host, sourceBroker.port)
   val fetcherStats = new AsyncFetcherStats(metricId)
   val fetcherLagStats = new AsyncFetcherLagStats(metricId)
-  var idle = false
 
   // process fetched data
   protected def processPartitionData(topicPartition: TopicPartition,
@@ -112,12 +116,12 @@ abstract class AbstractAsyncFetcher(clientId: String,
   protected def isOffsetForLeaderEpochSupported: Boolean
 
 
-  def doWork(): Unit = {
+  def truncateAndFetch(): Unit = {
     maybeTruncate()
     if (maybeFetch()) {
       fetcherEventBus.schedule(new DelayedFetcherEvent(fetchBackOffMs, TruncateAndFetch))
     } else {
-      // enqueue the TruncateAndFetch to start the next round of fetching
+      // enqueue the TruncateAndFetch to start the next round of work
       fetcherEventBus.put(TruncateAndFetch)
     }
   }
@@ -164,7 +168,7 @@ abstract class AbstractAsyncFetcher(clientId: String,
       case GetPartitionCount(future) =>
         future.complete(partitionStates.size())
       case TruncateAndFetch =>
-        doWork()
+        truncateAndFetch()
     }
   }
 
@@ -462,7 +466,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
       partitionStates.updateAndMoveToEnd(tp, updatedState)
     }
 
-    maybeUpdateIdleFlag()
     initialFetchStates.keySet
   }
 
@@ -486,12 +489,11 @@ abstract class AbstractAsyncFetcher(clientId: String,
         (state.topicPartition, maybeTruncationComplete)
       }.toMap
     partitionStates.set(newStates.asJava)
-    maybeUpdateIdleFlag()
   }
 
   /**
-   * Called from ReplicaFetcherThread and ReplicaAlterLogDirsThread maybeTruncate for each topic
-   * partition. Returns truncation offset and whether this is the final offset to truncate to
+   * Called from maybeTruncate for each topic partition.
+   * Returns truncation offset and whether this is the final offset to truncate to
    *
    * For each topic partition, the offset to truncate to is calculated based on leader's returned
    * epoch and offset:
@@ -664,7 +666,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
       partitionStates.remove(topicPartition)
       fetcherLagStats.unregister(topicPartition)
     }
-    maybeUpdateIdleFlag()
   }
 
   protected def toMemoryRecords(records: Records): MemoryRecords = {
@@ -676,12 +677,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
         MemoryRecords.readableRecords(buffer)
     }
   }
-
-  // This method should only be called when holding the partitionMapLock
-  private def maybeUpdateIdleFlag(): Unit = {
-    idle = partitionStates.size() <= 0
-  }
-
 }
 
 

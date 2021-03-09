@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/*
+
 package kafka.server
 
 import java.io.File
@@ -46,7 +46,6 @@ import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests.{EpochEndOffset, IsolationLevel, LeaderAndIsrRequest}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.Time
-import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.easymock.{Capture, EasyMock}
 import org.junit.Assert._
@@ -1431,22 +1430,18 @@ class ReplicaManagerTest {
                                                      quotaManager: ReplicationQuotaManager): ReplicaFetcherManager = {
         new ReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager) {
 
-          override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): ReplicaFetcherThread = {
-            new ReplicaFetcherThread(s"ReplicaFetcherThread-$fetcherId", fetcherId,
-              sourceBroker, config, failedPartitions, replicaManager, metrics, time, quota.follower, Some(blockingSend)) {
+          override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): FetcherEventManager = {
+            val fetcherEventBus = new FetcherEventBus(time)
+            val threadName = s"ReplicaFetcherThread-$fetcherId"
+            val replicaFetcher = new ReplicaFetcher(threadName,  fetcherId,
+              sourceBroker, config, failedPartitions, replicaManager, metrics, time, quota.follower, fetcherEventBus, Some(blockingSend))
+            val fetcherEventManager = new FetcherEventManager(threadName, fetcherEventBus, replicaFetcher, time)
 
-              override def doWork() = {
-                // In case the thread starts before the partition is added by AbstractFetcherManager,
-                // add it here (it's a no-op if already added)
-                val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
-                addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
-                super.doWork()
+            val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
 
-                // Shut the thread down after one iteration to avoid double-counting truncations
-                initiateShutdown()
-                countDownLatch.countDown()
-              }
-            }
+            fetcherEventManager.addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
+            countDownLatch.countDown()
+            fetcherEventManager
           }
         }
       }
@@ -1812,4 +1807,3 @@ class ReplicaManagerTest {
   }
 
 }
-*/

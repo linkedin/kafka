@@ -75,7 +75,7 @@ class SimpleScheduler[T <: DelayedItem] {
 
   /**
    * poll() unconditionally removes the earliest item
-   * If there are no items whatsoever, poll() has no effect.
+   * If there are no items, poll() has no effect.
    */
   def poll(): Unit = {
     delayedQueue.poll()
@@ -162,7 +162,13 @@ class FetcherEventManager(name: String,
      * This method is repeatedly invoked until the thread shuts down or this method throws an exception
      */
     override def doWork(): Unit = {
-      val (fetcherEvent, optionalEnqueueTime) = fetcherEventBus.getNextEvent() match {
+      val nextEvent = fetcherEventBus.getNextEvent()
+      if (nextEvent == null) {
+        // a null value will be returned when the fetcherEventBus has started shutting down
+        return
+      }
+
+      val (fetcherEvent, optionalEnqueueTime) = nextEvent match {
         case Left(dequeued: QueuedFetcherEvent) =>
           (dequeued.event, Some(dequeued.enqueueTimeMs))
 
@@ -184,7 +190,7 @@ class FetcherEventManager(name: String,
           processor.process(fetcherEvent)
         }
       } catch {
-        case e: Throwable => error(s"Uncaught error processing event $fetcherEvent", e)
+        case e: Exception => error(s"Uncaught error processing event $fetcherEvent", e)
       }
 
       _state = FetcherState.Idle

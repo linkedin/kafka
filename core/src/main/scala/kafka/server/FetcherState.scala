@@ -10,9 +10,6 @@ sealed abstract class FetcherState {
 }
 
 object FetcherState {
-  // Note: `rateAndTimeMetricName` is based on the case object name by default. Changing a name is a breaking change
-  // unless `rateAndTimeMetricName` is overridden.
-
   case object Idle extends FetcherState {
     def value = 0
     override protected def hasRateAndTimeMetric: Boolean = false

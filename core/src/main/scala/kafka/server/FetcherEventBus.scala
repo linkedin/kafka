@@ -30,16 +30,14 @@ class FetcherEventBus(time: Time) {
     }
   }
 
-  def put(event: FetcherEvent): QueuedFetcherEvent = {
+  def put(event: FetcherEvent): Unit = {
     inLock(eventLock) {
-      val queuedEvent = new QueuedFetcherEvent(event, time.milliseconds())
-      queue.add(queuedEvent)
+      queue.add(new QueuedFetcherEvent(event, time.milliseconds()))
       newEventCondition.signalAll()
-      queuedEvent
     }
   }
 
-  def schedule(delayedEvent: DelayedFetcherEvent) = {
+  def schedule(delayedEvent: DelayedFetcherEvent): Unit = {
     inLock(eventLock) {
       scheduler.schedule(delayedEvent)
       newEventCondition.signalAll()
@@ -55,7 +53,8 @@ class FetcherEventBus(time: Time) {
    * event becomes current. A special case is that there are no delayed events at all, under which we would block
    * indefinitely until being explicitly waken up by a new delayed or queued event.
    *
-   * @return Either a QueuedFetcherEvent or a DelayedFetcherEvent that has become current
+   * @return Either a QueuedFetcherEvent or a DelayedFetcherEvent that has become current. A special case is that the
+   *         FetcherEventBus is shutdown before an event can be polled, under which null will be returned.
    */
   def getNextEvent(): Either[QueuedFetcherEvent, DelayedFetcherEvent] = {
     inLock(eventLock) {
@@ -64,10 +63,7 @@ class FetcherEventBus(time: Time) {
       breakable {
         while (!shutdownInitialized) {
           val (delayedFetcherEvent, delayMs) = scheduler.peek()
-
-//          println(s"delayed ${delayedFetcherEvent.nonEmpty}, queue:${!queue.isEmpty}")
           if (delayedFetcherEvent.nonEmpty) {
-            // remove the item from the scheduler
             scheduler.poll()
             result = Right(delayedFetcherEvent.get)
             break
@@ -75,7 +71,6 @@ class FetcherEventBus(time: Time) {
             result = Left(queue.poll())
             break
           } else {
-//            println(s"sleeping for ${delayMs}")
             newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)
           }
         }

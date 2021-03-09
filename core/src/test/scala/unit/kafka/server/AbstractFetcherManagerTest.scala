@@ -67,10 +67,10 @@ class AbstractFetcherManagerTest {
     EasyMock.replay(fetcher)
 
     fetcherManager.addFetcherForPartitions(Map(tp -> initialFetchState))
-//    assertEquals(Some(fetcher), fetcherManager.getFetcher(tp))
+    assertEquals(Some(fetcher), fetcherManager.getFetcher(tp))
 
     fetcherManager.removeFetcherForPartitions(Set(tp))
-//    assertEquals(None, fetcherManager.getFetcher(tp))
+    assertEquals(None, fetcherManager.getFetcher(tp))
 
     EasyMock.verify(fetcher)
   }

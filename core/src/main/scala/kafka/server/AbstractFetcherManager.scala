@@ -175,7 +175,7 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
         fetcherThread
       }
 
-      val addPartitionFutures = new ArrayBuffer[KafkaFuture[Void]]()
+      val addPartitionFutures = mutable.Buffer[KafkaFuture[Void]]()
       for ((brokerAndFetcherId, initialFetchOffsets) <- partitionsPerFetcher) {
         val brokerIdAndFetcherId = BrokerIdAndFetcherId(brokerAndFetcherId.broker.id, brokerAndFetcherId.fetcherId)
         val fetcherThread = fetcherThreadMap.get(brokerIdAndFetcherId) match {
@@ -208,8 +208,8 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
     future
   }
 
-  def removeFetcherForPartitions(partitions: Set[TopicPartition]): KafkaFuture[Void] = {
-    val futures : mutable.Buffer[KafkaFuture[Void]] = new ArrayBuffer()
+  def removeFetcherForPartitions(partitions: Set[TopicPartition]): Unit = {
+    val futures = mutable.Buffer[KafkaFuture[Void]]()
     lock synchronized {
       for (fetcher <- fetcherThreadMap.values)
         futures += fetcher.removePartitions(partitions)
@@ -218,15 +218,15 @@ abstract class AbstractFetcherManager[T <: FetcherEventManager](val name: String
     if (partitions.nonEmpty)
       info(s"Removed fetcher for partitions $partitions")
 
-    KafkaFuture.allOf(futures:_*)
+    KafkaFuture.allOf(futures:_*).get()
   }
 
   def shutdownIdleFetcherThreads(): Unit = {
     lock synchronized {
-      val futures : mutable.HashMap[BrokerIdAndFetcherId, KafkaFuture[Int]] = mutable.HashMap.empty
+      val futures = mutable.Map[BrokerIdAndFetcherId, KafkaFuture[Int]]()
 
       for ((key, fetcher) <- fetcherThreadMap) {
-        futures.put(key,fetcher.getPartitionsCount())
+        futures.put(key, fetcher.getPartitionsCount())
       }
 
       for ((key, partitionCountFuture) <- futures) {

@@ -14,6 +14,7 @@ class FetcherEventManagerTest {
     val time = Time.SYSTEM
     val fetcherEventBus: FetcherEventBus = createMock(classOf[FetcherEventBus])
     expect(fetcherEventBus.put(TruncateAndFetch)).andReturn(null)
+    expect(fetcherEventBus.close()).andVoid()
     replay(fetcherEventBus)
 
     val processor : FetcherEventProcessor = createMock(classOf[FetcherEventProcessor])

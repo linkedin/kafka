@@ -13,7 +13,7 @@ class FetcherEventManagerTest {
   def testInitialState(): Unit = {
     val time = Time.SYSTEM
     val fetcherEventBus: FetcherEventBus = createMock(classOf[FetcherEventBus])
-    expect(fetcherEventBus.put(TruncateAndFetch)).andReturn(null)
+    expect(fetcherEventBus.put(TruncateAndFetch)).andVoid()
     expect(fetcherEventBus.close()).andVoid()
     replay(fetcherEventBus)
 

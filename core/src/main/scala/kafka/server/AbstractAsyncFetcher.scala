@@ -43,8 +43,7 @@ import scala.math.min
 abstract class AbstractAsyncFetcher(clientId: String,
                                     val sourceBroker: BrokerEndPoint,
                                     failedPartitions: FailedPartitions,
-                                    fetchBackOffMs: Int = 0,
-                                    fetcherEventBus: FetcherEventBus) extends FetcherEventProcessor with Logging {
+                                    fetchBackOffMs: Int = 0) extends Logging {
 
   type FetchData = FetchResponse.PartitionData[Records]
   type EpochData = OffsetsForLeaderEpochRequest.PartitionData

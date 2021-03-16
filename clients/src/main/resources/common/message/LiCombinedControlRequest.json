@@ -16,7 +16,7 @@
 {
   "apiKey": 1001,
   "type": "request",
-  "name": "LiCombinedControl",
+  "name": "LiCombinedControlRequest",
   "validVersions": "0",
   "flexibleVersions": "0+",
   "fields": [

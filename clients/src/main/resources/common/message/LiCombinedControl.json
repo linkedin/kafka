@@ -24,14 +24,14 @@
       "about": "The current controller ID." },
     { "name": "ControllerEpoch", "type": "int32", "versions": "0+",
       "about": "The current controller epoch." },
-    { "name": "MaxBrokerEpoch", "type": "int64", "versions": "3+", "ignorable": true, "default": "-1",
+    { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+", "ignorable": true, "default": "-1",
       "about": "The max broker epoch." },
     // fields from the LeaderAndIsr
-    { "name": "LeaderAndIsrTopicStates", "type": "[]LeaderAndIsrTopicState", "versions": "2+",
+    { "name": "LeaderAndIsrTopicStates", "type": "[]LeaderAndIsrTopicState", "versions": "0+",
       "about": "Each topic.", "fields": [
-      { "name": "TopicName", "type": "string", "versions": "2+", "entityType": "topicName",
+      { "name": "TopicName", "type": "string", "versions": "0+", "entityType": "topicName",
         "about": "The topic name." },
-      { "name": "PartitionStates", "type": "[]LeaderAndIsrPartitionState", "versions": "2+",
+      { "name": "PartitionStates", "type": "[]LeaderAndIsrPartitionState", "versions": "0+",
         "about": "The state of each partition" }
     ]},
     { "name": "LiveLeaders", "type": "[]LeaderAndIsrLiveLeader", "versions": "0+",
@@ -44,11 +44,11 @@
         "about": "The leader's port." }
     ]},
     // fields from the UpdateMetadata
-    { "name": "UpdateMetadataTopicStates", "type": "[]UpdateMetadataTopicState", "versions": "5+",
+    { "name": "UpdateMetadataTopicStates", "type": "[]UpdateMetadataTopicState", "versions": "0+",
       "about": "In newer versions of this RPC, each topic that we would like to update.", "fields": [
-      { "name": "TopicName", "type": "string", "versions": "5+", "entityType": "topicName",
+      { "name": "TopicName", "type": "string", "versions": "0+", "entityType": "topicName",
         "about": "The topic name." },
-      { "name": "PartitionStates", "type": "[]UpdateMetadataPartitionState", "versions": "5+",
+      { "name": "PartitionStates", "type": "[]UpdateMetadataPartitionState", "versions": "0+",
         "about": "The partition that we would like to update." }
     ]},
     { "name": "LiveBrokers", "type": "[]UpdateMetadataBroker", "versions": "0+", "fields": [
@@ -60,28 +60,28 @@
         "about": "The broker hostname." },
       { "name": "V0Port", "type": "int32", "versions": "0", "ignorable": true,
         "about": "The broker port." },
-      { "name": "Endpoints", "type": "[]UpdateMetadataEndpoint", "versions": "1+", "ignorable": true,
+      { "name": "Endpoints", "type": "[]UpdateMetadataEndpoint", "versions": "0+", "ignorable": true,
         "about": "The broker endpoints.", "fields": [
-        { "name": "Port", "type": "int32", "versions": "1+",
+        { "name": "Port", "type": "int32", "versions": "0+",
           "about": "The port of this endpoint" },
-        { "name": "Host", "type": "string", "versions": "1+",
+        { "name": "Host", "type": "string", "versions": "0+",
           "about": "The hostname of this endpoint" },
-        { "name": "Listener", "type": "string", "versions": "3+", "ignorable": true,
+        { "name": "Listener", "type": "string", "versions": "0+", "ignorable": true,
           "about": "The listener name." },
-        { "name": "SecurityProtocol", "type": "int16", "versions": "1+",
+        { "name": "SecurityProtocol", "type": "int16", "versions": "0+",
           "about": "The security protocol type." }
       ]},
-      { "name": "Rack", "type": "string", "versions": "2+", "nullableVersions": "0+", "ignorable": true,
+      { "name": "Rack", "type": "string", "versions": "0+", "nullableVersions": "0+", "ignorable": true,
         "about": "The rack which this broker belongs to." }
     ]},
     // fields from the StopReplica
     { "name": "DeletePartitions", "type": "bool", "versions": "0+",
       "about": "Whether these partitions should be deleted." },
-    { "name": "StopReplicaTopics", "type": "[]StopReplicaTopic", "versions": "1+",
+    { "name": "StopReplicaTopics", "type": "[]StopReplicaTopic", "versions": "0+",
       "about": "The topics to stop.", "fields": [
-      { "name": "Name", "type": "string", "versions": "1+", "entityType": "topicName",
+      { "name": "Name", "type": "string", "versions": "0+", "entityType": "topicName",
         "about": "The topic name." },
-      { "name": "PartitionIndexes", "type": "[]int32", "versions": "1+",
+      { "name": "PartitionIndexes", "type": "[]int32", "versions": "0+",
         "about": "The partition indexes." }
     ]}
   ],
@@ -101,11 +101,11 @@
         "about": "The ZooKeeper version." },
       { "name": "Replicas", "type": "[]int32", "versions": "0+",
         "about": "The replica IDs." },
-      { "name": "AddingReplicas", "type": "[]int32", "versions": "4+", "ignorable": true,
+      { "name": "AddingReplicas", "type": "[]int32", "versions": "0+", "ignorable": true,
         "about": "The replica IDs that we are adding this partition to, or null if no replicas are being added." },
-      { "name": "RemovingReplicas", "type": "[]int32", "versions": "4+", "ignorable": true,
+      { "name": "RemovingReplicas", "type": "[]int32", "versions": "0+", "ignorable": true,
         "about": "The replica IDs that we are removing this partition from, or null if no replicas are being removed." },
-      { "name": "IsNew", "type": "bool", "versions": "1+", "default": "false", "ignorable": true,
+      { "name": "IsNew", "type": "bool", "versions": "0+", "default": "false", "ignorable": true,
         "about": "Whether the replica should have existed on the broker or not." }
     ]},
     { "name": "UpdateMetadataPartitionState", "versions": "0+", "fields": [
@@ -123,7 +123,7 @@
         "about": "The Zookeeper version." },
       { "name": "Replicas", "type": "[]int32", "versions": "0+", "entityType": "brokerId",
         "about": "All the replicas of this partition." },
-      { "name": "OfflineReplicas", "type": "[]int32", "versions": "4+", "entityType": "brokerId", "ignorable": true,
+      { "name": "OfflineReplicas", "type": "[]int32", "versions": "0+", "entityType": "brokerId", "ignorable": true,
         "about": "The replicas of this partition which are offline." }
     ]}
   ]

@@ -275,7 +275,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
       responseData = fetchFromLeader(fetchRequest)
     } catch {
       case t: Throwable =>
-        // if (isRunning) { removing isRunning since it must be true
         warn(s"Error in response for fetch request $fetchRequest", t)
         fetcherStats.requestFailureRate.mark()
 
@@ -285,8 +284,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
         // partition with error effectively doubling the delay. It would be good to improve this.
         //partitionMapCond.await(fetchBackOffMs, TimeUnit.MILLISECONDS)
         return true
-
-        // }
     }
     fetcherStats.requestRate.mark()
 

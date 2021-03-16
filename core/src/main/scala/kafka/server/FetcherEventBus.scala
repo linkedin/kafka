@@ -1,12 +1,86 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package kafka.server
 
 import kafka.utils.CoreUtils.inLock
 import org.apache.kafka.common.utils.Time
-
-import java.util.PriorityQueue
+import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
+
+import kafka.utils.DelayedItem
+
 import scala.util.control.Breaks.{break, breakable}
+
+
+class QueuedFetcherEvent(val event: FetcherEvent,
+  val enqueueTimeMs: Long) extends Comparable[QueuedFetcherEvent] {
+  override def compareTo(other: QueuedFetcherEvent): Int = event.compareTo(other.event)
+}
+
+/**
+ * The SimpleScheduler is not thread safe
+ */
+class SimpleScheduler[T <: DelayedItem] {
+  private val delayedQueue = new PriorityQueue[T](new Comparator[T]() {
+    override def compare(t1: T, t2: T): Int = {
+      // here we use natural ordering so that events with the earliest due time can be checked first
+      t1.compareTo(t2)
+    }
+  })
+
+  def schedule(item: T) : Unit = {
+    delayedQueue.add(item)
+  }
+
+  /**
+   * peek can be used to get the earliest item that has become current.
+   * There are 3 cases when peek() is called
+   * 1. There are no items whatsoever.  peek would return (None, Long.MaxValue) to indicate that the caller needs to wait
+   *    indefinitely until an item is inserted.
+   * 2. There are items, and yet none has become current. peek would return (None, delay) where delay represents
+   *    the time to wait before the earliest item becomes current.
+   * 3. Some item has become current. peek would return (Some(item), 0L)
+   */
+  def peek(): (Option[T], Long) = {
+    if (delayedQueue.isEmpty) {
+      (None, Long.MaxValue)
+    } else {
+      val delayedEvent = delayedQueue.peek()
+      val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
+      if (delayMs == 0) {
+        (Some(delayedQueue.peek()), 0L)
+      } else {
+        (None, delayMs)
+      }
+    }
+  }
+
+  /**
+   * poll() unconditionally removes the earliest item
+   * If there are no items, poll() has no effect.
+   */
+  def poll(): Unit = {
+    delayedQueue.poll()
+  }
+
+  def size = delayedQueue.size
+}
 
 /**
  * The FetcherEventBus supports queued events and delayed events.
@@ -24,9 +98,9 @@ class FetcherEventBus(time: Time) {
   private val scheduler = new SimpleScheduler[DelayedFetcherEvent]
   @volatile private var shutdownInitialized = false
 
-  def size() = {
-    queue.size()
-  }
+  def eventQueueSize() = queue.size
+
+  def scheduledEventQueueSize() = scheduler.size
 
   /**
    * close should be called in a thread different from the one calling getNextEvent()
@@ -56,10 +130,10 @@ class FetcherEventBus(time: Time) {
    * There are 3 cases when the getNextEvent() method is called
    * 1. There is at least one delayed event that has become current. If so, we return the delayed event with the earliest
    * due time.
-   * 2. There is at least one event in the queue. If so, we return the event with the highest priority from the queue.
+   * 2. There is at least one queued event. If so, we return the queued event with the highest priority.
    * 3. There are neither delayed events that have become current, nor queued events. We block until the earliest delayed
-   * event becomes current. A special case is that there are no delayed events at all, under which we would block
-   * indefinitely until being explicitly waken up by a new delayed or queued event.
+   * event becomes current. A special case is that there are no delayed events at all, under which the call would block
+   * indefinitely until it is waken up by a new delayed or queued event.
    *
    * @return Either a QueuedFetcherEvent or a DelayedFetcherEvent that has become current. A special case is that the
    *         FetcherEventBus is shutdown before an event can be polled, under which null will be returned.
@@ -87,5 +161,4 @@ class FetcherEventBus(time: Time) {
       result
     }
   }
-
 }

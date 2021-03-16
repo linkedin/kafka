@@ -17,6 +17,11 @@
 
 package kafka.server
 
+import java.nio.ByteBuffer
+import java.util.Optional
+import java.util.concurrent.TimeUnit
+import java.util.function.Consumer
+
 import kafka.cluster.BrokerEndPoint
 import kafka.common.ClientIdAndBroker
 import kafka.log.LogAppendInfo
@@ -24,42 +29,39 @@ import kafka.metrics.KafkaMetricsGroup
 import kafka.server.AbstractFetcherThread.ResultWithPartitions
 import kafka.utils.{DelayedItem, Logging, Pool}
 import org.apache.kafka.common.errors._
-import org.apache.kafka.common.internals.{KafkaFutureImpl, PartitionStates}
+import org.apache.kafka.common.internals.PartitionStates
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.record.{FileRecords, MemoryRecords, Records}
 import org.apache.kafka.common.requests.EpochEndOffset._
 import org.apache.kafka.common.requests.{EpochEndOffset, FetchRequest, FetchResponse, OffsetsForLeaderEpochRequest}
-import org.apache.kafka.common.{InvalidRecordException, TopicPartition}
+import org.apache.kafka.common.{InvalidRecordException, KafkaFuture, TopicPartition}
 
-import java.nio.ByteBuffer
-import java.util.Optional
-import java.util.concurrent.TimeUnit
-import java.util.function.Consumer
 import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq, Set, mutable}
 import scala.math.min
 
 
 sealed trait FetcherEvent extends Comparable[FetcherEvent] {
-  def priority: Int // a event with a higher priority value is more important
+  def priority: Int // an event with a higher priority value is more important
   def state: FetcherState
   override def compareTo(other: FetcherEvent): Int = {
+    // an event with a higher proirity value should be dequeued first in a PriorityQueue
     other.priority - this.priority
   }
 }
 
 // TODO: merge the AddPartitions and RemovePartitions into a single event
-case class AddPartitions(initialFetchStates: Map[TopicPartition, OffsetAndEpoch], future: KafkaFutureImpl[Void]) extends FetcherEvent {
+case class AddPartitions(initialFetchStates: Map[TopicPartition, OffsetAndEpoch], future: KafkaFuture[Void]) extends FetcherEvent {
   override def priority = 2
   override def state = FetcherState.AddPartitions
 }
 
-case class RemovePartitions(topicPartitions: Set[TopicPartition], future: KafkaFutureImpl[Void]) extends FetcherEvent {
+case class RemovePartitions(topicPartitions: Set[TopicPartition], future: KafkaFuture[Void]) extends FetcherEvent {
   override def priority = 2
   override def state = FetcherState.RemovePartitions
 }
 
-case class GetPartitionCount(future: KafkaFutureImpl[Int]) extends FetcherEvent {
+case class GetPartitionCount(future: KafkaFuture[Int]) extends FetcherEvent {
   override def priority = 2
   override def state = FetcherState.GetPartitionCount
 }
@@ -121,7 +123,6 @@ abstract class AbstractAsyncFetcher(clientId: String,
     if (maybeFetch()) {
       fetcherEventBus.schedule(new DelayedFetcherEvent(fetchBackOffMs, TruncateAndFetch))
     } else {
-      // enqueue the TruncateAndFetch to start the next round of work
       fetcherEventBus.put(TruncateAndFetch)
     }
   }

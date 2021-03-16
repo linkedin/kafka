@@ -1,20 +1,17 @@
 package kafka.server
 
 
+import java.util.concurrent.TimeUnit
+
 import com.yammer.metrics.core.Gauge
 import kafka.cluster.BrokerEndPoint
 import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
-import kafka.utils.CoreUtils.inLock
-import kafka.utils.{DelayedItem, ShutdownableThread}
+import kafka.utils.ShutdownableThread
 import org.apache.kafka.common.internals.KafkaFutureImpl
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.common.{KafkaFuture, TopicPartition}
 
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
-import java.util.{Comparator, PriorityQueue}
 import scala.collection.{Map, Set}
-import scala.util.control.Breaks.break
 
 trait FetcherEventProcessor {
   def process(event: FetcherEvent)
@@ -24,62 +21,10 @@ trait FetcherEventProcessor {
   def close(): Unit
 }
 
-
-class QueuedFetcherEvent(val event: FetcherEvent,
-                         val enqueueTimeMs: Long) extends Comparable[QueuedFetcherEvent] {
-  override def compareTo(other: QueuedFetcherEvent): Int = event.compareTo(other.event)
-}
-
 object FetcherEventManager {
   val EventQueueTimeMetricName = "EventQueueTimeMs"
   val EventQueueSizeMetricName = "EventQueueSize"
-}
-
-/**
- * The SimpleScheduler is not thread safe
- */
-class SimpleScheduler[T <: DelayedItem] {
-  private val delayedQueue = new PriorityQueue[T](new Comparator[T]() {
-    override def compare(t1: T, t2: T): Int = {
-      // here we use natural ordering so that events with the earliest due time can be checked first
-      t1.compareTo(t2)
-    }
-  })
-
-  def schedule(item: T) : Unit = {
-    delayedQueue.add(item)
-  }
-
-  /**
-   * peek can be used to get the earliest item that has become current.
-   * There are 3 cases when peek() is called
-   * 1. There are no items whatsoever.  peek would return (None, Long.MaxValue) to indicate that the caller needs to wait
-   *    indefinitely until an item is inserted.
-   * 2. There are items, and yet none has become current. peek would return (None, delay) where delay represents
-   *    the time to wait before the earliest item becomes current.
-   * 3. Some item has become current. peek would return (Some(item), 0L)
-   */
-  def peek(): (Option[T], Long) = {
-    if (delayedQueue.isEmpty) {
-      (None, Long.MaxValue)
-    } else {
-      val delayedEvent = delayedQueue.peek()
-      val delayMs = delayedEvent.getDelay(TimeUnit.MILLISECONDS)
-      if (delayMs == 0) {
-        (Some(delayedQueue.peek()), 0L)
-      } else {
-        (None, delayMs)
-      }
-    }
-  }
-
-  /**
-   * poll() unconditionally removes the earliest item
-   * If there are no items, poll() has no effect.
-   */
-  def poll(): Unit = {
-    delayedQueue.poll()
-  }
+  val ScheduledEventQueueSizeMetricName = "ScheduledEventQueueSize"
 }
 
 /**
@@ -117,7 +62,16 @@ class FetcherEventManager(name: String,
     EventQueueSizeMetricName,
     new Gauge[Int] {
       def value: Int = {
-        fetcherEventBus.size()
+        fetcherEventBus.eventQueueSize()
+      }
+    }
+  )
+
+  newGauge(
+    ScheduledEventQueueSizeMetricName,
+    new Gauge[Int] {
+      def value: Int = {
+        fetcherEventBus.scheduledEventQueueSize()
       }
     }
   )
@@ -155,6 +109,7 @@ class FetcherEventManager(name: String,
     } finally {
       removeMetric(EventQueueTimeMetricName)
       removeMetric(EventQueueSizeMetricName)
+      removeMetric(ScheduledEventQueueSizeMetricName)
     }
 
     processor.close()

@@ -2,6 +2,7 @@ package integration.kafka.server
 
 import kafka.cluster.BrokerEndPoint
 import kafka.server._
+import org.apache.kafka.common.internals.KafkaFutureImpl
 import org.apache.kafka.common.utils.Time
 import org.easymock.EasyMock.{createMock, expect, replay, verify}
 import org.junit.Assert.assertEquals
@@ -40,13 +41,13 @@ class FetcherEventManagerTest {
         event match {
           case AddPartitions(initialFetchStates, future) =>
             addPartitionsProcessed += 1
-            future.complete(null)
+            future.asInstanceOf[KafkaFutureImpl[Void]].complete(null)
           case RemovePartitions(topicPartitions, future) =>
             removePartitionsProcessed += 1
-            future.complete(null)
+            future.asInstanceOf[KafkaFutureImpl[Void]].complete(null)
           case GetPartitionCount(future) =>
             getPartitionsProcessed += 1
-            future.complete(1)
+            future.asInstanceOf[KafkaFutureImpl[Int]].complete(1)
           case TruncateAndFetch =>
             truncateAndFetchProcessed += 1
         }

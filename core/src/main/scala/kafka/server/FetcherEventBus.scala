@@ -8,6 +8,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import scala.util.control.Breaks.{break, breakable}
 
+/**
+ * The FetcherEventBus supports queued events and delayed events.
+ * Queued events are inserted via the {@link #put} method, and delayed events
+ * are inserted via the {@link #schedule} method.
+ * Events are polled via the {@link #getNextEvent} method, which returns
+ * either a queued event or a scheduled event.
+ * @param time
+ */
 class FetcherEventBus(time: Time) {
   private val eventLock = new ReentrantLock()
   private val newEventCondition = eventLock.newCondition()

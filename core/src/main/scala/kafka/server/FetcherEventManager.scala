@@ -82,7 +82,14 @@ class SimpleScheduler[T <: DelayedItem] {
   }
 }
 
-// TODO: add locks to the addPartitions, removePartitions, getPartitionsCount methods
+/**
+ * The FetcherEventManager can spawn a FetcherEventThread, whose main job is to take events from a
+ * FetcherEventBus and executes them in a FetcherEventProcessor.
+ * @param name
+ * @param fetcherEventBus
+ * @param processor
+ * @param time
+ */
 class FetcherEventManager(name: String,
                           fetcherEventBus: FetcherEventBus,
                           processor: FetcherEventProcessor,

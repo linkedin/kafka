@@ -21,7 +21,7 @@ import kafka.utils.CoreUtils.inLock
 import org.apache.kafka.common.utils.Time
 import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.locks.{Condition, Lock, ReentrantLock}
 
 import kafka.utils.DelayedItem
 
@@ -83,6 +83,18 @@ class SimpleScheduler[T <: DelayedItem] {
 }
 
 /**
+ * the ConditionFactory trait is defined such that a MockCondition can be
+ * created for the purpose of testing
+ */
+trait ConditionFactory {
+  def createCondition(lock: Lock): Condition
+}
+
+object DefaultConditionFactory extends ConditionFactory {
+  override def createCondition(lock: Lock): Condition = lock.newCondition()
+}
+
+/**
  * The FetcherEventBus supports queued events and delayed events.
  * Queued events are inserted via the {@link #put} method, and delayed events
  * are inserted via the {@link #schedule} method.
@@ -90,9 +102,9 @@ class SimpleScheduler[T <: DelayedItem] {
  * either a queued event or a scheduled event.
  * @param time
  */
-class FetcherEventBus(time: Time) {
+class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultConditionFactory) {
   private val eventLock = new ReentrantLock()
-  private val newEventCondition = eventLock.newCondition()
+  private val newEventCondition = conditionFactory.createCondition(eventLock)
 
   private val queue = new PriorityQueue[QueuedFetcherEvent]
   private val scheduler = new SimpleScheduler[DelayedFetcherEvent]
@@ -127,30 +139,31 @@ class FetcherEventBus(time: Time) {
   }
 
   /**
-   * There are 3 cases when the getNextEvent() method is called
-   * 1. There is at least one delayed event that has become current. If so, we return the delayed event with the earliest
-   * due time.
-   * 2. There is at least one queued event. If so, we return the queued event with the highest priority.
-   * 3. There are neither delayed events that have become current, nor queued events. We block until the earliest delayed
+   * There are 2 cases when the getNextEvent() method is called
+   * 1. There is at least one delayed event that has become current or at least one queued event. We return either
+   * the delayed event with the earliest due time or the queued event, depending on their priority.
+   * 2. There are neither delayed events that have become current, nor queued events. We block until the earliest delayed
    * event becomes current. A special case is that there are no delayed events at all, under which the call would block
    * indefinitely until it is waken up by a new delayed or queued event.
    *
    * @return Either a QueuedFetcherEvent or a DelayedFetcherEvent that has become current. A special case is that the
    *         FetcherEventBus is shutdown before an event can be polled, under which null will be returned.
    */
-  def getNextEvent(): Either[QueuedFetcherEvent, DelayedFetcherEvent] = {
+  def getNextEvent(): QueuedFetcherEvent = {
     inLock(eventLock) {
-      var result : Either[QueuedFetcherEvent, DelayedFetcherEvent] = null
+      var result : QueuedFetcherEvent = null
 
       breakable {
         while (!shutdownInitialized) {
+          // check if any delayed event has become current. If so, move it to the queue
           val (delayedFetcherEvent, delayMs) = scheduler.peek()
           if (delayedFetcherEvent.nonEmpty) {
             scheduler.poll()
-            result = Right(delayedFetcherEvent.get)
-            break
-          } else if (!queue.isEmpty) {
-            result = Left(queue.poll())
+            queue.add(new QueuedFetcherEvent(delayedFetcherEvent.get.fetcherEvent, time.milliseconds()))
+          }
+
+          if (!queue.isEmpty) {
+            result = queue.poll()
             break
           } else {
             newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)

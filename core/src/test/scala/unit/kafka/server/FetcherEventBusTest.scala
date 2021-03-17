@@ -1,13 +1,14 @@
 package unit.kafka.server
 
-import kafka.server
-import kafka.server.{AddPartitions, DelayedFetcherEvent, FetcherEvent, FetcherEventBus, QueuedFetcherEvent, RemovePartitions, TruncateAndFetch}
+import java.util.Date
+import java.util.concurrent.locks.{Condition, Lock}
+import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+
+import kafka.server._
 import kafka.utils.MockTime
-import org.apache.kafka.common.utils.Time
-import org.junit.Assert.{assertEquals, assertTrue, fail}
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 
-import java.util.concurrent.{CountDownLatch, Executors}
 import scala.collection.Map
 import scala.collection.mutable.ArrayBuffer
 
@@ -30,8 +31,7 @@ class FetcherEventBusTest {
       }
     })
 
-    // sleep for 500ms, during which the runnable should still be blocked
-    Thread.sleep(500)
+    // the runnable should still be blocked
     assertTrue(counter == 0)
 
     // put a event to unblock the runnable
@@ -46,12 +46,9 @@ class FetcherEventBusTest {
     val fetcherEventBus = new FetcherEventBus(new MockTime())
     val addPartitions = AddPartitions(Map.empty, null)
     fetcherEventBus.put(addPartitions)
-    fetcherEventBus.getNextEvent() match {
-      case Left(queuedFetcherEvent: QueuedFetcherEvent) =>
-        assertTrue(queuedFetcherEvent.event == addPartitions)
-      case Right(_) => fail("a QueuedFetcherEvent should have been returned")
-    }
+    assertTrue(fetcherEventBus.getNextEvent().event == addPartitions)
   }
+
 
   @Test
   def testQueuedEventsWithDifferentPriorities(): Unit = {
@@ -68,40 +65,53 @@ class FetcherEventBusTest {
     val actualSequence = ArrayBuffer[FetcherEvent]()
 
     for (_ <- 0 until 2) {
-      fetcherEventBus.getNextEvent() match {
-        case Left(queuedFetcherEvent: QueuedFetcherEvent) =>
-          actualSequence += queuedFetcherEvent.event
-        case Right(_) => fail("a QueuedFetcherEvent should have been returned")
-      }
+      actualSequence += fetcherEventBus.getNextEvent().event
     }
 
     assertEquals(expectedSequence, actualSequence)
   }
 
+  class MockCondition extends Condition {
+    override def await(): Unit = ???
+
+    override def awaitUninterruptibly(): Unit = ???
+
+    override def awaitNanos(nanosTimeout: Long): Long = ???
+
+    override def await(time: Long, unit: TimeUnit): Boolean = {
+      awaitCalled = true
+      false // false indicates that no further waiting is needed
+    }
+
+    override def awaitUntil(deadline: Date): Boolean = ???
+
+    override def signal(): Unit = ???
+
+    override def signalAll(): Unit = {}
+
+    var awaitCalled = false
+  }
+
+  class MockConditionFactory(condition: MockCondition) extends ConditionFactory {
+    override def createCondition(lock: Lock): Condition = condition
+  }
+
   @Test
   def testDelayedEvent(): Unit = {
-    val time = Time.SYSTEM
-    val fetcherEventBus = new FetcherEventBus(time)
+    val time = new MockTime()
+    val condition = new MockCondition
+    val fetcherEventBus = new FetcherEventBus(time, new MockConditionFactory(condition))
     val addPartitions = AddPartitions(Map.empty, null)
-    val delay = 500
+    val delay = 1000
     fetcherEventBus.schedule(new DelayedFetcherEvent(delay, addPartitions))
-
+    assertEquals(1, fetcherEventBus.scheduledEventQueueSize())
     val service = Executors.newSingleThreadExecutor()
 
-    val t1 = time.milliseconds()
     val future = service.submit(new Runnable {
       override def run(): Unit = {
-        // trying to call get will block for at least 500ms
-        fetcherEventBus.getNextEvent() match {
-          case Left(_) => fail("a DelayedFetcherEvent should have been returned")
-          case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
-            assertTrue(delayedFetcherEvent.fetcherEvent == addPartitions)
-          }
-        }
-        // verify that at least 500ms has passed
-
-        val t2 = time.milliseconds()
-        assertTrue(t2 - t1 >= delay)
+        assertTrue(fetcherEventBus.getNextEvent().event == addPartitions)
+        assertTrue(condition.awaitCalled)
+        assertEquals(0, fetcherEventBus.scheduledEventQueueSize())
       }
     })
 
@@ -111,8 +121,9 @@ class FetcherEventBusTest {
 
   @Test
   def testDelayedEventsWithDifferentDueTimes(): Unit = {
-    val time = Time.SYSTEM
-    val fetcherEventBus = new FetcherEventBus(time)
+    val time = new MockTime()
+    val condition = new MockCondition
+    val fetcherEventBus = new FetcherEventBus(time, new MockConditionFactory(condition))
     val secondTask = AddPartitions(Map.empty, null)
     fetcherEventBus.schedule(new DelayedFetcherEvent(200, secondTask))
 
@@ -127,12 +138,7 @@ class FetcherEventBusTest {
     val future = service.submit(new Runnable {
       override def run(): Unit = {
         for (_ <- 0 until 2) {
-          fetcherEventBus.getNextEvent() match {
-            case Left(_) => fail("a DelayedFetcherEvent should have been returned")
-            case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
-              actualSequence += delayedFetcherEvent.fetcherEvent
-            }
-          }
+          actualSequence += fetcherEventBus.getNextEvent().event
         }
       }
     })
@@ -144,8 +150,9 @@ class FetcherEventBusTest {
 
   @Test
   def testBothDelayedAndQueuedEvent(): Unit = {
-    val time = Time.SYSTEM
-    val fetcherEventBus = new FetcherEventBus(time)
+    val time = new MockTime()
+    val condition = new MockCondition
+    val fetcherEventBus = new FetcherEventBus(time, new MockConditionFactory(condition))
 
     val queuedEvent = RemovePartitions(Set.empty, null)
     fetcherEventBus.put(queuedEvent)
@@ -161,16 +168,8 @@ class FetcherEventBusTest {
     val future = service.submit(new Runnable {
       override def run(): Unit = {
         for (_ <- 0 until expectedEvents) {
-          fetcherEventBus.getNextEvent() match {
-            case Left(queuedFetcherEvent: QueuedFetcherEvent) => {
-              assertTrue(queuedFetcherEvent.event == queuedEvent)
-              receivedEvents += 1
-            }
-            case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
-              assertTrue(delayedFetcherEvent.fetcherEvent == scheduledEvent)
-              receivedEvents += 1
-            }
-          }
+          fetcherEventBus.getNextEvent()
+          receivedEvents += 1
         }
       }
     })

@@ -130,26 +130,13 @@ class FetcherEventManager(name: String,
         return
       }
 
-      val (fetcherEvent, optionalEnqueueTime) = nextEvent match {
-        case Left(dequeued: QueuedFetcherEvent) =>
-          (dequeued.event, Some(dequeued.enqueueTimeMs))
-
-        case Right(delayedFetcherEvent: DelayedFetcherEvent) => {
-          (delayedFetcherEvent.fetcherEvent, None)
-        }
-      }
-
+      val fetcherEvent = nextEvent.event
       _state = fetcherEvent.state
-      optionalEnqueueTime match {
-        case Some(enqueueTimeMs) => {
-          eventQueueTimeHist.update(time.milliseconds() - enqueueTimeMs)
-        }
-        case None =>
-      }
+      eventQueueTimeHist.update(time.milliseconds() - nextEvent.enqueueTimeMs)
 
       try {
         rateAndTimeMetrics(state).time {
-          processor.process(fetcherEvent)
+          processor.process(nextEvent.event)
         }
       } catch {
         case e: Exception => error(s"Uncaught error processing event $fetcherEvent", e)

@@ -22,11 +22,7 @@ import org.apache.kafka.common.utils.Time
 import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.{Condition, Lock, ReentrantLock}
-
 import kafka.utils.DelayedItem
-
-import scala.util.control.Breaks.{break, breakable}
-
 
 class QueuedFetcherEvent(val event: FetcherEvent,
   val enqueueTimeMs: Long) extends Comparable[QueuedFetcherEvent] {
@@ -37,12 +33,7 @@ class QueuedFetcherEvent(val event: FetcherEvent,
  * The SimpleScheduler is not thread safe
  */
 class SimpleScheduler[T <: DelayedItem] {
-  private val delayedQueue = new PriorityQueue[T](new Comparator[T]() {
-    override def compare(t1: T, t2: T): Int = {
-      // here we use natural ordering so that events with the earliest due time can be checked first
-      t1.compareTo(t2)
-    }
-  })
+  private val delayedQueue = new PriorityQueue[T](Comparator.naturalOrder[T]())
 
   def schedule(item: T) : Unit = {
     delayedQueue.add(item)
@@ -153,21 +144,18 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
     inLock(eventLock) {
       var result : QueuedFetcherEvent = null
 
-      breakable {
-        while (!shutdownInitialized) {
-          // check if any delayed event has become current. If so, move it to the queue
-          val (delayedFetcherEvent, delayMs) = scheduler.peek()
-          if (delayedFetcherEvent.nonEmpty) {
-            scheduler.poll()
-            queue.add(new QueuedFetcherEvent(delayedFetcherEvent.get.fetcherEvent, time.milliseconds()))
-          }
+      while (!shutdownInitialized && result == null) {
+        // check if any delayed event has become current. If so, move it to the queue
+        val (delayedFetcherEvent, delayMs) = scheduler.peek()
+        if (delayedFetcherEvent.nonEmpty) {
+          scheduler.poll()
+          queue.add(new QueuedFetcherEvent(delayedFetcherEvent.get.fetcherEvent, time.milliseconds()))
+        }
 
-          if (!queue.isEmpty) {
-            result = queue.poll()
-            break
-          } else {
-            newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)
-          }
+        if (!queue.isEmpty) {
+          result = queue.poll()
+        } else {
+          newEventCondition.await(delayMs, TimeUnit.MILLISECONDS)
         }
       }
 

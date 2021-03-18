@@ -136,7 +136,7 @@ class FetcherEventManager(name: String,
 
       try {
         rateAndTimeMetrics(state).time {
-          processor.process(nextEvent.event)
+          processor.process(fetcherEvent)
         }
       } catch {
         case e: Exception => error(s"Uncaught error processing event $fetcherEvent", e)

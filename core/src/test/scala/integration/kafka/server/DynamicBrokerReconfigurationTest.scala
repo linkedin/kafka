@@ -804,24 +804,26 @@ class DynamicBrokerReconfigurationTest extends ZooKeeperTestHarness with SaslSet
 
   // Verify that replicaFetcherManager.markPartitionsForTruncation uses the current fetcher thread size
   // to obtain partition assignment
-//  private def verifyMarkPartitionsForTruncation(): Unit = {
-//    val leaderId = 0
-//    val partitions = (0 until numPartitions).map(i => new TopicPartition(topic, i)).filter { tp =>
-//      zkClient.getLeaderForPartition(tp).contains(leaderId)
-//    }
-//    assertTrue(s"Partitions not found with leader $leaderId", partitions.nonEmpty)
-//    partitions.foreach { tp =>
-//      (1 to 2).foreach { i =>
-//        val replicaFetcherManager = servers(i).replicaManager.replicaFetcherManager
-//        val truncationOffset = tp.partition
-//        replicaFetcherManager.markPartitionsForTruncation(leaderId, tp, truncationOffset)
-//        val fetcherThreads = replicaFetcherManager.fetcherThreadMap.filter(_._2.fetchState(tp).isDefined)
-//        assertEquals(1, fetcherThreads.size)
-//        assertEquals(replicaFetcherManager.getFetcherId(tp), fetcherThreads.head._1.fetcherId)
-//        assertEquals(Some(truncationOffset), fetcherThreads.head._2.fetchState(tp).map(_.fetchOffset))
-//      }
-//    }
-//  }
+  /*
+  private def verifyMarkPartitionsForTruncation(): Unit = {
+    val leaderId = 0
+    val partitions = (0 until numPartitions).map(i => new TopicPartition(topic, i)).filter { tp =>
+      zkClient.getLeaderForPartition(tp).contains(leaderId)
+    }
+    assertTrue(s"Partitions not found with leader $leaderId", partitions.nonEmpty)
+    partitions.foreach { tp =>
+      (1 to 2).foreach { i =>
+        val replicaFetcherManager = servers(i).replicaManager.replicaFetcherManager
+        val truncationOffset = tp.partition
+        replicaFetcherManager.markPartitionsForTruncation(leaderId, tp, truncationOffset)
+        val fetcherThreads = replicaFetcherManager.fetcherThreadMap.filter(_._2.fetchState(tp).isDefined)
+        assertEquals(1, fetcherThreads.size)
+        assertEquals(replicaFetcherManager.getFetcherId(tp), fetcherThreads.head._1.fetcherId)
+        assertEquals(Some(truncationOffset), fetcherThreads.head._2.fetchState(tp).map(_.fetchOffset))
+      }
+    }
+  }
+   */
 
   @Test
   def testMetricsReporterUpdate(): Unit = {

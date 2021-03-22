@@ -14,6 +14,8 @@
   * See the License for the specific language governing permissions and
   * limitations under the License.
   */
+
+/*
 package kafka.server
 
 import java.util.Optional
@@ -95,7 +97,7 @@ class ReplicaFetcherThreadTest {
     expect(log.endOffsetForEpoch(leaderEpoch)).andReturn(
       Some(OffsetAndEpoch(0, leaderEpoch))).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     //Expectations
@@ -224,7 +226,7 @@ class ReplicaFetcherThreadTest {
     expect(log.endOffsetForEpoch(leaderEpoch)).andReturn(
       Some(OffsetAndEpoch(0, leaderEpoch))).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     //Expectations
@@ -288,7 +290,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLEO).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -339,7 +341,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLEO).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -395,7 +397,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLEO).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -468,7 +470,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLEO).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -525,7 +527,7 @@ class ReplicaFetcherThreadTest {
     expect(log.highWatermark).andReturn(initialFetchOffset).anyTimes()
     expect(log.latestEpoch).andReturn(Some(5))
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
     replay(replicaManager, logManager, quota, partition, log)
 
@@ -574,7 +576,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLeo).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
     replay(replicaManager, logManager, quota, partition, log)
 
@@ -628,7 +630,7 @@ class ReplicaFetcherThreadTest {
     expect(log.endOffsetForEpoch(leaderEpoch)).andReturn(
       Some(OffsetAndEpoch(0, leaderEpoch))).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -680,7 +682,7 @@ class ReplicaFetcherThreadTest {
     expect(log.logEndOffset).andReturn(initialLEO).anyTimes()
     expect(replicaManager.localLogOrException(anyObject(classOf[TopicPartition]))).andReturn(log).anyTimes()
     expect(replicaManager.logManager).andReturn(logManager).anyTimes()
-    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
+//    expect(replicaManager.replicaAlterLogDirsManager).andReturn(replicaAlterLogDirsManager).anyTimes()
     stub(partition, replicaManager, log)
 
     replay(replicaManager, logManager, quota, partition, log)
@@ -752,3 +754,4 @@ class ReplicaFetcherThreadTest {
     expect(replicaManager.nonOfflinePartition(t2p1)).andReturn(Some(partition)).anyTimes()
   }
 }
+*/

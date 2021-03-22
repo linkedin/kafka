@@ -46,7 +46,7 @@ sealed trait FetcherEvent extends Comparable[FetcherEvent] {
   def state: FetcherState
   override def compareTo(other: FetcherEvent): Int = {
     // an event with a higher proirity value should be dequeued first in a PriorityQueue
-    other.priority - this.priority
+    other.priority.compareTo(this.priority)
   }
 }
 

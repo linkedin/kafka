@@ -21,12 +21,32 @@ import kafka.utils.CoreUtils.inLock
 import org.apache.kafka.common.utils.Time
 import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.{Condition, Lock, ReentrantLock}
+
 import kafka.utils.DelayedItem
 
+/**
+ * A QueuedFetcherEvent can be put into the PriorityQueue of the FetcherEventBus
+ * and polled according to the priority of the FetcherEvent.
+ * If two events have the same priority, the one with the smaller sequence number
+ * will be polled first.
+ * @param event
+ * @param enqueueTimeMs
+ * @param sequenceNumber
+ */
 class QueuedFetcherEvent(val event: FetcherEvent,
-  val enqueueTimeMs: Long) extends Comparable[QueuedFetcherEvent] {
-  override def compareTo(other: QueuedFetcherEvent): Int = event.compareTo(other.event)
+  val enqueueTimeMs: Long,
+  val sequenceNumber: Long) extends Comparable[QueuedFetcherEvent] {
+  override def compareTo(other: QueuedFetcherEvent): Int = {
+    val priorityDiff = event.compareTo(other.event)
+    if (priorityDiff != 0) {
+      priorityDiff
+    } else {
+      // the event with the smaller sequenceNumber will be polled first
+      this.sequenceNumber.compareTo(other.sequenceNumber)
+    }
+  }
 }
 
 /**
@@ -98,6 +118,7 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
   private val newEventCondition = conditionFactory.createCondition(eventLock)
 
   private val queue = new PriorityQueue[QueuedFetcherEvent]
+  private val nextSequenceNumber = new AtomicLong()
   private val scheduler = new SimpleScheduler[DelayedFetcherEvent]
   @volatile private var shutdownInitialized = false
 
@@ -117,7 +138,7 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
 
   def put(event: FetcherEvent): Unit = {
     inLock(eventLock) {
-      queue.add(new QueuedFetcherEvent(event, time.milliseconds()))
+      queue.add(new QueuedFetcherEvent(event, time.milliseconds(), nextSequenceNumber.getAndIncrement()))
       newEventCondition.signalAll()
     }
   }
@@ -149,7 +170,7 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
         val (delayedFetcherEvent, delayMs) = scheduler.peek()
         if (delayedFetcherEvent.nonEmpty) {
           scheduler.poll()
-          queue.add(new QueuedFetcherEvent(delayedFetcherEvent.get.fetcherEvent, time.milliseconds()))
+          queue.add(new QueuedFetcherEvent(delayedFetcherEvent.get.fetcherEvent, time.milliseconds(), nextSequenceNumber.getAndIncrement()))
         }
 
         if (!queue.isEmpty) {

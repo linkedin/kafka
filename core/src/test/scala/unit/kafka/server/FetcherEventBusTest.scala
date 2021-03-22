@@ -71,6 +71,29 @@ class FetcherEventBusTest {
     assertEquals(expectedSequence, actualSequence)
   }
 
+  @Test
+  def testQueuedEventsWithSamePriority(): Unit = {
+    // Two queued events with the same priority should be polled
+    // according to their sequence numbers in a FIFO manner
+    val fetcherEventBus = new FetcherEventBus(new MockTime())
+
+    val task1 = AddPartitions(Map.empty, null)
+    fetcherEventBus.put(task1)
+
+    val task2 = AddPartitions(Map.empty, null)
+    fetcherEventBus.put(task2)
+
+    val expectedSequence = Seq(task1, task2)
+
+    val actualSequence = ArrayBuffer[FetcherEvent]()
+
+    for (_ <- 0 until 2) {
+      actualSequence += fetcherEventBus.getNextEvent().event
+    }
+
+    assertEquals(expectedSequence, actualSequence)
+  }
+
   class MockCondition extends Condition {
     override def await(): Unit = ???
 

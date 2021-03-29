@@ -229,8 +229,8 @@ public final class ProducerBatch {
                     if (thunk.callback != null)
                         thunk.callback.onCompletion(null, exception);
                 }
-            } catch (Exception e) {
-                log.error("Error executing user-provided callback on message for topic-partition '{}'", topicPartition, e);
+            } catch (Throwable t) {
+                log.error("Error executing user-provided callback on message for topic-partition '{}'", topicPartition, t);
             }
         }
 

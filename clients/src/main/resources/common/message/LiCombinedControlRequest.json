@@ -87,6 +87,8 @@
   ],
   "commonStructs": [
     { "name": "LeaderAndIsrPartitionState", "versions": "0+", "fields": [
+      { "name": "TopicName", "type": "string", "versions": "0", "entityType": "topicName", "ignorable": true,
+        "about": "The topic name.  This is only present in v0." },
       { "name": "PartitionIndex", "type": "int32", "versions": "0+",
         "about": "The partition index." },
       { "name": "ControllerEpoch", "type": "int32", "versions": "0+",

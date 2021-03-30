@@ -17,16 +17,31 @@
 
 package org.apache.kafka.common.requests;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.message.LiCombinedControlRequestData;
+import org.apache.kafka.common.protocol.ApiKeys;
+import org.apache.kafka.common.protocol.types.Struct;
+import org.apache.kafka.common.utils.FlattenedIterator;
+import org.apache.kafka.common.utils.Utils;
+
+
 class LiCombinedControlRequest extends AbstractControlRequest {
     public static class Builder extends AbstractControlRequest.Builder<LiCombinedControlRequest> {
         // fields from the LeaderAndISRRequest
-        private final List<LeaderAndIsrPartitionState> partitionStates;
+        private final List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates;
         private final Collection<Node> liveLeaders;
 
         public Builder(short version, int controllerId, int controllerEpoch, long maxBrokerEpoch,
-                       List<LeaderAndIsrPartitionState> partitionStates, Collection<Node> liveLeaders) {
-            val brokerEpoch = -1 // the broker epoch field has been replaced by maxBrokerEpoch, and it is no longer used
-            super(ApiKeys.LEADER_AND_ISR, version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch);
+                       List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates, Collection<Node> liveLeaders) {
+            super(ApiKeys.LEADER_AND_ISR, version, controllerId, controllerEpoch, -1, maxBrokerEpoch);
             this.partitionStates = partitionStates;
             this.liveLeaders = liveLeaders;
         }
@@ -35,11 +50,10 @@ class LiCombinedControlRequest extends AbstractControlRequest {
             LiCombinedControlRequestData data = new LiCombinedControlRequestData()
                 .setControllerId(controllerId)
                 .setControllerEpoch(controllerEpoch)
-                .setBrokerEpoch(brokerEpoch)
                 .setMaxBrokerEpoch(maxBrokerEpoch);
 
             // setting the LeaderAndIsr request fields
-            List<LeaderAndIsrLiveLeader> leaders = liveLeaders.stream().map(n -> new LeaderAndIsrLiveLeader()
+            List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> leaders = liveLeaders.stream().map(n -> new LiCombinedControlRequestData.LeaderAndIsrLiveLeader()
                 .setBrokerId(n.id())
                 .setHostName(n.host())
                 .setPort(n.port())
@@ -47,21 +61,21 @@ class LiCombinedControlRequest extends AbstractControlRequest {
 
             data.setLiveLeaders(leaders);
 
-            Map<String, LeaderAndIsrTopicState> topicStatesMap = groupByTopic(partitionStates);
-            data.setTopicStates(new ArrayList<>(topicStatesMap.values()));
+            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> topicStatesMap = groupByTopic(partitionStates);
+            data.setLeaderAndIsrTopicStates(new ArrayList<>(topicStatesMap.values()));
 
             // TODO: set the UpdateMetadata fields
             // TODO: set the StopReplica fields
             return new LiCombinedControlRequest(data, version);
         }
 
-        private static Map<String, LeaderAndIsrTopicState> groupByTopic(List<LeaderAndIsrPartitionState> partitionStates) {
-            Map<String, LeaderAndIsrTopicState> topicStates = new HashMap<>();
+        private static Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> groupByTopic(List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates) {
+            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> topicStates = new HashMap<>();
             // We don't null out the topic name in LeaderAndIsrRequestPartition since it's ignored by
             // the generated code if version >= 2
-            for (LeaderAndIsrPartitionState partition : partitionStates) {
-                LeaderAndIsrTopicState topicState = topicStates.computeIfAbsent(partition.topicName(),
-                    t -> new LeaderAndIsrTopicState().setTopicName(partition.topicName()));
+            for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partition : partitionStates) {
+                LiCombinedControlRequestData.LeaderAndIsrTopicState topicState = topicStates.computeIfAbsent(partition.topicName(),
+                    t -> new LiCombinedControlRequestData.LeaderAndIsrTopicState().setTopicName(partition.topicName()));
                 topicState.partitionStates().add(partition);
             }
             return topicStates;
@@ -96,8 +110,8 @@ class LiCombinedControlRequest extends AbstractControlRequest {
     }
 
     private void normalizeLeaderAndIsr() {
-        for (LeaderAndIsrTopicState topicState : data.topicStates()) {
-            for (LeaderAndIsrPartitionState partitionState : topicState.partitionStates()) {
+        for (LiCombinedControlRequestData.LeaderAndIsrTopicState topicState : data.leaderAndIsrTopicStates()) {
+            for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partitionState : topicState.partitionStates()) {
                 // Set the topic name so that we can always present the ungrouped view to callers
                 partitionState.setTopicName(topicState.topicName());
             }
@@ -138,12 +152,12 @@ class LiCombinedControlRequest extends AbstractControlRequest {
         return data.maxBrokerEpoch();
     }
 
-    public Iterable<LeaderAndIsrPartitionState> partitionStates() {
-        return () -> new FlattenedIterator<>(data.topicStates().iterator(),
+    public Iterable<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates() {
+        return () -> new FlattenedIterator<>(data.leaderAndIsrTopicStates().iterator(),
             topicState -> topicState.partitionStates().iterator());
     }
 
-    public List<LeaderAndIsrLiveLeader> liveLeaders() {
+    public List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> liveLeaders() {
         return Collections.unmodifiableList(data.liveLeaders());
     }
 

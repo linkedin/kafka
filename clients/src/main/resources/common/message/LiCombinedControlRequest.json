@@ -111,6 +111,8 @@
         "about": "Whether the replica should have existed on the broker or not." }
     ]},
     { "name": "UpdateMetadataPartitionState", "versions": "0+", "fields": [
+      { "name": "TopicName", "type": "string", "versions": "0", "entityType": "topicName", "ignorable": true,
+        "about": "In older versions of this RPC, the topic name." },
       { "name": "PartitionIndex", "type": "int32", "versions": "0+",
         "about": "The partition index." },
       { "name": "ControllerEpoch", "type": "int32", "versions": "0+",

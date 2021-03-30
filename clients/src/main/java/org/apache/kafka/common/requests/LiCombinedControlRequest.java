@@ -38,14 +38,22 @@ import org.apache.kafka.common.utils.Utils;
 class LiCombinedControlRequest extends AbstractControlRequest {
     public static class Builder extends AbstractControlRequest.Builder<LiCombinedControlRequest> {
         // fields from the LeaderAndISRRequest
-        private final List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates;
-        private final Collection<Node> liveLeaders;
+        private final List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates;
+        private final Collection<Node> leaderAndIsrLiveLeaders;
+
+        // fields from the UpdateMetadataRequest
+        private final List<LiCombinedControlRequestData.UpdateMetadataPartitionState> partitionStates;
+        private final List<LiCombinedControlRequestData.UpdateMetadataBroker> liveBrokers;
+
 
         public Builder(short version, int controllerId, int controllerEpoch, long maxBrokerEpoch,
-                       List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates, Collection<Node> liveLeaders) {
+            List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates, Collection<Node> leaderAndIsrLiveLeaders,
+            List<LiCombinedControlRequestData.UpdateMetadataPartitionState> partitionStates, List<LiCombinedControlRequestData.UpdateMetadataBroker> liveBrokers) {
             super(ApiKeys.LEADER_AND_ISR, version, controllerId, controllerEpoch, -1, maxBrokerEpoch);
+            this.leaderAndIsrPartitionStates = leaderAndIsrPartitionStates;
+            this.leaderAndIsrLiveLeaders = leaderAndIsrLiveLeaders;
             this.partitionStates = partitionStates;
-            this.liveLeaders = liveLeaders;
+            this.liveBrokers = liveBrokers;
         }
         @Override
         public LiCombinedControlRequest build(short version) {
@@ -54,8 +62,8 @@ class LiCombinedControlRequest extends AbstractControlRequest {
                 .setControllerEpoch(controllerEpoch)
                 .setMaxBrokerEpoch(maxBrokerEpoch);
 
-            // setting the LeaderAndIsr request fields
-            List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> leaders = liveLeaders.stream().map(n -> new LiCombinedControlRequestData.LeaderAndIsrLiveLeader()
+            // setting the LeaderAndIsr fields
+            List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> leaders = leaderAndIsrLiveLeaders.stream().map(n -> new LiCombinedControlRequestData.LeaderAndIsrLiveLeader()
                 .setBrokerId(n.id())
                 .setHostName(n.host())
                 .setPort(n.port())
@@ -63,18 +71,23 @@ class LiCombinedControlRequest extends AbstractControlRequest {
 
             data.setLiveLeaders(leaders);
 
-            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> topicStatesMap = groupByTopic(partitionStates);
-            data.setLeaderAndIsrTopicStates(new ArrayList<>(topicStatesMap.values()));
+            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> leaderAndIsrTopicStateMap = groupByLeaderAndIsrTopic(
+                leaderAndIsrPartitionStates);
+            data.setLeaderAndIsrTopicStates(new ArrayList<>(leaderAndIsrTopicStateMap.values()));
 
-            // TODO: set the UpdateMetadata fields
+            // setting the UpdateMetadata fields
+            data.setLiveBrokers(liveBrokers);
+            Map<String, LiCombinedControlRequestData.UpdateMetadataTopicState> updateMetadataTopicStateMap = groupByUpdateMetadataTopic(partitionStates);
+            data.setUpdateMetadataTopicStates(new ArrayList<>(updateMetadataTopicStateMap.values()));
+
             // TODO: set the StopReplica fields
             return new LiCombinedControlRequest(data, version);
         }
 
-        private static Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> groupByTopic(List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates) {
+        private static Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> groupByLeaderAndIsrTopic(List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates) {
             Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> topicStates = new HashMap<>();
             // We don't null out the topic name in LeaderAndIsrRequestPartition since it's ignored by
-            // the generated code if version >= 2
+            // the generated code if version > 0
             for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partition : partitionStates) {
                 LiCombinedControlRequestData.LeaderAndIsrTopicState topicState = topicStates.computeIfAbsent(partition.topicName(),
                     t -> new LiCombinedControlRequestData.LeaderAndIsrTopicState().setTopicName(partition.topicName()));
@@ -83,17 +96,32 @@ class LiCombinedControlRequest extends AbstractControlRequest {
             return topicStates;
         }
 
+        private static Map<String, LiCombinedControlRequestData.UpdateMetadataTopicState> groupByUpdateMetadataTopic(List<LiCombinedControlRequestData.UpdateMetadataPartitionState> partitionStates) {
+            Map<String, LiCombinedControlRequestData.UpdateMetadataTopicState> topicStates = new HashMap<>();
+            for (LiCombinedControlRequestData.UpdateMetadataPartitionState partition : partitionStates) {
+                // We don't null out the topic name in UpdateMetadataTopicState since it's ignored by the generated
+                // code if version > 0
+                LiCombinedControlRequestData.UpdateMetadataTopicState topicState = topicStates.computeIfAbsent(partition.topicName(),
+                    t -> new LiCombinedControlRequestData.UpdateMetadataTopicState().setTopicName(partition.topicName()));
+                topicState.partitionStates().add(partition);
+            }
+            return topicStates;
+        }
+
         @Override
         public String toString() {
-            // TODO: revise the string representation of the builder
             StringBuilder bld = new StringBuilder();
-            bld.append("(type=LeaderAndIsRequest")
+            // HOTFIX: LIKAFKA-24478
+            // large cluster with large metadata can create really large string
+            // potentially causing OOM, thus we don't print out the UpdateMetadata PartitionStates
+            bld.append("(type=LiCombinedControlRequest")
                 .append(", controllerId=").append(controllerId)
                 .append(", controllerEpoch=").append(controllerEpoch)
                 .append(", brokerEpoch=").append(brokerEpoch)
                 .append(", maxBrokerEpoch=").append(maxBrokerEpoch)
-                .append(", partitionStates=").append(partitionStates)
-                .append(", liveLeaders=(").append(Utils.join(liveLeaders, ", ")).append(")")
+                .append(", partitionStates=").append(leaderAndIsrPartitionStates)
+                .append(", liveLeaders=(").append(Utils.join(leaderAndIsrLiveLeaders, ", ")).append(")")
+                .append(", liveBrokers=").append(Utils.join(liveBrokers, ", "))
                 .append(")");
             return bld.toString();
 
@@ -108,12 +136,21 @@ class LiCombinedControlRequest extends AbstractControlRequest {
         this.data = data;
         // Do this from the constructor to make it thread-safe (even though it's only needed when some methods are called)
         normalizeLeaderAndIsr();
-
+        normalizeUpdateMetadata();
     }
 
     private void normalizeLeaderAndIsr() {
         for (LiCombinedControlRequestData.LeaderAndIsrTopicState topicState : data.leaderAndIsrTopicStates()) {
             for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partitionState : topicState.partitionStates()) {
+                // Set the topic name so that we can always present the ungrouped view to callers
+                partitionState.setTopicName(topicState.topicName());
+            }
+        }
+    }
+
+    private void normalizeUpdateMetadata() {
+        for (LiCombinedControlRequestData.UpdateMetadataTopicState topicState : data.updateMetadataTopicStates()) {
+            for (LiCombinedControlRequestData.UpdateMetadataPartitionState partitionState : topicState.partitionStates()) {
                 // Set the topic name so that we can always present the ungrouped view to callers
                 partitionState.setTopicName(topicState.topicName());
             }
@@ -137,7 +174,7 @@ class LiCombinedControlRequest extends AbstractControlRequest {
         responseData.setLeaderAndIsrErrorCode(error.code());
 
         List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> partitions = new ArrayList<>();
-        for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partition : partitionStates()) {
+        for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partition : leaderAndIsrPartitionStates()) {
             partitions.add(new LiCombinedControlResponseData.LeaderAndIsrPartitionError()
                 .setTopicName(partition.topicName())
                 .setPartitionIndex(partition.partitionIndex())
@@ -167,13 +204,22 @@ class LiCombinedControlRequest extends AbstractControlRequest {
         return data.maxBrokerEpoch();
     }
 
-    public Iterable<LiCombinedControlRequestData.LeaderAndIsrPartitionState> partitionStates() {
+    public Iterable<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates() {
         return () -> new FlattenedIterator<>(data.leaderAndIsrTopicStates().iterator(),
             topicState -> topicState.partitionStates().iterator());
     }
 
     public List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> liveLeaders() {
         return Collections.unmodifiableList(data.liveLeaders());
+    }
+
+    public Iterable<LiCombinedControlRequestData.UpdateMetadataPartitionState> updateMetadataPartitionStates() {
+        return () -> new FlattenedIterator<>(data.updateMetadataTopicStates().iterator(),
+            topicState -> topicState.partitionStates().iterator());
+    }
+
+    public List<LiCombinedControlRequestData.UpdateMetadataBroker> liveBrokers() {
+        return data.liveBrokers();
     }
 
     public static LiCombinedControlRequest parse(ByteBuffer buffer, short version) {

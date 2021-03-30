@@ -27,7 +27,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
+import org.apache.kafka.common.message.LiCombinedControlResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
+import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Struct;
 import org.apache.kafka.common.utils.FlattenedIterator;
 import org.apache.kafka.common.utils.Utils;
@@ -130,6 +132,19 @@ class LiCombinedControlRequest extends AbstractControlRequest {
     @Override
     public LiCombinedControlResponse getErrorResponse(int throttleTimeMs, Throwable e) {
         // TODO: return the response
+        LiCombinedControlResponseData responseData = new LiCombinedControlResponseData();
+        Errors error = Errors.forException(e);
+        responseData.setLeaderAndIsrErrorCode(error.code());
+
+        List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> partitions = new ArrayList<>();
+        for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partition : partitionStates()) {
+            partitions.add(new LiCombinedControlResponseData.LeaderAndIsrPartitionError()
+                .setTopicName(partition.topicName())
+                .setPartitionIndex(partition.partitionIndex())
+                .setErrorCode(error.code()));
+        }
+        responseData.setLeaderAndIsrPartitionErrors(partitions);
+        return new LiCombinedControlResponse(responseData);
     }
 
     @Override

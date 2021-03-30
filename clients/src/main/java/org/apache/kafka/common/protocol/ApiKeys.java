@@ -21,6 +21,8 @@ import org.apache.kafka.common.message.ApiVersionsRequestData;
 import org.apache.kafka.common.message.ApiVersionsResponseData;
 import org.apache.kafka.common.message.ControlledShutdownRequestData;
 import org.apache.kafka.common.message.ControlledShutdownResponseData;
+import org.apache.kafka.common.message.LiCombinedControlRequestData;
+import org.apache.kafka.common.message.LiCombinedControlResponseData;
 import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRequestData;
 import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckResponseData;
 import org.apache.kafka.common.message.CreateDelegationTokenRequestData;

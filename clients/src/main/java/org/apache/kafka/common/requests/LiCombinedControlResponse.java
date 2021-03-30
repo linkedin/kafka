@@ -16,6 +16,56 @@
  */
 package org.apache.kafka.common.requests;
 
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.kafka.common.message.LiCombinedControlResponseData;
+import org.apache.kafka.common.protocol.ApiKeys;
+import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.protocol.types.Struct;
+
+
 class LiCombinedControlResponse extends AbstractResponse {
-    private final LiCombinedControlResponseData  data;
+    private final LiCombinedControlResponseData data;
+    public LiCombinedControlResponse(LiCombinedControlResponseData data) {
+        this.data = data;
+    }
+
+    public LiCombinedControlResponse(Struct struct, short version) {
+        this.data = new LiCombinedControlResponseData(struct, version);
+    }
+
+    public List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> partitions() {
+        return data.leaderAndIsrPartitionErrors();
+    }
+
+    public Errors error() {
+        return Errors.forCode(data.leaderAndIsrErrorCode());
+    }
+
+    @Override
+    public Map<Errors, Integer> errorCounts() {
+        Errors error = error();
+        if (error != Errors.NONE)
+            // Minor optimization since the top-level error applies to all partitions
+            return Collections.singletonMap(error, data.leaderAndIsrPartitionErrors().size());
+        return errorCounts(data.leaderAndIsrPartitionErrors().stream().map(l -> Errors.forCode(l.errorCode())).collect(Collectors.toList()));
+    }
+
+    public static LeaderAndIsrResponse parse(ByteBuffer buffer, short version) {
+        return new LeaderAndIsrResponse(ApiKeys.LEADER_AND_ISR.parseResponse(version, buffer), version);
+    }
+
+    @Override
+    protected Struct toStruct(short version) {
+        return data.toStruct(version);
+    }
+
+    @Override
+    public String toString() {
+        return data.toString();
+    }
+
 }

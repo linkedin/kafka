@@ -38,16 +38,26 @@ class LiCombinedControlResponse extends AbstractResponse {
         this.data = new LiCombinedControlResponseData(struct, version);
     }
 
-    public List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> partitions() {
+    public List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> leaderAndIsrPartitionErrors() {
         return data.leaderAndIsrPartitionErrors();
+    }
+
+    public List<LiCombinedControlResponseData.StopReplicaPartitionError> stopReplicaPartitionErrors() {
+        return data.stopReplicaPartitionErrors();
     }
 
     private Errors leaderAndIsrError() {
         return Errors.forCode(data.leaderAndIsrErrorCode());
     }
+
     private Errors updateMetadataError() {
         return Errors.forCode(data.updateMetadataErrorCode());
     }
+
+    private Errors stopReplicaError() {
+        return Errors.forCode(data.stopReplicaErrorCode());
+    }
+
     public Errors error() {
         // To be backward compatible with the existing API, which can only return one error,
         // we give the following priorities LeaderAndIsr error > Stop Replica error > UpdateMetadata error
@@ -55,7 +65,11 @@ class LiCombinedControlResponse extends AbstractResponse {
         if (leaderAndIsrError != Errors.NONE) {
             return leaderAndIsrError;
         }
-        // TODO: handle stop replica errors
+
+        Errors stopReplicaError = stopReplicaError();
+        if (stopReplicaError != Errors.NONE) {
+            return stopReplicaError;
+        }
 
         Errors updateMetadataError = updateMetadataError();
         if (updateMetadataError != Errors.NONE) {
@@ -78,19 +92,25 @@ class LiCombinedControlResponse extends AbstractResponse {
 
         Map<Errors, Integer> updateMetadataErrorCount = errorCounts(updateMetadataError());
 
-        // merge the several count maps into one result
-        Map<Errors, Integer> combinedErrorCount = leaderAndIsrErrorCount;
-        for (Map.Entry<Errors, Integer> entry: updateMetadataErrorCount.entrySet()) {
-            Errors key = entry.getKey();
-            Integer value = entry.getValue();
-            if (combinedErrorCount.containsKey(key)) {
-                combinedErrorCount.put(key, combinedErrorCount.get(key) + value);
-            } else {
-                combinedErrorCount.put(key, value);
-            }
+        Map<Errors, Integer> stopReplicaErrorCount;
+        if (data.stopReplicaErrorCode() != Errors.NONE.code()) {
+            // Minor optimization since the top-level error applies to all partitions
+            stopReplicaErrorCount = Collections.singletonMap(error(), data.stopReplicaPartitionErrors().size());
+        } else {
+            stopReplicaErrorCount = errorCounts(data.stopReplicaPartitionErrors().stream().map(p -> Errors.forCode(p.errorCode())).collect(Collectors.toList()));
         }
 
+        // merge the several count maps into one result
+        Map<Errors, Integer> combinedErrorCount = mergeMaps(leaderAndIsrErrorCount, updateMetadataErrorCount);
+        combinedErrorCount = mergeMaps(combinedErrorCount, stopReplicaErrorCount);
+
         return combinedErrorCount;
+    }
+
+    private static Map<Errors, Integer> mergeMaps(Map<Errors, Integer> m1, Map<Errors, Integer> m2) {
+        Map<Errors, Integer> result = m1;
+        m2.forEach((k, v) -> result.merge(k, v, (v1, v2) -> v1 + v2));
+        return result;
     }
 
     public static LeaderAndIsrResponse parse(ByteBuffer buffer, short version) {

@@ -260,7 +260,7 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
 
     @Override
     public long maxBrokerEpoch() {
-        return data.maxBrokerEpoch();
+        return -1;
     }
 
     public Iterable<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates() {

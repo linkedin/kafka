@@ -81,13 +81,8 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
             return partitionStates;
         }
 
-        public Collection<LeaderAndIsrLiveLeader> liveLeaders() {
-            List<LeaderAndIsrLiveLeader> leaders = liveLeaders.stream().map(n -> new LeaderAndIsrLiveLeader()
-                .setBrokerId(n.id())
-                .setHostName(n.host())
-                .setPort(n.port())
-            ).collect(Collectors.toList());
-            return leaders;
+        public Collection<Node> liveLeaders() {
+            return liveLeaders;
         }
 
         public long maxBrokerEpoch() {

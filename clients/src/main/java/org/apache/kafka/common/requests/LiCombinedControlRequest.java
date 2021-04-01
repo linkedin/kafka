@@ -49,57 +49,59 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
         private final List<LiCombinedControlRequestData.UpdateMetadataBroker> updateMetadataLiveBrokers;
 
         // fields from the StopReplicaRequest
-        private final boolean deletePartitions;
-        private final Collection<TopicPartition> partitions;
+        private final boolean stopReplicaDeletePartitions;
+        private final Collection<TopicPartition> stopReplicaPartitions;
 
-        public Builder(short version, int controllerId, int controllerEpoch, long maxBrokerEpoch,
+        public Builder(short version, int controllerId, int controllerEpoch,
             List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates, Collection<Node> leaderAndIsrLiveLeaders,
             List<LiCombinedControlRequestData.UpdateMetadataPartitionState> updateMetadataPartitionStates, List<LiCombinedControlRequestData.UpdateMetadataBroker> updateMetadataLiveBrokers,
-            boolean deletePartitions,
-            Collection<TopicPartition> partitions) {
-            super(ApiKeys.LI_COMBINED_CONTROL, version, controllerId, controllerEpoch, -1, maxBrokerEpoch);
+            boolean stopReplicaDeletePartitions,
+            Collection<TopicPartition> stopReplicaPartitions) {
+            // Since we've moved the maxBrokerEpoch down to the partition level
+            // the request level maxBrokerEpoch will always be -1
+            super(ApiKeys.LI_COMBINED_CONTROL, version, controllerId, controllerEpoch, -1, -1);
             this.leaderAndIsrPartitionStates = leaderAndIsrPartitionStates;
             this.leaderAndIsrLiveLeaders = leaderAndIsrLiveLeaders;
             this.updateMetadataPartitionStates = updateMetadataPartitionStates;
             this.updateMetadataLiveBrokers = updateMetadataLiveBrokers;
-            this.deletePartitions = deletePartitions;
-            this.partitions = partitions;
+            this.stopReplicaDeletePartitions = stopReplicaDeletePartitions;
+            this.stopReplicaPartitions = stopReplicaPartitions;
         }
 
         @Override
         public LiCombinedControlRequest build(short version) {
             LiCombinedControlRequestData data = new LiCombinedControlRequestData()
                 .setControllerId(controllerId)
-                .setControllerEpoch(controllerEpoch)
-                .setMaxBrokerEpoch(maxBrokerEpoch);
+                .setControllerEpoch(controllerEpoch);
 
             // setting the LeaderAndIsr fields
-            List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> leaders = leaderAndIsrLiveLeaders.stream().map(n -> new LiCombinedControlRequestData.LeaderAndIsrLiveLeader()
-                .setBrokerId(n.id())
-                .setHostName(n.host())
-                .setPort(n.port())
-            ).collect(Collectors.toList());
-
+            List<LiCombinedControlRequestData.LeaderAndIsrLiveLeader> leaders = leaderAndIsrLiveLeaders.stream()
+                .map(n -> new LiCombinedControlRequestData.LeaderAndIsrLiveLeader().setBrokerId(n.id())
+                    .setHostName(n.host())
+                    .setPort(n.port()))
+                .collect(Collectors.toList());
             data.setLiveLeaders(leaders);
 
-            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> leaderAndIsrTopicStateMap = groupByLeaderAndIsrTopic(
-                leaderAndIsrPartitionStates);
+            Map<String, LiCombinedControlRequestData.LeaderAndIsrTopicState> leaderAndIsrTopicStateMap =
+                groupByLeaderAndIsrTopic(leaderAndIsrPartitionStates);
             data.setLeaderAndIsrTopicStates(new ArrayList<>(leaderAndIsrTopicStateMap.values()));
 
             // setting the UpdateMetadata fields
             data.setLiveBrokers(updateMetadataLiveBrokers);
-            Map<String, LiCombinedControlRequestData.UpdateMetadataTopicState> updateMetadataTopicStateMap = groupByUpdateMetadataTopic(
-                updateMetadataPartitionStates);
+
+            Map<String, LiCombinedControlRequestData.UpdateMetadataTopicState> updateMetadataTopicStateMap =
+                groupByUpdateMetadataTopic(updateMetadataPartitionStates);
             data.setUpdateMetadataTopicStates(new ArrayList<>(updateMetadataTopicStateMap.values()));
 
             // setting the StopReplica fields
-            data.setDeletePartitions(deletePartitions);
-            Map<String, List<Integer>> topicPartitionsMap = CollectionUtils.groupPartitionsByTopic(partitions);
-            List<LiCombinedControlRequestData.StopReplicaTopic> topics = topicPartitionsMap.entrySet().stream().map(entry ->
-                new LiCombinedControlRequestData.StopReplicaTopic()
-                    .setName(entry.getKey())
-                    .setPartitionIndexes(entry.getValue())
-            ).collect(Collectors.toList());
+            data.setDeletePartitions(stopReplicaDeletePartitions);
+
+            Map<String, List<Integer>> topicPartitionsMap = CollectionUtils.groupPartitionsByTopic(
+                stopReplicaPartitions);
+            List<LiCombinedControlRequestData.StopReplicaTopic> topics = topicPartitionsMap.entrySet()
+                .stream()
+                .map(entry -> new LiCombinedControlRequestData.StopReplicaTopic().setName(entry.getKey()).setPartitionIndexes(entry.getValue()))
+                .collect(Collectors.toList());
             data.setStopReplicaTopics(topics);
 
             return new LiCombinedControlRequest(data, version);
@@ -143,7 +145,7 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
                 .append(", leaderAndIsrPartitionStates=").append(leaderAndIsrPartitionStates)
                 .append(", leaderAndIsrLiveLeaders=(").append(Utils.join(leaderAndIsrLiveLeaders, ", ")).append(")")
                 .append(", updateMetadataLiveBrokers=").append(Utils.join(updateMetadataLiveBrokers, ", "))
-                .append(", stopReplicaPartitions=").append(Utils.join(partitions, ","))
+                .append(", stopReplicaPartitions=").append(Utils.join(stopReplicaPartitions, ","))
                 .append(")");
             return bld.toString();
 

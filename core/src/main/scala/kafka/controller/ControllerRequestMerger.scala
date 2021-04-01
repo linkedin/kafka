@@ -21,10 +21,9 @@ import java.util
 
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.message.LeaderAndIsrRequestData
+import org.apache.kafka.common.message.{LeaderAndIsrRequestData, UpdateMetadataRequestData}
 import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrLiveLeader
-import org.apache.kafka.common.message.LiCombinedControlRequestData.LeaderAndIsrPartitionState
-import org.apache.kafka.common.message.UpdateMetadataRequestData.UpdateMetadataPartitionState
+import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, UpdateMetadataPartitionState}
 import org.apache.kafka.common.message.UpdateMetadataRequestData.UpdateMetadataBroker
 import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, UpdateMetadataRequest}
 
@@ -127,11 +126,27 @@ class ControllerRequestMerger extends Logging {
   }
 
   private def addUpdateMetadataRequest(request: UpdateMetadataRequest.Builder): Unit = {
+
+    def getCombinedRequestPartitionState(partitionState: UpdateMetadataRequestData.UpdateMetadataPartitionState) = {
+      new UpdateMetadataPartitionState()
+        .setTopicName(partitionState.topicName())
+        .setPartitionIndex(partitionState.partitionIndex())
+        .setControllerEpoch(partitionState.controllerEpoch())
+        .setLeader(partitionState.leader())
+        .setLeaderEpoch(partitionState.leaderEpoch())
+        .setIsr(partitionState.isr())
+        .setZkVersion(partitionState.zkVersion())
+        .setReplicas(partitionState.replicas())
+        .setOfflineReplicas(partitionState.offlineReplicas())
+    }
+
     request.partitionStates().forEach{partitionState => {
+      val combinedRequestPartitionState = getCombinedRequestPartitionState(partitionState)
+
       val topicPartition = new TopicPartition(partitionState.topicName(), partitionState.partitionIndex())
       val currentStates = updateMetadataPartitionStates.getOrElseUpdate(topicPartition,
         new util.LinkedList[UpdateMetadataPartitionState]())
-      mergeUpdateMetadataPartitionState(partitionState, currentStates)
+      mergeUpdateMetadataPartitionState(combinedRequestPartitionState, currentStates)
     }}
 
     updateMetadataLiveBrokers = request.liveBrokers()
@@ -139,6 +154,6 @@ class ControllerRequestMerger extends Logging {
 
   // TODO: support adding StopReplica requests
   def pollLatestRequest(): LiCombinedControlRequest.Builder = {
-    
+
   }
 }

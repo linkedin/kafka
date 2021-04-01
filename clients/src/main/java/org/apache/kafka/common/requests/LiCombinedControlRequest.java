@@ -38,7 +38,7 @@ import org.apache.kafka.common.utils.MappedIterator;
 import org.apache.kafka.common.utils.Utils;
 
 
-class LiCombinedControlRequest extends AbstractControlRequest {
+public class LiCombinedControlRequest extends AbstractControlRequest {
     public static class Builder extends AbstractControlRequest.Builder<LiCombinedControlRequest> {
         // fields from the LeaderAndISRRequest
         private final List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates;

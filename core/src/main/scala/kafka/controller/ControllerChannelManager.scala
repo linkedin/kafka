@@ -253,10 +253,14 @@ class RequestSendThread(val controllerId: Int,
 
     def backoff(): Unit = pause(100, TimeUnit.MILLISECONDS)
 
+    // TODO: add back the queue time and remoteTime
+
     val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
     var queueTimeMs = time.milliseconds() - enqueueTimeMs
     var remoteTimeMs: Long = 0
     requestRateAndQueueTimeMetrics.update(queueTimeMs, TimeUnit.MILLISECONDS)
+
+
 
     var clientResponse: ClientResponse = null
     try {

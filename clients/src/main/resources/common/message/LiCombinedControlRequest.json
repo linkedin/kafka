@@ -24,8 +24,6 @@
       "about": "The current controller ID." },
     { "name": "ControllerEpoch", "type": "int32", "versions": "0+",
       "about": "The current controller epoch." },
-    { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+",
-      "about": "The max broker epoch." },
     // fields from the LeaderAndIsr
     { "name": "LeaderAndIsrTopicStates", "type": "[]LeaderAndIsrTopicState", "versions": "0+",
       "about": "Each topic.", "fields": [
@@ -35,7 +33,7 @@
         "about": "The state of each partition" }
     ]},
     { "name": "LiveLeaders", "type": "[]LeaderAndIsrLiveLeader", "versions": "0+",
-      "about": "The current live leaders.", "fields": [
+      "about": "The current live leaders. An empty list means there is no LeaderAndIsr info in this combined request.", "fields": [
       { "name": "BrokerId", "type": "int32", "versions": "0+", "entityType": "brokerId",
         "about": "The leader's broker ID." },
       { "name": "HostName", "type": "string", "versions": "0+",
@@ -51,7 +49,9 @@
       { "name": "PartitionStates", "type": "[]UpdateMetadataPartitionState", "versions": "0+",
         "about": "The partition that we would like to update." }
     ]},
-    { "name": "LiveBrokers", "type": "[]UpdateMetadataBroker", "versions": "0+", "fields": [
+    { "name": "LiveBrokers", "type": "[]UpdateMetadataBroker", "versions": "0+",
+      "about": "The current live brokers. An empty list means there is no UpdateMetadata info in tihs combined request",
+      "fields": [
       { "name": "Id", "type": "int32", "versions": "0+", "entityType": "brokerId",
         "about": "The broker id." },
       // Version 0 of the protocol only allowed specifying a single host and

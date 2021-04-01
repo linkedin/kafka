@@ -21,23 +21,22 @@ import java.util
 
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.message.LeaderAndIsrRequestData.{LeaderAndIsrLiveLeader, LeaderAndIsrPartitionState}
+import org.apache.kafka.common.message.LeaderAndIsrRequestData
+import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrLiveLeader
+import org.apache.kafka.common.message.LiCombinedControlRequestData.LeaderAndIsrPartitionState
 import org.apache.kafka.common.message.UpdateMetadataRequestData.UpdateMetadataPartitionState
 import org.apache.kafka.common.message.UpdateMetadataRequestData.UpdateMetadataBroker
-import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, UpdateMetadataRequest, LiCombinedControlRequest}
+import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, UpdateMetadataRequest}
 
 import scala.collection.mutable
-
-class LeaderAndIsrPartitionStateWithBrokerEpoch(val partitionState: LeaderAndIsrPartitionState, val maxBrokerEpoch: Long)
-class UpdateMetadataPartitionStateWithBrokerEpoch(val partitionState: UpdateMetadataPartitionState, val maxBrokerEpoch: Long)
 
 class ControllerState(val controllerId: Int, val controllerEpoch: Int)
 
 class ControllerRequestMerger extends Logging {
-  val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionStateWithBrokerEpoch]] = mutable.HashMap.empty
+  val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionState]] = mutable.HashMap.empty
   var leaderAndIsrLiveLeaders: util.Collection[LeaderAndIsrLiveLeader] = null
 
-  val updateMetadataPartitionStates: mutable.Map[TopicPartition, util.LinkedList[UpdateMetadataPartitionStateWithBrokerEpoch]] = mutable.HashMap.empty
+  val updateMetadataPartitionStates: mutable.Map[TopicPartition, util.LinkedList[UpdateMetadataPartitionState]] = mutable.HashMap.empty
   var updateMetadataLiveBrokers: util.List[UpdateMetadataBroker] = null
 
   // is it safe to always use the latest controller state?
@@ -51,20 +50,18 @@ class ControllerRequestMerger extends Logging {
 
   }
 
-  def isReplaceable(newState: LeaderAndIsrPartitionStateWithBrokerEpoch,
-    currentState: LeaderAndIsrPartitionStateWithBrokerEpoch): Boolean = {
-    newState.maxBrokerEpoch > currentState.maxBrokerEpoch ||
-      newState.partitionState.leaderEpoch() > currentState.partitionState.leaderEpoch()
+  def isReplaceable(newState: LeaderAndIsrPartitionState,
+    currentState: LeaderAndIsrPartitionState): Boolean = {
+    newState.maxBrokerEpoch() > currentState.maxBrokerEpoch() || newState.leaderEpoch() > currentState.leaderEpoch()
   }
 
-  def isReplaceable(newState: UpdateMetadataPartitionStateWithBrokerEpoch,
-    currentState: UpdateMetadataPartitionStateWithBrokerEpoch): Boolean = {
+  def isReplaceable(newState: UpdateMetadataPartitionState, currentState: UpdateMetadataPartitionState): Boolean = {
     // a later state can always supersede a previous state
     true
   }
 
-  def mergeLeaderAndIsrPartitionState(newState: LeaderAndIsrPartitionStateWithBrokerEpoch,
-    queuedStates: util.LinkedList[LeaderAndIsrPartitionStateWithBrokerEpoch]): Unit = {
+  def mergeLeaderAndIsrPartitionState(newState: LeaderAndIsrPartitionState,
+    queuedStates: util.LinkedList[LeaderAndIsrPartitionState]): Unit = {
     // keep merging requests from the tail of the queued States
     while (!queuedStates.isEmpty && isReplaceable(newState, queuedStates.getLast)) {
       queuedStates.pollLast()
@@ -76,8 +73,8 @@ class ControllerRequestMerger extends Logging {
   }
 
   // TODO: use type parameter to avoid duplicate code
-  def mergeUpdateMetadataPartitionState(newState: UpdateMetadataPartitionStateWithBrokerEpoch,
-    queuedStates: util.LinkedList[UpdateMetadataPartitionStateWithBrokerEpoch]): Unit = {
+  def mergeUpdateMetadataPartitionState(newState: UpdateMetadataPartitionState,
+    queuedStates: util.LinkedList[UpdateMetadataPartitionState]): Unit = {
     // keep merging requests from the tail of the queued States
     while (!queuedStates.isEmpty && isReplaceable(newState, queuedStates.getLast)) {
       queuedStates.pollLast()
@@ -90,14 +87,41 @@ class ControllerRequestMerger extends Logging {
 
   // builder ---- build ---> request
   private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder): Unit = {
+    // populate the max broker epoch field for each partition
+
+    /**
+     * the LeaderAndIsrPartitionState in the LiCombinedControlRequest has one more field
+     * than the LeaderAndIsrPartitionState in the LeaderAndIsr request, i.e. an extra maxBroker epoch field.
+     * Since one LiCombinedControlRequest may contain LeaderAndIsr partition states scattered across
+     * multiple different max broker epochs, we need to add the maxBrokerEpoch field to the partition level.
+     * @param partitionState
+     * @return
+     */
+    def getCombinedRequestPartitionState(partitionState: LeaderAndIsrRequestData.LeaderAndIsrPartitionState,
+      maxBrokerEpoch: Long) = {
+      new LeaderAndIsrPartitionState()
+        .setMaxBrokerEpoch(maxBrokerEpoch)
+        .setTopicName(partitionState.topicName())
+        .setPartitionIndex(partitionState.partitionIndex())
+        .setControllerEpoch(partitionState.controllerEpoch())
+        .setLeader(partitionState.leader())
+        .setLeaderEpoch(partitionState.leaderEpoch())
+        .setIsr(partitionState.isr())
+        .setZkVersion(partitionState.zkVersion())
+        .setReplicas(partitionState.replicas())
+        .setAddingReplicas(partitionState.addingReplicas())
+        .setRemovingReplicas(partitionState.removingReplicas())
+        .setIsNew(partitionState.isNew)
+    }
+
     request.partitionStates().forEach{partitionState => {
+      val combinedRequestPartitionState = getCombinedRequestPartitionState(partitionState, request.maxBrokerEpoch())
+
       val topicPartition = new TopicPartition(partitionState.topicName(), partitionState.partitionIndex())
       val currentStates = leaderAndIsrPartitionStates.getOrElseUpdate(topicPartition,
-        new util.LinkedList[LeaderAndIsrPartitionStateWithBrokerEpoch]())
+        new util.LinkedList[LeaderAndIsrPartitionState]())
 
-      mergeLeaderAndIsrPartitionState(new LeaderAndIsrPartitionStateWithBrokerEpoch(partitionState, request.maxBrokerEpoch()),
-        currentStates
-      )
+      mergeLeaderAndIsrPartitionState(combinedRequestPartitionState, currentStates)
     }}
     leaderAndIsrLiveLeaders = request.liveLeaders()
   }
@@ -106,10 +130,8 @@ class ControllerRequestMerger extends Logging {
     request.partitionStates().forEach{partitionState => {
       val topicPartition = new TopicPartition(partitionState.topicName(), partitionState.partitionIndex())
       val currentStates = updateMetadataPartitionStates.getOrElseUpdate(topicPartition,
-        new util.LinkedList[UpdateMetadataPartitionStateWithBrokerEpoch]())
-      mergeUpdateMetadataPartitionState(new UpdateMetadataPartitionStateWithBrokerEpoch(partitionState, request.maxBrokerEpoch()),
-        currentStates
-      )
+        new util.LinkedList[UpdateMetadataPartitionState]())
+      mergeUpdateMetadataPartitionState(partitionState, currentStates)
     }}
 
     updateMetadataLiveBrokers = request.liveBrokers()
@@ -117,6 +139,6 @@ class ControllerRequestMerger extends Logging {
 
   // TODO: support adding StopReplica requests
   def pollLatestRequest(): LiCombinedControlRequest.Builder = {
-
+    
   }
 }

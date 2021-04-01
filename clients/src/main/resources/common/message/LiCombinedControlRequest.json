@@ -24,7 +24,7 @@
       "about": "The current controller ID." },
     { "name": "ControllerEpoch", "type": "int32", "versions": "0+",
       "about": "The current controller epoch." },
-    { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+", "ignorable": true, "default": "-1",
+    { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+",
       "about": "The max broker epoch." },
     // fields from the LeaderAndIsr
     { "name": "LeaderAndIsrTopicStates", "type": "[]LeaderAndIsrTopicState", "versions": "0+",
@@ -93,6 +93,8 @@
         "about": "The partition index." },
       { "name": "ControllerEpoch", "type": "int32", "versions": "0+",
         "about": "The controller epoch." },
+      { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+",
+        "about": "The max broker epoch." },
       { "name": "Leader", "type": "int32", "versions": "0+", "entityType": "brokerId",
         "about": "The broker ID of the leader." },
       { "name": "LeaderEpoch", "type": "int32", "versions": "0+",

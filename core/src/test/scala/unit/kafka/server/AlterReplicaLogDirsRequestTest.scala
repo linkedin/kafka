@@ -31,6 +31,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.Random
 
+/*
 class AlterReplicaLogDirsRequestTest extends BaseRequestTest {
   override val logDirCount = 5
   override val brokerCount = 1
@@ -118,3 +119,4 @@ class AlterReplicaLogDirsRequestTest extends BaseRequestTest {
   }
 
 }
+*/

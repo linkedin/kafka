@@ -22,7 +22,7 @@ import java.util
 import kafka.utils.Logging
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
-import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrLiveLeader, LeaderAndIsrPartitionState, UpdateMetadataBroker, UpdateMetadataPartitionState}
+import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrLiveLeader, LeaderAndIsrPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
 import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, UpdateMetadataRequest}
 
 import scala.collection.mutable
@@ -127,8 +127,28 @@ class ControllerRequestMerger extends Logging {
       updateMetadataPartitionStates.put(topicPartition, combinedRequestPartitionState)
     }}
 
+    def getCombinedRequestBroker(broker: UpdateMetadataRequestData.UpdateMetadataBroker): UpdateMetadataBroker = {
+      val originalEndpoints = broker.endpoints()
+      val endpoints = new util.ArrayList[UpdateMetadataEndpoint](originalEndpoints.size())
+      originalEndpoints.forEach{endpoint =>
+        endpoints.add(new UpdateMetadataEndpoint()
+          .setPort(endpoint.port())
+          .setHost(endpoint.host())
+          .setSecurityProtocol(endpoint.securityProtocol())
+        )
+      }
+
+      new UpdateMetadataBroker()
+        .setId(broker.id())
+        .setV0Host(broker.v0Host())
+        .setV0Port(broker.v0Port())
+        .setEndpoints(endpoints)
+        .setRack(broker.rack())
+    }
     updateMetadataLiveBrokers.clear()
-    updateMetadataLiveBrokers.addAll(request.liveBrokers())
+    request.liveBrokers().forEach{liveBroker =>
+      updateMetadataLiveBrokers.add(getCombinedRequestBroker(liveBroker))
+    }
   }
 
   private def pollLatestLeaderAndIsrPartitionStates() : util.List[LiCombinedControlRequestData.LeaderAndIsrPartitionState] = {

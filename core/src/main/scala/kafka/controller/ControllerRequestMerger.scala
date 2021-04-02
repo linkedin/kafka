@@ -52,11 +52,6 @@ class ControllerRequestMerger extends Logging {
     newState.maxBrokerEpoch() > currentState.maxBrokerEpoch() || newState.leaderEpoch() > currentState.leaderEpoch()
   }
 
-  def isReplaceable(newState: UpdateMetadataPartitionState, currentState: UpdateMetadataPartitionState): Boolean = {
-    // a later state can always supersede a previous state
-    true
-  }
-
   def mergeLeaderAndIsrPartitionState(newState: LeaderAndIsrPartitionState,
     queuedStates: util.LinkedList[LeaderAndIsrPartitionState]): Unit = {
     // keep merging requests from the tail of the queued States
@@ -69,7 +64,6 @@ class ControllerRequestMerger extends Logging {
     }
   }
 
-  // builder ---- build ---> request
   private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder): Unit = {
     // populate the max broker epoch field for each partition
 

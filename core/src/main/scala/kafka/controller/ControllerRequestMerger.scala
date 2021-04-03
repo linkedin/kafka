@@ -22,12 +22,12 @@ import java.util
 import kafka.utils.Logging
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
-import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrLiveLeader, LeaderAndIsrPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, StopReplicaPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
+import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
 
 import scala.collection.mutable
 
-class ControllerState(val controllerId: Int, val controllerEpoch: Int, val maxBrokerEpoch: Long)
+class RequestControllerState(val controllerId: Int, val controllerEpoch: Int, val maxBrokerEpoch: Long)
 
 class ControllerRequestMerger extends Logging {
   val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionState]] = mutable.HashMap.empty
@@ -36,12 +36,15 @@ class ControllerRequestMerger extends Logging {
   val updateMetadataPartitionStates: mutable.Map[TopicPartition, UpdateMetadataPartitionState] = mutable.HashMap.empty
   var updateMetadataLiveBrokers: util.List[UpdateMetadataBroker] = null
 
+  // the values in the stopReplicaPartitionStates corresponds to the deletePartitions flag
+  val stopReplicaPartitionStates: mutable.Map[TopicPartition, util.LinkedList[StopReplicaPartitionState]] = mutable.HashMap.empty
+
   // is it safe to always use the latest controller state?
   // If there is a request with a higher controllerEpoch, we should clear all requests with a higher controller epoch
   // If there is a request with a higher maxBrokerEpoch, we shouldn't try to send a previous request with a newer max broker epoch
   //    for a given broker, what happens when different partitions have different maxBroker epochs?
   //    the broker should make decisions on the per-partition granularity to determine if the partition should be ignored or kept
-  var currentControllerState : ControllerState = null
+  var currentControllerState : RequestControllerState = null
 
   def addRequest(request: AbstractControlRequest.Builder[_ <: AbstractControlRequest]): Unit = {
 
@@ -100,8 +103,15 @@ class ControllerRequestMerger extends Logging {
         new util.LinkedList[LeaderAndIsrPartitionState]())
 
       mergeLeaderAndIsrPartitionState(combinedRequestPartitionState, currentStates)
+
+      // one LeaderAndIsr request renders the previous StopReplica requests non-applicable
+      clearStopReplicaPartitionState(topicPartition)
     }}
     leaderAndIsrLiveLeaders = request.liveLeaders()
+  }
+
+  private def clearLeaderAndIsrPartitionState(topicPartition: TopicPartition): Unit = {
+    leaderAndIsrPartitionStates.remove(topicPartition)
   }
 
   private def addUpdateMetadataRequest(request: UpdateMetadataRequest.Builder): Unit = {
@@ -151,6 +161,31 @@ class ControllerRequestMerger extends Logging {
     }
   }
 
+
+  private def addStopReplicaRequest(request: StopReplicaRequest.Builder): Unit = {
+    request.partitions().forEach{partition => {
+      val currentPartitionStates = stopReplicaPartitionStates.getOrElseUpdate(partition,
+        new util.LinkedList[StopReplicaPartitionState]())
+      val deletePartitions = request.deletePartitions()
+      val combinedRequestPartitionState = new StopReplicaPartitionState()
+        .setTopicName(partition.topic())
+        .setPartitionIndex(partition.partition())
+        .setDeletePartitions(deletePartitions)
+        .setMaxBrokerEpoch(request.maxBrokerEpoch())
+
+      val inserted = currentPartitionStates.offerLast(combinedRequestPartitionState)
+      if (!inserted) {
+        error(s"Unable to insert StopReplica partition $partition with deletePartitions flag $deletePartitions")
+      }
+
+      // one stop replica request renders all previous LeaderAndIsr requests non-applicable
+      clearLeaderAndIsrPartitionState(partition)
+    }}
+  }
+  private def clearStopReplicaPartitionState(topicPartition: TopicPartition): Unit = {
+    stopReplicaPartitionStates.remove(topicPartition)
+  }
+
   private def pollLatestLeaderAndIsrPartitionStates() : util.List[LiCombinedControlRequestData.LeaderAndIsrPartitionState] = {
     val latestPartitionStates = new util.ArrayList[LiCombinedControlRequestData.LeaderAndIsrPartitionState]()
 
@@ -167,6 +202,20 @@ class ControllerRequestMerger extends Logging {
       }
     }
 
+    latestPartitionStates
+  }
+
+  private def pollLatestStopReplicaPartitionStates(): util.List[StopReplicaPartitionState] = {
+    val latestPartitionStates = new util.ArrayList[StopReplicaPartitionState]()
+    for (partition <- stopReplicaPartitionStates.keySet) {
+      val partitionStates = stopReplicaPartitionStates.get(partition).get
+      val latestState = partitionStates.poll()
+      if (partitionStates.isEmpty) {
+        stopReplicaPartitionStates.remove(partition)
+      }
+
+      latestPartitionStates.add(latestState)
+    }
     latestPartitionStates
   }
 
@@ -187,7 +236,7 @@ class ControllerRequestMerger extends Logging {
       Some(new LiCombinedControlRequest.Builder(0, currentControllerState.controllerId, currentControllerState.controllerEpoch,
         pollLatestLeaderAndIsrPartitionStates(), leaderAndIsrLiveLeaders,
         pollLatestUpdateMetadataPartitionStates(), updateMetadataLiveBrokers,
-        true, new util.ArrayList[TopicPartition]()
+        pollLatestStopReplicaPartitionStates()
       ))
     }
   }

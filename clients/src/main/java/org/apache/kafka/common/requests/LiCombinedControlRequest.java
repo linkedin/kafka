@@ -26,15 +26,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.kafka.common.Node;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
 import org.apache.kafka.common.message.LiCombinedControlResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Struct;
-import org.apache.kafka.common.utils.CollectionUtils;
 import org.apache.kafka.common.utils.FlattenedIterator;
-import org.apache.kafka.common.utils.MappedIterator;
 import org.apache.kafka.common.utils.Utils;
 
 
@@ -49,14 +46,12 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
         private final List<LiCombinedControlRequestData.UpdateMetadataBroker> updateMetadataLiveBrokers;
 
         // fields from the StopReplicaRequest
-        private final boolean stopReplicaDeletePartitions;
-        private final Collection<TopicPartition> stopReplicaPartitions;
+        private final List<LiCombinedControlRequestData.StopReplicaPartitionState> stopReplicaPartitions;
 
         public Builder(short version, int controllerId, int controllerEpoch,
             List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates, Collection<Node> leaderAndIsrLiveLeaders,
             List<LiCombinedControlRequestData.UpdateMetadataPartitionState> updateMetadataPartitionStates, List<LiCombinedControlRequestData.UpdateMetadataBroker> updateMetadataLiveBrokers,
-            boolean stopReplicaDeletePartitions,
-            Collection<TopicPartition> stopReplicaPartitions) {
+            List<LiCombinedControlRequestData.StopReplicaPartitionState> stopReplicaPartitions) {
             // Since we've moved the maxBrokerEpoch down to the partition level
             // the request level maxBrokerEpoch will always be -1
             super(ApiKeys.LI_COMBINED_CONTROL, version, controllerId, controllerEpoch, -1, -1);
@@ -64,7 +59,6 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
             this.leaderAndIsrLiveLeaders = leaderAndIsrLiveLeaders;
             this.updateMetadataPartitionStates = updateMetadataPartitionStates;
             this.updateMetadataLiveBrokers = updateMetadataLiveBrokers;
-            this.stopReplicaDeletePartitions = stopReplicaDeletePartitions;
             this.stopReplicaPartitions = stopReplicaPartitions;
         }
 
@@ -94,15 +88,7 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
             data.setUpdateMetadataTopicStates(new ArrayList<>(updateMetadataTopicStateMap.values()));
 
             // setting the StopReplica fields
-            data.setDeletePartitions(stopReplicaDeletePartitions);
-
-            Map<String, List<Integer>> topicPartitionsMap = CollectionUtils.groupPartitionsByTopic(
-                stopReplicaPartitions);
-            List<LiCombinedControlRequestData.StopReplicaTopic> topics = topicPartitionsMap.entrySet()
-                .stream()
-                .map(entry -> new LiCombinedControlRequestData.StopReplicaTopic().setName(entry.getKey()).setPartitionIndexes(entry.getValue()))
-                .collect(Collectors.toList());
-            data.setStopReplicaTopics(topics);
+            data.setStopReplicaPartitionStates(stopReplicaPartitions);
 
             return new LiCombinedControlRequest(data, version);
         }
@@ -213,19 +199,15 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
         // 3. populate the StopReplica error code
         responseData.setStopReplicaErrorCode(error.code());
         List<LiCombinedControlResponseData.StopReplicaPartitionError> stopReplicaPartitions = new ArrayList<>();
-        for (TopicPartition tp : stopReplicaPartitions()) {
+        for (LiCombinedControlRequestData.StopReplicaPartitionState tp : stopReplicaPartitions()) {
             stopReplicaPartitions.add(new LiCombinedControlResponseData.StopReplicaPartitionError()
-                .setTopicName(tp.topic())
-                .setPartitionIndex(tp.partition())
+                .setTopicName(tp.topicName())
+                .setPartitionIndex(tp.partitionIndex())
                 .setErrorCode(error.code()));
         }
         responseData.setStopReplicaPartitionErrors(stopReplicaPartitions);
 
         return new LiCombinedControlResponse(responseData);
-    }
-
-    public boolean deletePartitions() {
-        return data.deletePartitions();
     }
 
     /**
@@ -236,10 +218,8 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
      * `UpdateMetadataRequest.partitionStates()` for the preferred approach. That's not possible in this case and
      * StopReplicaRequest should be relatively rare in comparison to other request types.
      */
-    private Iterable<TopicPartition> stopReplicaPartitions() {
-        return () -> new FlattenedIterator<>(data.stopReplicaTopics().iterator(), topic ->
-            new MappedIterator<>(topic.partitionIndexes().iterator(), partition ->
-                new TopicPartition(topic.name(), partition)));
+    private List<LiCombinedControlRequestData.StopReplicaPartitionState> stopReplicaPartitions() {
+        return data.stopReplicaPartitionStates();
     }
 
 

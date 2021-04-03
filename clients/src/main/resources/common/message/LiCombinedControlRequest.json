@@ -75,17 +75,21 @@
         "about": "The rack which this broker belongs to." }
     ]},
     // fields from the StopReplica
-    { "name": "DeletePartitions", "type": "bool", "versions": "0+",
-      "about": "Whether these partitions should be deleted." },
-    { "name": "StopReplicaTopics", "type": "[]StopReplicaTopic", "versions": "0+",
-      "about": "The topics to stop.", "fields": [
-      { "name": "Name", "type": "string", "versions": "0+", "entityType": "topicName",
-        "about": "The topic name." },
-      { "name": "PartitionIndexes", "type": "[]int32", "versions": "0+",
-        "about": "The partition indexes." }
-    ]}
+    { "name": "StopReplicaPartitionStates", "type": "[]StopReplicaPartitionState", "versions": "0+",
+      "about": "The topics to stop."}
   ],
   "commonStructs": [
+    { "name": "StopReplicaPartitionState", "versions": "0+", "fields": [
+        { "name": "TopicName", "type": "string", "versions": "0+", "entityType": "topicName",
+          "about": "The topic name." },
+        { "name": "PartitionIndex", "type": "int32", "versions": "0+",
+          "about": "The partition indexes." },
+        { "name": "DeletePartitions", "type": "bool", "versions": "0+",
+          "about": "Whether these partitions should be deleted." },
+        { "name": "MaxBrokerEpoch", "type": "int64", "versions": "0+",
+          "about": "The max broker epoch." }
+        ]
+    },
     { "name": "LeaderAndIsrPartitionState", "versions": "0+", "fields": [
       { "name": "TopicName", "type": "string", "versions": "0", "entityType": "topicName", "ignorable": true,
         "about": "The topic name.  This is only present in v0." },

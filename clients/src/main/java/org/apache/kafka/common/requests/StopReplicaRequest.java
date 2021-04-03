@@ -91,6 +91,18 @@ public class StopReplicaRequest extends AbstractControlRequest {
                 append(")");
             return bld.toString();
         }
+
+        public Collection<TopicPartition> partitions() {
+            return partitions;
+        }
+
+        public boolean deletePartitions() {
+            return deletePartitions;
+        }
+
+        public long maxBrokerEpoch() {
+            return maxBrokerEpoch;
+        }
     }
 
     private final StopReplicaRequestData data;

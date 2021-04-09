@@ -23,11 +23,11 @@ import kafka.utils.Logging
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
 import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, StopReplicaPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlRequestUtils, StopReplicaRequest, UpdateMetadataRequest}
 
 import scala.collection.mutable
 
-class RequestControllerState(val controllerId: Int, val controllerEpoch: Int, val maxBrokerEpoch: Long)
+class RequestControllerState(val controllerId: Int, val controllerEpoch: Int)
 
 class ControllerRequestMerger extends Logging {
   val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionState]] = mutable.HashMap.empty
@@ -47,7 +47,13 @@ class ControllerRequestMerger extends Logging {
   var currentControllerState : RequestControllerState = null
 
   def addRequest(request: AbstractControlRequest.Builder[_ <: AbstractControlRequest]): Unit = {
+    currentControllerState = new RequestControllerState(request.controllerId(), request.controllerEpoch())
 
+    request match {
+      case leaderAndIsrRequest : LeaderAndIsrRequest.Builder => addLeaderAndIsrRequest(leaderAndIsrRequest)
+      case updateMetadataRequest : UpdateMetadataRequest.Builder => addUpdateMetadataRequest(updateMetadataRequest)
+      case stopReplicaRequest: StopReplicaRequest.Builder => addStopReplicaRequest(stopReplicaRequest)
+    }
   }
 
   def isReplaceable(newState: LeaderAndIsrPartitionState,
@@ -68,35 +74,9 @@ class ControllerRequestMerger extends Logging {
   }
 
   private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder): Unit = {
-    // populate the max broker epoch field for each partition
-
-    /**
-     * the LeaderAndIsrPartitionState in the LiCombinedControlRequest has one more field
-     * than the LeaderAndIsrPartitionState in the LeaderAndIsr request, i.e. an extra maxBroker epoch field.
-     * Since one LiCombinedControlRequest may contain LeaderAndIsr partition states scattered across
-     * multiple different max broker epochs, we need to add the maxBrokerEpoch field to the partition level.
-     * @param partitionState
-     * @return
-     */
-    def getCombinedRequestPartitionState(partitionState: LeaderAndIsrRequestData.LeaderAndIsrPartitionState,
-      maxBrokerEpoch: Long) = {
-      new LeaderAndIsrPartitionState()
-        .setMaxBrokerEpoch(maxBrokerEpoch)
-        .setTopicName(partitionState.topicName())
-        .setPartitionIndex(partitionState.partitionIndex())
-        .setControllerEpoch(partitionState.controllerEpoch())
-        .setLeader(partitionState.leader())
-        .setLeaderEpoch(partitionState.leaderEpoch())
-        .setIsr(partitionState.isr())
-        .setZkVersion(partitionState.zkVersion())
-        .setReplicas(partitionState.replicas())
-        .setAddingReplicas(partitionState.addingReplicas())
-        .setRemovingReplicas(partitionState.removingReplicas())
-        .setIsNew(partitionState.isNew)
-    }
 
     request.partitionStates().forEach{partitionState => {
-      val combinedRequestPartitionState = getCombinedRequestPartitionState(partitionState, request.maxBrokerEpoch())
+      val combinedRequestPartitionState = LiCombinedControlRequestUtils.transformLeaderAndIsrPartition(partitionState, request.maxBrokerEpoch())
 
       val topicPartition = new TopicPartition(partitionState.topicName(), partitionState.partitionIndex())
       val currentStates = leaderAndIsrPartitionStates.getOrElseUpdate(topicPartition,
@@ -115,22 +95,8 @@ class ControllerRequestMerger extends Logging {
   }
 
   private def addUpdateMetadataRequest(request: UpdateMetadataRequest.Builder): Unit = {
-
-    def getCombinedRequestPartitionState(partitionState: UpdateMetadataRequestData.UpdateMetadataPartitionState) = {
-      new UpdateMetadataPartitionState()
-        .setTopicName(partitionState.topicName())
-        .setPartitionIndex(partitionState.partitionIndex())
-        .setControllerEpoch(partitionState.controllerEpoch())
-        .setLeader(partitionState.leader())
-        .setLeaderEpoch(partitionState.leaderEpoch())
-        .setIsr(partitionState.isr())
-        .setZkVersion(partitionState.zkVersion())
-        .setReplicas(partitionState.replicas())
-        .setOfflineReplicas(partitionState.offlineReplicas())
-    }
-
     request.partitionStates().forEach{partitionState => {
-      val combinedRequestPartitionState = getCombinedRequestPartitionState(partitionState)
+      val combinedRequestPartitionState = LiCombinedControlRequestUtils.transformUpdateMetadataPartition(partitionState)
 
       val topicPartition = new TopicPartition(partitionState.topicName(), partitionState.partitionIndex())
 

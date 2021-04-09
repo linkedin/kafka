@@ -34,7 +34,7 @@ class ControllerRequestMerger extends Logging {
   var leaderAndIsrLiveLeaders: util.Collection[Node] = null
 
   val updateMetadataPartitionStates: mutable.Map[TopicPartition, UpdateMetadataPartitionState] = mutable.HashMap.empty
-  var updateMetadataLiveBrokers: util.List[UpdateMetadataBroker] = null
+  var updateMetadataLiveBrokers: util.List[UpdateMetadataBroker] = new util.ArrayList[UpdateMetadataBroker]()
 
   // the values in the stopReplicaPartitionStates corresponds to the deletePartitions flag
   val stopReplicaPartitionStates: mutable.Map[TopicPartition, util.LinkedList[StopReplicaPartitionState]] = mutable.HashMap.empty

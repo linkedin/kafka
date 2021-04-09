@@ -139,10 +139,16 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
 
         /**
          * visible for test only
-         * @return
          */
         public List<LiCombinedControlRequestData.LeaderAndIsrPartitionState> leaderAndIsrPartitionStates() {
             return leaderAndIsrPartitionStates;
+        }
+
+        /**
+         * visible for test only
+         */
+        public List<LiCombinedControlRequestData.UpdateMetadataPartitionState> updateMetadataPartitionStates() {
+            return updateMetadataPartitionStates;
         }
     }
 

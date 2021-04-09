@@ -3,12 +3,12 @@ package unit.kafka.controller
 import java.util
 
 import kafka.controller.ControllerRequestMerger
-import org.apache.kafka.common.Node
+import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrPartitionState
+import org.apache.kafka.common.message.LiCombinedControlRequestData.StopReplicaPartitionState
 import org.apache.kafka.common.message.UpdateMetadataRequestData.{UpdateMetadataBroker, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlRequestUtils, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlRequestUtils, StopReplicaRequest, UpdateMetadataRequest}
 import org.junit.{Assert, Before, Test}
-
 import scala.collection.JavaConverters._
 
 class ControllerRequestMergerTest {
@@ -27,6 +27,7 @@ class ControllerRequestMergerTest {
   val updateMetadataRequestVersion: Short = 7
   val updateMetadataLiveBrokers = new util.ArrayList[UpdateMetadataBroker]()
 
+  val stopReplicaRequestVersion: Short = 3
   @Before
   def setUp(): Unit = {
     replicas.add(0)
@@ -171,6 +172,7 @@ class ControllerRequestMergerTest {
     }
   }
 
+  @Test
   def testSupercedingUpdateMetadataPartitionStates(): Unit = {
     val partitionStates1 = getUpdateMetadataPartitionStates(topic, 0)
     val updateMetadataRequest1 = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch,
@@ -219,5 +221,71 @@ class ControllerRequestMergerTest {
     .setReplicas(replicas))
   }
 
+  @Test
+  def testMergingDifferentStopReplicaPartitionStates(): Unit = {
+    val partitions1 = List(new TopicPartition(topic, 0))
+    val stopReplicaRequest1 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
+    maxBrokerEpoch, true, partitions1.asJava)
 
+    val partitions2 = List(new TopicPartition(topic, 1))
+    val stopReplicaRequest2 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
+      maxBrokerEpoch, true, partitions2.asJava)
+
+    controllerRequestMerger.addRequest(stopReplicaRequest1)
+    controllerRequestMerger.addRequest(stopReplicaRequest2)
+
+    val expectedPartitions = (partitions1 ++ partitions2).map{partition => new StopReplicaPartitionState()
+      .setTopicName(partition.topic())
+      .setPartitionIndex(partition.partition())
+      .setDeletePartitions(true)
+      .setMaxBrokerEpoch(maxBrokerEpoch)}
+
+    controllerRequestMerger.pollLatestRequest() match {
+      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
+        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+        Assert.assertEquals("Mismatched partition states", expectedPartitions.asJava, liCombinedControlRequest.stopReplicaPartitionStates())
+      }
+      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
+    }
+
+  }
+
+  @Test
+  def testMultipleRequestsOnSameStopReplicaPartition(): Unit = {
+    val partitions1 = List(new TopicPartition(topic, 0))
+    val stopReplicaRequest1 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
+      maxBrokerEpoch, false, partitions1.asJava)
+
+    val partitions2 = List(new TopicPartition(topic, 0))
+    val stopReplicaRequest2 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
+      maxBrokerEpoch, true, partitions2.asJava)
+
+    controllerRequestMerger.addRequest(stopReplicaRequest1)
+    controllerRequestMerger.addRequest(stopReplicaRequest2)
+
+    val requests = Seq(stopReplicaRequest1, stopReplicaRequest2)
+    val expectedPartitions: Seq[List[StopReplicaPartitionState]] = requests.map{request => {
+      var transformedPartitions = List[StopReplicaPartitionState]()
+
+      request.partitions().forEach{partition =>
+        transformedPartitions = new StopReplicaPartitionState()
+        .setTopicName(partition.topic())
+        .setPartitionIndex(partition.partition())
+        .setDeletePartitions(request.deletePartitions())
+        .setMaxBrokerEpoch(maxBrokerEpoch):: transformedPartitions}
+      transformedPartitions
+    }}
+
+    for (i <- 0 until 2) {
+      controllerRequestMerger.pollLatestRequest() match {
+        case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
+          Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+          Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+          Assert.assertEquals("Mismatched partition states", expectedPartitions(i).asJava, liCombinedControlRequest.stopReplicaPartitionStates())
+        }
+        case _ => Assert.fail("Unable to get LiCombinedControlRequest")
+      }
+    }
+  }
 }

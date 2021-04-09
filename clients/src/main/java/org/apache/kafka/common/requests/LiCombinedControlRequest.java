@@ -150,6 +150,13 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
         public List<LiCombinedControlRequestData.UpdateMetadataPartitionState> updateMetadataPartitionStates() {
             return updateMetadataPartitionStates;
         }
+
+        /**
+         * visible for test only
+         */
+        public List<LiCombinedControlRequestData.StopReplicaPartitionState> stopReplicaPartitionStates() {
+            return stopReplicaPartitions;
+        }
     }
 
     private final LiCombinedControlRequestData data;

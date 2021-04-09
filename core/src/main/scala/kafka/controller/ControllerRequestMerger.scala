@@ -56,9 +56,8 @@ class ControllerRequestMerger extends Logging {
     }
   }
 
-  def isReplaceable(newState: LeaderAndIsrPartitionState,
-    currentState: LeaderAndIsrPartitionState): Boolean = {
-    newState.maxBrokerEpoch() > currentState.maxBrokerEpoch() || newState.leaderEpoch() > currentState.leaderEpoch()
+  def isReplaceable(newState: LeaderAndIsrPartitionState, currentState: LeaderAndIsrPartitionState): Boolean = {
+    newState.leaderEpoch() > currentState.leaderEpoch()
   }
 
   def mergeLeaderAndIsrPartitionState(newState: LeaderAndIsrPartitionState,

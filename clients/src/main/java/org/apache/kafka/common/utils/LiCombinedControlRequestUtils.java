@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.kafka.common.requests;
+package org.apache.kafka.common.utils;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.kafka.common.message.LeaderAndIsrRequestData;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
 import org.apache.kafka.common.message.UpdateMetadataRequestData;
@@ -49,6 +51,21 @@ public class LiCombinedControlRequestUtils {
         .setIsNew(partitionState.isNew());
   }
 
+  public static LeaderAndIsrRequestData.LeaderAndIsrPartitionState restoreLeaderAndIsrPartition(LiCombinedControlRequestData.LeaderAndIsrPartitionState partitionState) {
+    return new LeaderAndIsrRequestData.LeaderAndIsrPartitionState()
+        .setTopicName(partitionState.topicName())
+        .setPartitionIndex(partitionState.partitionIndex())
+        .setControllerEpoch(partitionState.controllerEpoch())
+        .setLeader(partitionState.leader())
+        .setLeaderEpoch(partitionState.leaderEpoch())
+        .setIsr(partitionState.isr())
+        .setZkVersion(partitionState.zkVersion())
+        .setReplicas(partitionState.replicas())
+        .setAddingReplicas(partitionState.addingReplicas())
+        .setRemovingReplicas(partitionState.removingReplicas())
+        .setIsNew(partitionState.isNew());
+  }
+
   public static LiCombinedControlRequestData.UpdateMetadataPartitionState transformUpdateMetadataPartition(
       UpdateMetadataRequestData.UpdateMetadataPartitionState partitionState) {
     return new LiCombinedControlRequestData.UpdateMetadataPartitionState()
@@ -61,5 +78,36 @@ public class LiCombinedControlRequestUtils {
         .setZkVersion(partitionState.zkVersion())
         .setReplicas(partitionState.replicas())
         .setOfflineReplicas(partitionState.offlineReplicas());
+  }
+
+  public static UpdateMetadataRequestData.UpdateMetadataPartitionState  restoreUpdateMetadataPartition(
+       LiCombinedControlRequestData.UpdateMetadataPartitionState partitionState) {
+    return new UpdateMetadataRequestData.UpdateMetadataPartitionState ()
+        .setTopicName(partitionState.topicName())
+        .setPartitionIndex(partitionState.partitionIndex())
+        .setControllerEpoch(partitionState.controllerEpoch())
+        .setLeader(partitionState.leader())
+        .setLeaderEpoch(partitionState.leaderEpoch())
+        .setIsr(partitionState.isr())
+        .setZkVersion(partitionState.zkVersion())
+        .setReplicas(partitionState.replicas())
+        .setOfflineReplicas(partitionState.offlineReplicas());
+  }
+
+  public static UpdateMetadataRequestData.UpdateMetadataBroker restoreUpdateMetadataBroker(LiCombinedControlRequestData.UpdateMetadataBroker broker) {
+    List<UpdateMetadataRequestData.UpdateMetadataEndpoint> endpoints = new ArrayList();
+    broker.endpoints().forEach(endpoint ->
+        endpoints.add(new UpdateMetadataRequestData.UpdateMetadataEndpoint()
+            .setHost(endpoint.host())
+            .setPort(endpoint.port())
+            .setListener(endpoint.listener())
+            .setSecurityProtocol(endpoint.securityProtocol())));
+
+    return new UpdateMetadataRequestData.UpdateMetadataBroker()
+        .setId(broker.id())
+        .setV0Host(broker.v0Host())
+        .setV0Port(broker.v0Port())
+        .setEndpoints(endpoints)
+        .setRack(broker.rack());
   }
 }

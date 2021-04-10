@@ -23,7 +23,8 @@ import kafka.utils.Logging
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
 import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, StopReplicaPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlRequestUtils, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 
 import scala.collection.mutable
 
@@ -109,6 +110,7 @@ class ControllerRequestMerger extends Logging {
         endpoints.add(new UpdateMetadataEndpoint()
           .setPort(endpoint.port())
           .setHost(endpoint.host())
+          .setListener(endpoint.listener())
           .setSecurityProtocol(endpoint.securityProtocol())
         )
       }

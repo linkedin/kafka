@@ -7,8 +7,10 @@ import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrPartitionState
 import org.apache.kafka.common.message.LiCombinedControlRequestData.StopReplicaPartitionState
 import org.apache.kafka.common.message.UpdateMetadataRequestData.{UpdateMetadataBroker, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlRequestUtils, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 import org.junit.{Assert, Before, Test}
+
 import scala.collection.JavaConverters._
 
 class ControllerRequestMergerTest {

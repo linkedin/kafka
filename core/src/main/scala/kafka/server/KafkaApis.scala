@@ -177,6 +177,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
         // LinkedIn internal request types
         case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiControlledShutdownSkipSafetyCheck(request)
+        case ApiKeys.LI_COMBINED_CONTROL => handleLiCombinedControlRequest(request)
       }
     } catch {
       case e: FatalExitError => throw e
@@ -3028,5 +3029,13 @@ class KafkaApis(val requestChannel: RequestChannel,
       skipSafetyCheckRequest.data.brokerId,
       skipSafetyCheckRequest.data.brokerEpoch,
       callback)
+  }
+
+  def handleLiCombinedControlRequest(request: RequestChannel.Request): Unit = {
+    val correlationId = request.header.correlationId
+    val liCombinedControlRequest = request.body[LiCombinedControlRequest]
+    authorizeClusterOperation(request, CLUSTER_ACTION)
+    // filter out partitions whose max broker epoch is obsolete
+    // construct a LeaderAndIsr request
   }
 }

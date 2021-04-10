@@ -52,14 +52,10 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(leaderAndIsrRequest1)
     controllerRequestMerger.addRequest(leaderAndIsrRequest2)
 
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+    Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
   }
 
   @Test
@@ -81,14 +77,10 @@ class ControllerRequestMergerTest {
 
     // test that we can poll two separate tests containing the same partition state
     for (_ <- 0 until 2) {
-      controllerRequestMerger.pollLatestRequest() match {
-        case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-          Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-          Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-          Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
-        }
-        case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-      }
+      val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+      Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+      Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+      Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
     }
   }
 
@@ -110,24 +102,16 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(leaderAndIsrRequest2)
 
     // test that we can poll a request with the larger leader epoch
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+    Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
 
     // test that trying to poll the request again will result in empty LeaderAndIsr partition states
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertTrue("Mismatched partition states", liCombinedControlRequest.leaderAndIsrPartitionStates().isEmpty)
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest2 = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest2.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest2.controllerEpoch())
+    Assert.assertTrue("Mismatched partition states", liCombinedControlRequest2.leaderAndIsrPartitionStates().isEmpty)
   }
 
   def getLeaderAndIsrPartitionStates(topic: String, partitionIndex: Int, leaderEpoch: Int = 0): List[LeaderAndIsrPartitionState] = {
@@ -162,14 +146,10 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(updateMetadataRequest2)
 
 
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.updateMetadataPartitionStates())
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+    Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.updateMetadataPartitionStates())
   }
 
   @Test
@@ -189,24 +169,16 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(updateMetadataRequest1)
     controllerRequestMerger.addRequest(updateMetadataRequest2)
 
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.updateMetadataPartitionStates())
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+    Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.updateMetadataPartitionStates())
 
     // test that trying to poll the request again will result in empty UpdateMetadata partition states
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertTrue("Mismatched partition states", liCombinedControlRequest.updateMetadataPartitionStates().isEmpty)
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
+    val liCombinedControlRequest2 = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest2.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest2.controllerEpoch())
+    Assert.assertTrue("Mismatched partition states", liCombinedControlRequest2.updateMetadataPartitionStates().isEmpty)
   }
 
   def getUpdateMetadataPartitionStates(topic: String, partitionIndex: Int): List[UpdateMetadataPartitionState] = {
@@ -240,15 +212,10 @@ class ControllerRequestMergerTest {
       .setDeletePartitions(true)
       .setMaxBrokerEpoch(maxBrokerEpoch)}
 
-    controllerRequestMerger.pollLatestRequest() match {
-      case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-        Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-        Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-        Assert.assertEquals("Mismatched partition states", expectedPartitions.asJava, liCombinedControlRequest.stopReplicaPartitionStates())
-      }
-      case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-    }
-
+    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+    Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+    Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+    Assert.assertEquals("Mismatched partition states", expectedPartitions.asJava, liCombinedControlRequest.stopReplicaPartitionStates())
   }
 
   @Test
@@ -278,14 +245,10 @@ class ControllerRequestMergerTest {
     }}
 
     for (i <- 0 until 2) {
-      controllerRequestMerger.pollLatestRequest() match {
-        case Some(liCombinedControlRequest : LiCombinedControlRequest.Builder) => {
-          Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
-          Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
-          Assert.assertEquals("Mismatched partition states", expectedPartitions(i).asJava, liCombinedControlRequest.stopReplicaPartitionStates())
-        }
-        case _ => Assert.fail("Unable to get LiCombinedControlRequest")
-      }
+      val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
+      Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())
+      Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest.controllerEpoch())
+      Assert.assertEquals("Mismatched partition states", expectedPartitions(i).asJava, liCombinedControlRequest.stopReplicaPartitionStates())
     }
   }
 }

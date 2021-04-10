@@ -194,15 +194,15 @@ class ControllerRequestMerger extends Logging {
   }
 
   // TODO: support adding StopReplica requests
-  def pollLatestRequest(): Option[LiCombinedControlRequest.Builder] = {
+  def pollLatestRequest(): LiCombinedControlRequest.Builder = {
     if (currentControllerState == null) {
-      None
+      throw new IllegalStateException("No request has been added to the merger")
     } else {
-      Some(new LiCombinedControlRequest.Builder(0, currentControllerState.controllerId, currentControllerState.controllerEpoch,
+      new LiCombinedControlRequest.Builder(0, currentControllerState.controllerId, currentControllerState.controllerEpoch,
         pollLatestLeaderAndIsrPartitionStates(), leaderAndIsrLiveLeaders,
         pollLatestUpdateMetadataPartitionStates(), updateMetadataLiveBrokers,
         pollLatestStopReplicaPartitionStates()
-      ))
+      )
     }
   }
 }

@@ -249,18 +249,33 @@ class RequestSendThread(val controllerId: Int,
 
   private val socketTimeoutMs = config.controllerSocketTimeoutMs
 
+  private val controllerRequestMerger = new ControllerRequestMerger
+
   override def doWork(): Unit = {
 
     def backoff(): Unit = pause(100, TimeUnit.MILLISECONDS)
 
-    // TODO: add back the queue time and remoteTime
+    // case 1: there is some pending request in the queue
+    //      1.a the first request is either a LeaderAndIsr or UpdateMetadata request
+    //      1.b the first request is a StopReplica request
+    // case 2: there are no request is the queue
+    var QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+    var unifiedCallback: AbstractResponse => Unit = null
 
-    val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-    var queueTimeMs = time.milliseconds() - enqueueTimeMs
+    var isMergeableRequest = false
+    if (apiKey == ApiKeys.LEADER_AND_ISR || apiKey == ApiKeys.UPDATE_METADATA) {
+      isMergeableRequest = true
+      unifiedCallback = handleMergeableRequest(enqueueTimeMs, apiKey, requestBuilder, unifiedCallback, callback)
+      // drain the queue until it's empty or a StopReplica request is found
+      while (!queue.isEmpty && (queue.peek().apiKey == ApiKeys.LEADER_AND_ISR || queue.peek().apiKey == ApiKeys.UPDATE_METADATA)) {
+        val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+        unifiedCallback = handleMergeableRequest(enqueueTimeMs, apiKey, requestBuilder, unifiedCallback, callback)
+      }
+
+      requestBuilder = controllerRequestMerger.pollLatestRequest()
+    }
+
     var remoteTimeMs: Long = 0
-    requestRateAndQueueTimeMetrics.update(queueTimeMs, TimeUnit.MILLISECONDS)
-
-
 
     var clientResponse: ClientResponse = null
     try {
@@ -276,9 +291,10 @@ class RequestSendThread(val controllerId: Int,
           else {
             val clientRequest = networkClient.newClientRequest(brokerNode.idString, requestBuilder,
               time.milliseconds(), true)
+            val remoteTimeStartMs = time.milliseconds()
             clientResponse = NetworkClientUtils.sendAndReceive(networkClient, clientRequest, time)
             isSendSuccessful = true
-            remoteTimeMs = time.milliseconds() - enqueueTimeMs - queueTimeMs
+            remoteTimeMs = time.milliseconds() - remoteTimeStartMs
           }
         } catch {
           case e: Throwable => // if the send was not successful, reconnect to broker and resend the message
@@ -301,16 +317,41 @@ class RequestSendThread(val controllerId: Int,
           s"${response.toString(requestHeader.apiVersion)} for request $api with correlation id " +
           s"${requestHeader.correlationId} sent to broker $brokerNode")
 
-        if (callback != null) {
+        if (isMergeableRequest){
+          // TODO: trigger the callback for the LeaderAndIsr response
+        } else if (callback != null) {
           callback(response)
         }
-        controllerChannelManager.brokerResponseSensors(api).update(queueTimeMs, remoteTimeMs)
+        controllerChannelManager.brokerResponseSensors(api).updateRemoteTime(remoteTimeMs)
       }
     } catch {
       case e: Throwable =>
         error(s"Controller $controllerId fails to send a request to broker $brokerNode", e)
         // If there is any socket error (eg, socket timeout), the connection is no longer usable and needs to be recreated.
         networkClient.close(brokerNode.idString)
+    }
+  }
+
+  /**
+   * handle a mergeable Request, i.e. one LeaderAndIsr request or a UpdateMetadata request
+   * @param enqueueTimeMs
+   * @param apiKey
+   * @param requestBuilder
+   * @param callback
+   * @return the new unified callback, which should be the first non-null callback among a sequence of mergeable requests
+   */
+  def handleMergeableRequest(enqueueTimeMs: Long, apiKey: ApiKeys, requestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+    unifiedCallback: AbstractResponse => Unit,
+    callback: AbstractResponse => Unit): AbstractResponse => Unit = {
+    val queueTimeMs = time.milliseconds() - enqueueTimeMs
+    requestRateAndQueueTimeMetrics.update(queueTimeMs, TimeUnit.MILLISECONDS)
+    controllerChannelManager.brokerResponseSensors(apiKey).updateQueueTime(queueTimeMs)
+    controllerRequestMerger.addRequest(requestBuilder)
+
+    if (unifiedCallback == null && callback != null) {
+      callback
+    } else {
+      unifiedCallback
     }
   }
 
@@ -659,6 +700,14 @@ class BrokerResponseTimeStats(val key: ApiKeys) extends KafkaMetricsGroup {
   def update(queueTime: Long, remoteTime: Long): Unit = {
     brokerRequestQueueTime.update(queueTime)
     brokerRequestRemoteTime.update(remoteTime)
+  }
+
+  def updateQueueTime(queueTime: Long): Unit = {
+    brokerRequestQueueTime.update(queueTime)
+  }
+
+  def updateRemoteTime(queueTime: Long): Unit = {
+    brokerRequestRemoteTime.update(queueTime)
   }
 
   def removeMetrics(): Unit = {

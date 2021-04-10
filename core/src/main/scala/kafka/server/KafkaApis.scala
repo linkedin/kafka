@@ -38,7 +38,7 @@ import kafka.message.ZStdCompressionCodec
 import kafka.network.RequestChannel
 import kafka.security.authorizer.AuthorizerUtils
 import kafka.server.QuotaFactory.{QuotaManagers, UnboundedQuota}
-import kafka.utils.{CoreUtils, Logging}
+import kafka.utils.{CoreUtils, LiDecomposedControlRequest, LiDecomposedControlRequestUtils, Logging}
 import kafka.zk.{AdminZkClient, KafkaZkClient}
 import org.apache.kafka.clients.admin.{AlterConfigOp, ConfigEntry}
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType
@@ -194,6 +194,22 @@ class KafkaApis(val requestChannel: RequestChannel,
     val correlationId = request.header.correlationId
     val leaderAndIsrRequest = request.body[LeaderAndIsrRequest]
 
+
+
+    authorizeClusterOperation(request, CLUSTER_ACTION)
+    if (isBrokerEpochStale(leaderAndIsrRequest.brokerEpoch(), leaderAndIsrRequest.maxBrokerEpoch())) {
+      // When the broker restarts very quickly, it is possible for this broker to receive request intended
+      // for its previous generation so the broker should skip the stale request.
+      info("Received LeaderAndIsr request with stale broker epoch info " +
+        "(broker epoch:" + leaderAndIsrRequest.brokerEpoch() +"},max broker epoch:" + leaderAndIsrRequest.maxBrokerEpoch() + ") " +
+        "when the current broker epoch is " + controller.brokerEpoch)
+      sendResponseExemptThrottle(request, leaderAndIsrRequest.getErrorResponse(0, Errors.STALE_BROKER_EPOCH.exception))
+    } else {
+      doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
+    }
+  }
+
+  private def doHandleLeaderAndIsrRequest(request: RequestChannel.Request, correlationId: Int, leaderAndIsrRequest: LeaderAndIsrRequest): Unit = {
     def onLeadershipChange(updatedLeaders: Iterable[Partition], updatedFollowers: Iterable[Partition]): Unit = {
       // for each new leader or follower, call coordinator to handle consumer group migration.
       // this callback is invoked under the replica state change lock to ensure proper order of
@@ -212,19 +228,8 @@ class KafkaApis(val requestChannel: RequestChannel,
           txnCoordinator.onResignation(partition.partitionId, Some(partition.getLeaderEpoch))
       }
     }
-
-    authorizeClusterOperation(request, CLUSTER_ACTION)
-    if (isBrokerEpochStale(leaderAndIsrRequest.brokerEpoch(), leaderAndIsrRequest.maxBrokerEpoch())) {
-      // When the broker restarts very quickly, it is possible for this broker to receive request intended
-      // for its previous generation so the broker should skip the stale request.
-      info("Received LeaderAndIsr request with stale broker epoch info " +
-        "(broker epoch:" + leaderAndIsrRequest.brokerEpoch() +"},max broker epoch:" + leaderAndIsrRequest.maxBrokerEpoch() + ") " +
-        "when the current broker epoch is " + controller.brokerEpoch)
-      sendResponseExemptThrottle(request, leaderAndIsrRequest.getErrorResponse(0, Errors.STALE_BROKER_EPOCH.exception))
-    } else {
-      val response = replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, onLeadershipChange)
-      sendResponseExemptThrottle(request, response)
-    }
+    val response = replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, onLeadershipChange)
+    sendResponseExemptThrottle(request, response)
   }
 
   def handleStopReplicaRequest(request: RequestChannel.Request): Unit = {
@@ -283,31 +288,35 @@ class KafkaApis(val requestChannel: RequestChannel,
       sendResponseExemptThrottle(request,
         new UpdateMetadataResponse(new UpdateMetadataResponseData().setErrorCode(Errors.STALE_BROKER_EPOCH.code)))
     } else {
-      val deletedPartitions = replicaManager.maybeUpdateMetadataCache(correlationId, updateMetadataRequest)
-      if (deletedPartitions.nonEmpty)
-        groupCoordinator.handleDeletedPartitions(deletedPartitions)
-
-      if (adminManager.hasDelayedTopicOperations) {
-        updateMetadataRequest.partitionStates.asScala.foreach { partitionState =>
-          adminManager.tryCompleteDelayedTopicOperations(partitionState.topicName)
-        }
-      }
-      quotas.clientQuotaCallback.foreach { callback =>
-        if (callback.updateClusterMetadata(metadataCache.getClusterMetadata(clusterId, request.context.listenerName))) {
-          quotas.fetch.updateQuotaMetricConfigs()
-          quotas.produce.updateQuotaMetricConfigs()
-          quotas.request.updateQuotaMetricConfigs()
-        }
-      }
-      if (replicaManager.hasDelayedElectionOperations) {
-        updateMetadataRequest.partitionStates.asScala.foreach { partitionState =>
-          val tp = new TopicPartition(partitionState.topicName, partitionState.partitionIndex)
-          replicaManager.tryCompleteElection(TopicPartitionOperationKey(tp))
-        }
-      }
-      sendResponseExemptThrottle(request, new UpdateMetadataResponse(
-        new UpdateMetadataResponseData().setErrorCode(Errors.NONE.code)))
+      doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
     }
+  }
+
+  private def doHandleUpdateMetadataRequest(request: RequestChannel.Request, correlationId: Int, updateMetadataRequest: UpdateMetadataRequest) = {
+    val deletedPartitions = replicaManager.maybeUpdateMetadataCache(correlationId, updateMetadataRequest)
+    if (deletedPartitions.nonEmpty)
+      groupCoordinator.handleDeletedPartitions(deletedPartitions)
+
+    if (adminManager.hasDelayedTopicOperations) {
+      updateMetadataRequest.partitionStates.asScala.foreach { partitionState =>
+        adminManager.tryCompleteDelayedTopicOperations(partitionState.topicName)
+      }
+    }
+    quotas.clientQuotaCallback.foreach { callback =>
+      if (callback.updateClusterMetadata(metadataCache.getClusterMetadata(clusterId, request.context.listenerName))) {
+        quotas.fetch.updateQuotaMetricConfigs()
+        quotas.produce.updateQuotaMetricConfigs()
+        quotas.request.updateQuotaMetricConfigs()
+      }
+    }
+    if (replicaManager.hasDelayedElectionOperations) {
+      updateMetadataRequest.partitionStates.asScala.foreach { partitionState =>
+        val tp = new TopicPartition(partitionState.topicName, partitionState.partitionIndex)
+        replicaManager.tryCompleteElection(TopicPartitionOperationKey(tp))
+      }
+    }
+    sendResponseExemptThrottle(request, new UpdateMetadataResponse(
+      new UpdateMetadataResponseData().setErrorCode(Errors.NONE.code)))
   }
 
   def handleControlledShutdownRequest(request: RequestChannel.Request): Unit = {
@@ -3035,7 +3044,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     val correlationId = request.header.correlationId
     val liCombinedControlRequest = request.body[LiCombinedControlRequest]
     authorizeClusterOperation(request, CLUSTER_ACTION)
-    // filter out partitions whose max broker epoch is obsolete
-    // construct a LeaderAndIsr request
+
+    val LiDecomposedControlRequest(leaderAndIsrRequest, updateMetadataRequest) =
+    LiDecomposedControlRequestUtils.decomposeRequest(liCombinedControlRequest, controller.brokerEpoch, config)
+
+    doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
+    doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
   }
 }

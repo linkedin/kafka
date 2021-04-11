@@ -95,6 +95,19 @@ public class LiCombinedControlRequestUtils {
     return transformedErrors;
   }
 
+  public static List<LeaderAndIsrResponseData.LeaderAndIsrPartitionError> restoreLeaderAndIsrPartitionErrors(
+          List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> errors
+  ) {
+    List<LeaderAndIsrResponseData.LeaderAndIsrPartitionError> restoredErrors = new ArrayList<>();
+    for (LiCombinedControlResponseData.LeaderAndIsrPartitionError error: errors) {
+      restoredErrors.add(new LeaderAndIsrResponseData.LeaderAndIsrPartitionError()
+              .setTopicName(error.topicName())
+              .setPartitionIndex(error.partitionIndex())
+              .setErrorCode(error.errorCode()));
+    }
+    return restoredErrors;
+  }
+
   public static UpdateMetadataRequestData.UpdateMetadataPartitionState  restoreUpdateMetadataPartition(
        LiCombinedControlRequestData.UpdateMetadataPartitionState partitionState) {
     return new UpdateMetadataRequestData.UpdateMetadataPartitionState ()

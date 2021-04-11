@@ -308,7 +308,8 @@ class RequestSendThread(val controllerId: Int,
       if (clientResponse != null) {
         val requestHeader = clientResponse.requestHeader
         val api = requestHeader.apiKey
-        if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA)
+        if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA &&
+          api != ApiKeys.LI_COMBINED_CONTROL)
           throw new KafkaException(s"Unexpected apiKey received: $apiKey")
 
         val response = clientResponse.responseBody
@@ -318,7 +319,14 @@ class RequestSendThread(val controllerId: Int,
           s"${requestHeader.correlationId} sent to broker $brokerNode")
 
         if (isMergeableRequest){
-          // TODO: trigger the callback for the LeaderAndIsr response
+          if (unifiedCallback != null) {
+            // trigger the callback for the LeaderAndIsr response
+            val LiDecomposedControlResponse(leaderAndIsrResponse, updateMetadataResponse) =
+              LiDecomposedControlResponseUtils.decomposeResponse(response[LiCombinedControlResponse])
+            unifiedCallback(leaderAndIsrResponse)
+
+            // no need to trigger the callback for the updateMetadataResponse since the callback is always null
+          }
         } else if (callback != null) {
           callback(response)
         }

@@ -46,8 +46,16 @@ public class LiCombinedControlResponse extends AbstractResponse {
         return data.stopReplicaPartitionErrors();
     }
 
+    public short leaderAndIsrErrorCode() {
+        return data.leaderAndIsrErrorCode();
+    }
+
     private Errors leaderAndIsrError() {
         return Errors.forCode(data.leaderAndIsrErrorCode());
+    }
+
+    public short updateMetadataErrorCode() {
+        return data.updateMetadataErrorCode();
     }
 
     private Errors updateMetadataError() {

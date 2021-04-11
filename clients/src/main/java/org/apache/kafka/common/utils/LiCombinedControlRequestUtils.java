@@ -95,7 +95,7 @@ public class LiCombinedControlRequestUtils {
   }
 
   public static UpdateMetadataRequestData.UpdateMetadataBroker restoreUpdateMetadataBroker(LiCombinedControlRequestData.UpdateMetadataBroker broker) {
-    List<UpdateMetadataRequestData.UpdateMetadataEndpoint> endpoints = new ArrayList();
+    List<UpdateMetadataRequestData.UpdateMetadataEndpoint> endpoints = new ArrayList<>();
     broker.endpoints().forEach(endpoint ->
         endpoints.add(new UpdateMetadataRequestData.UpdateMetadataEndpoint()
             .setHost(endpoint.host())

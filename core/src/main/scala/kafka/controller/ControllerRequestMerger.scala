@@ -32,7 +32,7 @@ class RequestControllerState(val controllerId: Int, val controllerEpoch: Int)
 
 class ControllerRequestMerger extends Logging {
   val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionState]] = mutable.HashMap.empty
-  var leaderAndIsrLiveLeaders: util.Collection[Node] = null
+  var leaderAndIsrLiveLeaders: util.Collection[Node] = new util.ArrayList[Node]()
 
   val updateMetadataPartitionStates: mutable.Map[TopicPartition, UpdateMetadataPartitionState] = mutable.HashMap.empty
   var updateMetadataLiveBrokers: util.List[UpdateMetadataBroker] = new util.ArrayList[UpdateMetadataBroker]()

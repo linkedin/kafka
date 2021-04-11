@@ -205,11 +205,12 @@ class KafkaApis(val requestChannel: RequestChannel,
         "when the current broker epoch is " + controller.brokerEpoch)
       sendResponseExemptThrottle(request, leaderAndIsrRequest.getErrorResponse(0, Errors.STALE_BROKER_EPOCH.exception))
     } else {
-      doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
+      val response = doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
+      sendResponseExemptThrottle(request, response)
     }
   }
 
-  private def doHandleLeaderAndIsrRequest(request: RequestChannel.Request, correlationId: Int, leaderAndIsrRequest: LeaderAndIsrRequest): Unit = {
+  private def doHandleLeaderAndIsrRequest(request: RequestChannel.Request, correlationId: Int, leaderAndIsrRequest: LeaderAndIsrRequest): LeaderAndIsrResponse = {
     def onLeadershipChange(updatedLeaders: Iterable[Partition], updatedFollowers: Iterable[Partition]): Unit = {
       // for each new leader or follower, call coordinator to handle consumer group migration.
       // this callback is invoked under the replica state change lock to ensure proper order of
@@ -228,8 +229,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           txnCoordinator.onResignation(partition.partitionId, Some(partition.getLeaderEpoch))
       }
     }
-    val response = replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, onLeadershipChange)
-    sendResponseExemptThrottle(request, response)
+    replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, onLeadershipChange)
   }
 
   def handleStopReplicaRequest(request: RequestChannel.Request): Unit = {
@@ -288,11 +288,12 @@ class KafkaApis(val requestChannel: RequestChannel,
       sendResponseExemptThrottle(request,
         new UpdateMetadataResponse(new UpdateMetadataResponseData().setErrorCode(Errors.STALE_BROKER_EPOCH.code)))
     } else {
-      doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
+      val response = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
+      sendResponseExemptThrottle(request,response)
     }
   }
 
-  private def doHandleUpdateMetadataRequest(request: RequestChannel.Request, correlationId: Int, updateMetadataRequest: UpdateMetadataRequest) = {
+  private def doHandleUpdateMetadataRequest(request: RequestChannel.Request, correlationId: Int, updateMetadataRequest: UpdateMetadataRequest): UpdateMetadataResponse = {
     val deletedPartitions = replicaManager.maybeUpdateMetadataCache(correlationId, updateMetadataRequest)
     if (deletedPartitions.nonEmpty)
       groupCoordinator.handleDeletedPartitions(deletedPartitions)
@@ -315,8 +316,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         replicaManager.tryCompleteElection(TopicPartitionOperationKey(tp))
       }
     }
-    sendResponseExemptThrottle(request, new UpdateMetadataResponse(
-      new UpdateMetadataResponseData().setErrorCode(Errors.NONE.code)))
+    new UpdateMetadataResponse(new UpdateMetadataResponseData().setErrorCode(Errors.NONE.code))
   }
 
   def handleControlledShutdownRequest(request: RequestChannel.Request): Unit = {

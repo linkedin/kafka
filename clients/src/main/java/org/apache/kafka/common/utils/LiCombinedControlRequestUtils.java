@@ -20,7 +20,9 @@ package org.apache.kafka.common.utils;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.kafka.common.message.LeaderAndIsrRequestData;
+import org.apache.kafka.common.message.LeaderAndIsrResponseData;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
+import org.apache.kafka.common.message.LiCombinedControlResponseData;
 import org.apache.kafka.common.message.UpdateMetadataRequestData;
 
 
@@ -78,6 +80,19 @@ public class LiCombinedControlRequestUtils {
         .setZkVersion(partitionState.zkVersion())
         .setReplicas(partitionState.replicas())
         .setOfflineReplicas(partitionState.offlineReplicas());
+  }
+
+  public static List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> transformLeaderAndIsrPartitionErrors(
+          List<LeaderAndIsrResponseData.LeaderAndIsrPartitionError> errors
+  ) {
+    List<LiCombinedControlResponseData.LeaderAndIsrPartitionError> transformedErrors = new ArrayList<>();
+    for (LeaderAndIsrResponseData.LeaderAndIsrPartitionError error: errors) {
+      transformedErrors.add(new LiCombinedControlResponseData.LeaderAndIsrPartitionError()
+      .setTopicName(error.topicName())
+      .setPartitionIndex(error.partitionIndex())
+      .setErrorCode(error.errorCode()));
+    }
+    return transformedErrors;
   }
 
   public static UpdateMetadataRequestData.UpdateMetadataPartitionState  restoreUpdateMetadataPartition(

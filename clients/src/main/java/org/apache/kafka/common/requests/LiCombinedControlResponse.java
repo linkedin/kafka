@@ -28,7 +28,7 @@ import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.Struct;
 
 
-class LiCombinedControlResponse extends AbstractResponse {
+public class LiCombinedControlResponse extends AbstractResponse {
     private final LiCombinedControlResponseData data;
     public LiCombinedControlResponse(LiCombinedControlResponseData data) {
         this.data = data;

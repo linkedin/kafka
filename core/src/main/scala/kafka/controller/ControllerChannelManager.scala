@@ -84,7 +84,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   def initBrokerResponseSensors(): Unit = {
-    Array(ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA).foreach { k: ApiKeys =>
+    Array(ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA, ApiKeys.LI_COMBINED_CONTROL).foreach { k: ApiKeys =>
       brokerResponseSensors.put(k, new BrokerResponseTimeStats(k))
     }
   }
@@ -322,7 +322,7 @@ class RequestSendThread(val controllerId: Int,
           if (unifiedCallback != null) {
             // trigger the callback for the LeaderAndIsr response
             val LiDecomposedControlResponse(leaderAndIsrResponse, updateMetadataResponse) =
-              LiDecomposedControlResponseUtils.decomposeResponse(response[LiCombinedControlResponse])
+              LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
             unifiedCallback(leaderAndIsrResponse)
 
             // no need to trigger the callback for the updateMetadataResponse since the callback is always null

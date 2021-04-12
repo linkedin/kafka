@@ -116,7 +116,7 @@ public class LiCombinedControlResponse extends AbstractResponse {
     }
 
     private static Map<Errors, Integer> mergeMaps(Map<Errors, Integer> m1, Map<Errors, Integer> m2) {
-        Map<Errors, Integer> result = m1;
+        Map<Errors, Integer> result = new HashMap<>(m1);
         m2.forEach((k, v) -> result.merge(k, v, (v1, v2) -> v1 + v2));
         return result;
     }

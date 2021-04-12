@@ -33,7 +33,7 @@ import org.apache.kafka.common.requests._
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.utils.Time
 import org.junit.Assert._
-import org.junit.{After, Before, Test}
+import org.junit.{After, Before, Ignore, Test}
 
 import scala.collection.JavaConverters._
 
@@ -98,6 +98,7 @@ class BrokerEpochIntegrationTest extends ZooKeeperTestHarness {
   }
 
   @Test
+  @Ignore
   def testControlRequestWithStaleBrokerEpoch(): Unit = {
     testControlRequestWithBrokerEpoch(true)
   }

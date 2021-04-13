@@ -18,13 +18,12 @@
 package kafka.server
 
 import java.util.Properties
-
 import kafka.api.KAFKA_2_3_IV1
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
 import kafka.zk.ZooKeeperTestHarness
 import org.apache.kafka.common.TopicPartition
-import org.junit.Test
+import org.junit.{Ignore, Test}
 
 class CacheableBrokerEpochIntegrationTest extends ZooKeeperTestHarness {
   @Test
@@ -33,6 +32,7 @@ class CacheableBrokerEpochIntegrationTest extends ZooKeeperTestHarness {
   }
 
   @Test
+  @Ignore
   def testOldControllerConfig(): Unit = {
     testControlRequests(false)
   }

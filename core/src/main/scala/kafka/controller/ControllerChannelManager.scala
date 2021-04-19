@@ -251,6 +251,8 @@ class RequestSendThread(val controllerId: Int,
 
   private val controllerRequestMerger = new ControllerRequestMerger
 
+  private var firstUpdateMetadataSent = false
+
   override def doWork(): Unit = {
 
     def backoff(): Unit = pause(100, TimeUnit.MILLISECONDS)
@@ -261,18 +263,21 @@ class RequestSendThread(val controllerId: Int,
     // case 2: there are no request is the queue
     var QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
     var unifiedCallback: AbstractResponse => Unit = null
-
     var isMergeableRequest = false
-    if (apiKey == ApiKeys.LEADER_AND_ISR || apiKey == ApiKeys.UPDATE_METADATA) {
-      isMergeableRequest = true
-      unifiedCallback = handleMergeableRequest(enqueueTimeMs, apiKey, requestBuilder, unifiedCallback, callback)
-      // drain the queue until it's empty or a StopReplica request is found
-      while (!queue.isEmpty && (queue.peek().apiKey == ApiKeys.LEADER_AND_ISR || queue.peek().apiKey == ApiKeys.UPDATE_METADATA)) {
-        val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+    if (firstUpdateMetadataSent) {
+      // only start the merging logic after the first UpdateMetadata request
+      // since the first one needs to be cached
+      if (apiKey == ApiKeys.LEADER_AND_ISR || apiKey == ApiKeys.UPDATE_METADATA) {
+        isMergeableRequest = true
         unifiedCallback = handleMergeableRequest(enqueueTimeMs, apiKey, requestBuilder, unifiedCallback, callback)
-      }
+        // drain the queue until it's empty or a StopReplica request is found
+        while (!queue.isEmpty && (queue.peek().apiKey == ApiKeys.LEADER_AND_ISR || queue.peek().apiKey == ApiKeys.UPDATE_METADATA)) {
+          val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+          unifiedCallback = handleMergeableRequest(enqueueTimeMs, apiKey, requestBuilder, unifiedCallback, callback)
+        }
 
-      requestBuilder = controllerRequestMerger.pollLatestRequest()
+        requestBuilder = controllerRequestMerger.pollLatestRequest()
+      }
     }
 
     var remoteTimeMs: Long = 0
@@ -312,13 +317,17 @@ class RequestSendThread(val controllerId: Int,
           api != ApiKeys.LI_COMBINED_CONTROL)
           throw new KafkaException(s"Unexpected apiKey received: $apiKey")
 
+        if (api == ApiKeys.UPDATE_METADATA) {
+          firstUpdateMetadataSent = true
+        }
+
         val response = clientResponse.responseBody
 
         stateChangeLogger.withControllerEpoch(controllerContext.epoch).trace(s"Received response " +
           s"${response.toString(requestHeader.apiVersion)} for request $api with correlation id " +
           s"${requestHeader.correlationId} sent to broker $brokerNode")
 
-        if (isMergeableRequest){
+        if (isMergeableRequest) {
           if (unifiedCallback != null) {
             // trigger the callback for the LeaderAndIsr response
             val LiDecomposedControlResponse(leaderAndIsrResponse, updateMetadataResponse) =

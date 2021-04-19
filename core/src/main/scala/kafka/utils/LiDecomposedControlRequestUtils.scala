@@ -4,17 +4,19 @@ import java.util
 
 import kafka.api._
 import kafka.server.KafkaConfig
-import org.apache.kafka.common.Node
+import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrPartitionState
+import org.apache.kafka.common.message.LiCombinedControlRequestData
 import org.apache.kafka.common.message.UpdateMetadataRequestData.{UpdateMetadataBroker, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
 import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 
 object LiDecomposedControlRequestUtils {
   def decomposeRequest(request: LiCombinedControlRequest, brokerEpoch: Long, config: KafkaConfig): LiDecomposedControlRequest = {
     val leaderAndIsrRequest = extractLeaderAndIsrRequest(request, brokerEpoch, config)
     val updateMetadataRequest = extractUpdateMetadataRequest(request, config)
-    new LiDecomposedControlRequest(leaderAndIsrRequest, updateMetadataRequest)
+    val stopReplicaRequests = extractStopReplicaRequest(request, brokerEpoch, config)
+    LiDecomposedControlRequest(leaderAndIsrRequest, updateMetadataRequest, stopReplicaRequests)
   }
 
   private def extractLeaderAndIsrRequest(request: LiCombinedControlRequest, brokerEpoch: Long, config: KafkaConfig): Option[LeaderAndIsrRequest] = {
@@ -65,6 +67,59 @@ object LiDecomposedControlRequestUtils {
 
       Some(new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
         request.maxBrokerEpoch(), effectivePartitionStates, liveBrokers).build())
+    }
+  }
+
+  // extractStopReplicaRequest could possible return two StopReplicaRequests
+  // the first one with the deletePartitions field set to true, and the second one with the deletePartitions field set to false
+  private def extractStopReplicaRequest(request: LiCombinedControlRequest, brokerEpoch: Long, config: KafkaConfig): List[StopReplicaRequest] = {
+    val partitionsInRequest = request.stopReplicaPartitionStatespartitions()
+
+    val effectivePartitionStates = new util.ArrayList[LiCombinedControlRequestData.StopReplicaPartitionState]()
+    partitionsInRequest.forEach{partition =>
+      if (partition.maxBrokerEpoch() >= brokerEpoch) {
+        effectivePartitionStates.add(partition)
+      }
+
+    }
+    if (effectivePartitionStates.isEmpty) {
+      List.empty
+    } else {
+      val stopReplicaRequestVersion: Short =
+        if (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1) 3
+        else throw new IllegalStateException("The inter.broker.protocol.version config should not be smaller than 2.4-IV1")
+
+      val partitionsWithDelete = new util.ArrayList[TopicPartition]()
+      val partitionsWithoutDelete = new util.ArrayList[TopicPartition]()
+      effectivePartitionStates.forEach { partition =>
+        val topicPartition = new TopicPartition(partition.topicName(), partition.partitionIndex())
+        if (partition.deletePartitions()) {
+          partitionsWithDelete.add(topicPartition)
+        } else {
+          partitionsWithoutDelete.add(topicPartition)
+        }
+      }
+
+      def getStopReplicaRequest(deletePartitions: Boolean, partitions: util.List[TopicPartition]): StopReplicaRequest = {
+        new StopReplicaRequest.Builder(stopReplicaRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
+          request.maxBrokerEpoch(), true, partitionsWithDelete).build()
+      }
+
+      var stopReplicaRequests: List[StopReplicaRequest] = List.empty
+
+      val requestWithDelete = if (partitionsWithDelete.isEmpty) {
+        None
+      } else {
+        stopReplicaRequests = getStopReplicaRequest(true, partitionsWithDelete) :: stopReplicaRequests
+      }
+
+      val requestWithoutDelete = if (partitionsWithoutDelete.isEmpty) {
+        None
+      } else {
+        stopReplicaRequests = getStopReplicaRequest(false, partitionsWithoutDelete) :: stopReplicaRequests
+      }
+
+      stopReplicaRequests
     }
   }
 }

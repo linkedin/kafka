@@ -149,7 +149,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
             return bld.toString();
         }
 
-        public Iterable<UpdateMetadataPartitionState> partitionStates() {
+        public List<UpdateMetadataPartitionState> partitionStates() {
             return partitionStates;
         }
 

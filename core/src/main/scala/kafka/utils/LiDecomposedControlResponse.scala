@@ -1,5 +1,7 @@
 package kafka.utils
 
-import org.apache.kafka.common.requests.{LeaderAndIsrResponse, UpdateMetadataResponse}
+import org.apache.kafka.common.requests.{LeaderAndIsrResponse, StopReplicaResponse, UpdateMetadataResponse}
 
-case class LiDecomposedControlResponse(val leaderAndIsrResponse: LeaderAndIsrResponse, val updateMetadataResponse: UpdateMetadataResponse)
+case class LiDecomposedControlResponse(leaderAndIsrResponse: LeaderAndIsrResponse,
+  updateMetadataResponse: UpdateMetadataResponse,
+  stopReplicaResponse: StopReplicaResponse)

@@ -24,6 +24,7 @@ import java.util
 import java.util.{Collections, Optional}
 import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
 import java.util.concurrent.atomic.AtomicInteger
+
 import kafka.admin.{AdminUtils, RackAwareMode}
 import kafka.api.ElectLeadersRequestOps
 import kafka.api.{ApiVersion, KAFKA_0_11_0_IV0, KAFKA_2_3_IV0}
@@ -57,6 +58,7 @@ import org.apache.kafka.common.message.DeleteTopicsResponseData.{DeletableTopicR
 import org.apache.kafka.common.message.ElectLeadersResponseData.PartitionResult
 import org.apache.kafka.common.message.ElectLeadersResponseData.ReplicaElectionResult
 import org.apache.kafka.common.message.LeaveGroupResponseData.MemberResponse
+import org.apache.kafka.common.message.LiCombinedControlResponseData.StopReplicaPartitionError
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.{ListenerName, Send}
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
@@ -245,32 +247,36 @@ class KafkaApis(val requestChannel: RequestChannel,
         s"when the current broker epoch is ${controller.brokerEpoch}")
       sendResponseExemptThrottle(request, new StopReplicaResponse(new StopReplicaResponseData().setErrorCode(Errors.STALE_BROKER_EPOCH.code)))
     } else {
-      val (result, error) = replicaManager.stopReplicas(stopReplicaRequest)
-      // Clear the coordinator caches in case we were the leader. In the case of a reassignment, we
-      // cannot rely on the LeaderAndIsr API for this since it is only sent to active replicas.
-      result.foreach { case (topicPartition, error) =>
-        if (error == Errors.NONE && stopReplicaRequest.deletePartitions) {
-          if (topicPartition.topic == GROUP_METADATA_TOPIC_NAME) {
-            groupCoordinator.onResignation(topicPartition.partition)
-          } else if (topicPartition.topic == TRANSACTION_STATE_TOPIC_NAME) {
-            // The StopReplica API does not pass through the leader epoch
-            txnCoordinator.onResignation(topicPartition.partition, coordinatorEpoch = None)
-          }
+      val stopReplicaResponse = doHandleStopReplicaRequest(request, stopReplicaRequest)
+      sendResponseExemptThrottle(request, stopReplicaResponse)
+      CoreUtils.swallow(replicaManager.replicaFetcherManager.shutdownIdleFetcherThreads(), this)
+    }
+  }
+
+  private def doHandleStopReplicaRequest(request: RequestChannel.Request, stopReplicaRequest: StopReplicaRequest): StopReplicaResponse = {
+    val (result, error) = replicaManager.stopReplicas(stopReplicaRequest)
+    // Clear the coordinator caches in case we were the leader. In the case of a reassignment, we
+    // cannot rely on the LeaderAndIsr API for this since it is only sent to active replicas.
+    result.foreach { case (topicPartition, error) =>
+      if (error == Errors.NONE && stopReplicaRequest.deletePartitions) {
+        if (topicPartition.topic == GROUP_METADATA_TOPIC_NAME) {
+          groupCoordinator.onResignation(topicPartition.partition)
+        } else if (topicPartition.topic == TRANSACTION_STATE_TOPIC_NAME) {
+          // The StopReplica API does not pass through the leader epoch
+          txnCoordinator.onResignation(topicPartition.partition, coordinatorEpoch = None)
         }
       }
-
-      def toStopReplicaPartition(tp: TopicPartition, error: Errors) =
-        new StopReplicaResponseData.StopReplicaPartitionError()
-          .setTopicName(tp.topic)
-          .setPartitionIndex(tp.partition)
-          .setErrorCode(error.code)
-
-      sendResponseExemptThrottle(request, new StopReplicaResponse(new StopReplicaResponseData()
-        .setErrorCode(error.code)
-        .setPartitionErrors(result.map { case (tp, error) => toStopReplicaPartition(tp, error) }.toBuffer.asJava)))
     }
 
-    CoreUtils.swallow(replicaManager.replicaFetcherManager.shutdownIdleFetcherThreads(), this)
+    def toStopReplicaPartition(tp: TopicPartition, error: Errors) =
+      new StopReplicaResponseData.StopReplicaPartitionError()
+        .setTopicName(tp.topic)
+        .setPartitionIndex(tp.partition)
+        .setErrorCode(error.code)
+
+    new StopReplicaResponse(new StopReplicaResponseData()
+      .setErrorCode(error.code)
+      .setPartitionErrors(result.map { case (tp, error) => toStopReplicaPartition(tp, error) }.toBuffer.asJava))
   }
 
   def handleUpdateMetadataRequest(request: RequestChannel.Request): Unit = {
@@ -3044,12 +3050,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     val liCombinedControlRequest = request.body[LiCombinedControlRequest]
     authorizeClusterOperation(request, CLUSTER_ACTION)
 
-    val LiDecomposedControlRequest(optionalLeaderAndIsrRequest, optionalUpdateMetadataRequest) =
-      LiDecomposedControlRequestUtils.decomposeRequest(liCombinedControlRequest, controller.brokerEpoch, config)
+    val decomposedRequest = LiDecomposedControlRequestUtils.decomposeRequest(liCombinedControlRequest, controller.brokerEpoch, config)
 
     val responseData = new LiCombinedControlResponseData()
 
-    optionalLeaderAndIsrRequest match {
+    decomposedRequest.leaderAndIsrRequest match {
       case Some(leaderAndIsrRequest) => {
         val leaderAndIsrResponse = doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
         responseData.setLeaderAndIsrErrorCode(leaderAndIsrResponse.errorCode())
@@ -3058,13 +3063,22 @@ class KafkaApis(val requestChannel: RequestChannel,
       case _ => // do nothing
     }
 
-    optionalUpdateMetadataRequest match {
+    decomposedRequest.updateMetadataRequest match {
       case Some(updateMetadataRequest) => {
         val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
         responseData.setUpdateMetadataErrorCode(updateMetadataResponse.errorCode())
       }
       case _ => // do nothing
     }
+
+    val stopReplicaRequests = decomposedRequest.stopReplicaRequests
+    val stopReplicaPartitionErrors = new util.ArrayList[StopReplicaPartitionError]()
+    stopReplicaRequests.foreach{ stopReplicaRequest => {
+      val stopReplicaResponse = doHandleStopReplicaRequest(request, stopReplicaRequest)
+      responseData.setStopReplicaErrorCode(stopReplicaResponse.errorCode())
+      stopReplicaPartitionErrors.addAll(LiCombinedControlRequestUtils.transformStopReplicaPartitionErrors(stopReplicaResponse.partitionErrors()))
+    }}
+    responseData.setStopReplicaPartitionErrors(stopReplicaPartitionErrors)
 
     sendResponseExemptThrottle(request, new LiCombinedControlResponse(responseData))
   }

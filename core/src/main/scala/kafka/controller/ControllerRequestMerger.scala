@@ -23,7 +23,7 @@ import kafka.utils.Logging
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
 import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, StopReplicaPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{AbstractControlRequest, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
 import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 
 import scala.collection.mutable
@@ -47,13 +47,21 @@ class ControllerRequestMerger extends Logging {
   //    the broker should make decisions on the per-partition granularity to determine if the partition should be ignored or kept
   var currentControllerState : RequestControllerState = null
 
-  def addRequest(request: AbstractControlRequest.Builder[_ <: AbstractControlRequest]): Unit = {
+  // here we store one callback for the LeaderAndIsr response and one for the StopReplica response
+  // given all the requests of the same type sent to the same broker have the same callback
+  var leaderAndIsrCallback: AbstractResponse => Unit = null
+  var stopReplicaCallback: AbstractResponse => Unit = null
+
+
+
+  def addRequest(request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+    callback: AbstractResponse => Unit = null): Unit = {
     currentControllerState = new RequestControllerState(request.controllerId(), request.controllerEpoch())
 
     request match {
-      case leaderAndIsrRequest : LeaderAndIsrRequest.Builder => addLeaderAndIsrRequest(leaderAndIsrRequest)
+      case leaderAndIsrRequest : LeaderAndIsrRequest.Builder => addLeaderAndIsrRequest(leaderAndIsrRequest, callback)
       case updateMetadataRequest : UpdateMetadataRequest.Builder => addUpdateMetadataRequest(updateMetadataRequest)
-      case stopReplicaRequest: StopReplicaRequest.Builder => addStopReplicaRequest(stopReplicaRequest)
+      case stopReplicaRequest: StopReplicaRequest.Builder => addStopReplicaRequest(stopReplicaRequest, callback)
     }
   }
 
@@ -73,8 +81,8 @@ class ControllerRequestMerger extends Logging {
     }
   }
 
-  private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder): Unit = {
-
+  private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder,
+    callback: AbstractResponse => Unit): Unit = {
     request.partitionStates().forEach{partitionState => {
       val combinedRequestPartitionState = LiCombinedControlRequestUtils.transformLeaderAndIsrPartition(partitionState, request.maxBrokerEpoch())
 
@@ -88,6 +96,7 @@ class ControllerRequestMerger extends Logging {
       clearStopReplicaPartitionState(topicPartition)
     }}
     leaderAndIsrLiveLeaders = request.liveLeaders()
+    leaderAndIsrCallback = callback
   }
 
   private def clearLeaderAndIsrPartitionState(topicPartition: TopicPartition): Unit = {
@@ -129,7 +138,8 @@ class ControllerRequestMerger extends Logging {
   }
 
 
-  private def addStopReplicaRequest(request: StopReplicaRequest.Builder): Unit = {
+  private def addStopReplicaRequest(request: StopReplicaRequest.Builder,
+    callback: AbstractResponse => Unit): Unit = {
     request.partitions().forEach{partition => {
       val currentPartitionStates = stopReplicaPartitionStates.getOrElseUpdate(partition,
         new util.LinkedList[StopReplicaPartitionState]())
@@ -148,6 +158,8 @@ class ControllerRequestMerger extends Logging {
       // one stop replica request renders all previous LeaderAndIsr requests non-applicable
       clearLeaderAndIsrPartitionState(partition)
     }}
+
+    stopReplicaCallback = callback
   }
   private def clearStopReplicaPartitionState(topicPartition: TopicPartition): Unit = {
     stopReplicaPartitionStates.remove(topicPartition)

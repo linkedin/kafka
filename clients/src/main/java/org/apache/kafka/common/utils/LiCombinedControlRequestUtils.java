@@ -23,6 +23,7 @@ import org.apache.kafka.common.message.LeaderAndIsrRequestData;
 import org.apache.kafka.common.message.LeaderAndIsrResponseData;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
 import org.apache.kafka.common.message.LiCombinedControlResponseData;
+import org.apache.kafka.common.message.StopReplicaResponseData;
 import org.apache.kafka.common.message.UpdateMetadataRequestData;
 
 
@@ -106,6 +107,30 @@ public class LiCombinedControlRequestUtils {
               .setErrorCode(error.errorCode()));
     }
     return restoredErrors;
+  }
+
+  public static List<LiCombinedControlResponseData.StopReplicaPartitionError> transformStopReplicaPartitionErrors(
+      List<StopReplicaResponseData.StopReplicaPartitionError> errors) {
+    List<LiCombinedControlResponseData.StopReplicaPartitionError> responseErrors = new ArrayList<>();
+    for (StopReplicaResponseData.StopReplicaPartitionError error : errors) {
+      responseErrors.add(new LiCombinedControlResponseData.StopReplicaPartitionError()
+          .setTopicName(error.topicName())
+          .setPartitionIndex(error.partitionIndex())
+          .setErrorCode(error.errorCode()));
+    }
+    return responseErrors;
+  }
+
+  public static List<StopReplicaResponseData.StopReplicaPartitionError> restoreStopReplicaPartitionErrors(
+      List<LiCombinedControlResponseData.StopReplicaPartitionError> errors) {
+    List<StopReplicaResponseData.StopReplicaPartitionError> responseErrors = new ArrayList<>();
+    for (LiCombinedControlResponseData.StopReplicaPartitionError error : errors) {
+      responseErrors.add(new StopReplicaResponseData.StopReplicaPartitionError()
+      .setTopicName(error.topicName())
+      .setPartitionIndex(error.partitionIndex())
+      .setErrorCode(error.errorCode()));
+    }
+    return responseErrors;
   }
 
   public static UpdateMetadataRequestData.UpdateMetadataPartitionState  restoreUpdateMetadataPartition(

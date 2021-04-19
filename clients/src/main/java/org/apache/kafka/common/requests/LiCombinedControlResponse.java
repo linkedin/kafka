@@ -62,6 +62,10 @@ public class LiCombinedControlResponse extends AbstractResponse {
         return Errors.forCode(data.updateMetadataErrorCode());
     }
 
+    public short stopReplicaErrorCode() {
+        return data.stopReplicaErrorCode();
+    }
+
     private Errors stopReplicaError() {
         return Errors.forCode(data.stopReplicaErrorCode());
     }

@@ -281,6 +281,10 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
         return data.liveBrokers();
     }
 
+    public List<LiCombinedControlRequestData.StopReplicaPartitionState> stopReplicaPartitionStatespartitions() {
+        return data.stopReplicaPartitionStates();
+    }
+
     public static LiCombinedControlRequest parse(ByteBuffer buffer, short version) {
         return new LiCombinedControlRequest(ApiKeys.LI_COMBINED_CONTROL.parseRequest(version, buffer), version);
     }

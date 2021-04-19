@@ -1,7 +1,7 @@
 package kafka.utils
 
-import org.apache.kafka.common.message.{LeaderAndIsrResponseData, UpdateMetadataResponseData}
-import org.apache.kafka.common.requests.{LeaderAndIsrResponse, LiCombinedControlResponse, UpdateMetadataResponse}
+import org.apache.kafka.common.message.{LeaderAndIsrResponseData, StopReplicaResponseData, UpdateMetadataResponseData}
+import org.apache.kafka.common.requests.{LeaderAndIsrResponse, LiCombinedControlResponse, StopReplicaResponse, UpdateMetadataResponse}
 import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 
 object LiDecomposedControlResponseUtils {
@@ -13,6 +13,10 @@ object LiDecomposedControlResponseUtils {
     val updateMetadataResponse = new UpdateMetadataResponse(new UpdateMetadataResponseData()
       .setErrorCode(response.updateMetadataErrorCode()))
 
-    new LiDecomposedControlResponse(leaderAndIsrResponse, updateMetadataResponse)
+    val stopReplicaResponse = new StopReplicaResponse(new StopReplicaResponseData()
+    .setErrorCode(response.stopReplicaErrorCode())
+    .setPartitionErrors(LiCombinedControlRequestUtils.restoreStopReplicaPartitionErrors(response.stopReplicaPartitionErrors())))
+
+    LiDecomposedControlResponse(leaderAndIsrResponse, updateMetadataResponse, stopReplicaResponse)
   }
 }

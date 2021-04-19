@@ -17,7 +17,7 @@ object LiDecomposedControlRequestUtils {
     new LiDecomposedControlRequest(leaderAndIsrRequest, updateMetadataRequest)
   }
 
-  private def extractLeaderAndIsrRequest(request: LiCombinedControlRequest, brokerEpoch: Long, config: KafkaConfig): LeaderAndIsrRequest = {
+  private def extractLeaderAndIsrRequest(request: LiCombinedControlRequest, brokerEpoch: Long, config: KafkaConfig): Option[LeaderAndIsrRequest] = {
     val partitionsInRequest = request.leaderAndIsrPartitionStates()
     val leadersInRequest = request.liveLeaders()
 
@@ -27,20 +27,24 @@ object LiDecomposedControlRequestUtils {
         effectivePartitionStates.add(LiCombinedControlRequestUtils.restoreLeaderAndIsrPartition(partition))
     }
 
-    val leaderNodes = new util.ArrayList[Node]()
-    leadersInRequest.forEach{leader =>
-      leaderNodes.add(new Node(leader.brokerId(), leader.hostName(), leader.port()))
+    if (effectivePartitionStates.isEmpty) {
+      None
+    } else {
+      val leaderNodes = new util.ArrayList[Node]()
+      leadersInRequest.forEach{leader =>
+        leaderNodes.add(new Node(leader.brokerId(), leader.hostName(), leader.port()))
+      }
+
+      val leaderAndIsrRequestVersion: Short =
+        if (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1) 5
+        else throw new IllegalStateException("The inter.broker.protocol.version config should not be smaller than 2.4-IV1")
+
+      Some(new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
+        request.maxBrokerEpoch(), effectivePartitionStates, leaderNodes).build())
     }
-
-    val leaderAndIsrRequestVersion: Short =
-      if (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1) 5
-      else throw new IllegalStateException("The inter.broker.protocol.version config should not be smaller than 2.4-IV1")
-
-    new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
-      request.maxBrokerEpoch(), effectivePartitionStates, leaderNodes).build()
   }
 
-  private def extractUpdateMetadataRequest(request: LiCombinedControlRequest, config: KafkaConfig): UpdateMetadataRequest = {
+  private def extractUpdateMetadataRequest(request: LiCombinedControlRequest, config: KafkaConfig): Option[UpdateMetadataRequest] = {
     val partitionsInRequest = request.updateMetadataPartitionStates()
     val brokersInRequest = request.liveBrokers()
 
@@ -52,11 +56,15 @@ object LiDecomposedControlRequestUtils {
     val liveBrokers = new util.ArrayList[UpdateMetadataBroker]()
     brokersInRequest.forEach(broker => liveBrokers.add(LiCombinedControlRequestUtils.restoreUpdateMetadataBroker(broker)))
 
-    val updateMetadataRequestVersion: Short =
-      if (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1) 7
-      else throw new IllegalStateException("The inter.broker.protocol.version config should not be smaller than 2.4-IV1")
+    if (effectivePartitionStates.isEmpty && liveBrokers.isEmpty) {
+      None
+    } else {
+      val updateMetadataRequestVersion: Short =
+        if (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1) 7
+        else throw new IllegalStateException("The inter.broker.protocol.version config should not be smaller than 2.4-IV1")
 
-    new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
-      request.maxBrokerEpoch(), effectivePartitionStates, liveBrokers).build()
+      Some(new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
+        request.maxBrokerEpoch(), effectivePartitionStates, liveBrokers).build())
+    }
   }
 }

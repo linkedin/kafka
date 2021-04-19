@@ -3044,18 +3044,28 @@ class KafkaApis(val requestChannel: RequestChannel,
     val liCombinedControlRequest = request.body[LiCombinedControlRequest]
     authorizeClusterOperation(request, CLUSTER_ACTION)
 
-    val LiDecomposedControlRequest(leaderAndIsrRequest, updateMetadataRequest) =
-    LiDecomposedControlRequestUtils.decomposeRequest(liCombinedControlRequest, controller.brokerEpoch, config)
+    val LiDecomposedControlRequest(optionalLeaderAndIsrRequest, optionalUpdateMetadataRequest) =
+      LiDecomposedControlRequestUtils.decomposeRequest(liCombinedControlRequest, controller.brokerEpoch, config)
 
-    val leaderAndIsrResponse = doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
-    val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
+    val responseData = new LiCombinedControlResponseData()
 
-    val response = new LiCombinedControlResponse(new LiCombinedControlResponseData()
-      .setLeaderAndIsrErrorCode(leaderAndIsrResponse.errorCode())
-      .setLeaderAndIsrPartitionErrors(LiCombinedControlRequestUtils.transformLeaderAndIsrPartitionErrors(leaderAndIsrResponse.partitions()))
-      .setUpdateMetadataErrorCode(updateMetadataResponse.errorCode())
-    )
+    optionalLeaderAndIsrRequest match {
+      case Some(leaderAndIsrRequest) => {
+        val leaderAndIsrResponse = doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
+        responseData.setLeaderAndIsrErrorCode(leaderAndIsrResponse.errorCode())
+          .setLeaderAndIsrPartitionErrors(LiCombinedControlRequestUtils.transformLeaderAndIsrPartitionErrors(leaderAndIsrResponse.partitions()))
+      }
+      case _ => // do nothing
+    }
 
-    sendResponseExemptThrottle(request,response)
+    optionalUpdateMetadataRequest match {
+      case Some(updateMetadataRequest) => {
+        val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
+        responseData.setUpdateMetadataErrorCode(updateMetadataResponse.errorCode())
+      }
+      case _ => // do nothing
+    }
+
+    sendResponseExemptThrottle(request, new LiCombinedControlResponse(responseData))
   }
 }

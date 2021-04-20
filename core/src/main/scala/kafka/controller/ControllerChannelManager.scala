@@ -286,7 +286,6 @@ class RequestSendThread(val controllerId: Int,
       // drain the queue until the queue is empty
       while (!queue.isEmpty) {
         val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-        //unifiedCallback =
         mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
       }
 
@@ -297,7 +296,6 @@ class RequestSendThread(val controllerId: Int,
 
   private def sendAndReceive(requestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
     callback: AbstractResponse => Unit): Unit = {
-    warn("sending request to broker " + brokerNode + ":" + requestBuilder + ", firstUpdateMetadataWithPartitionsSent:"+firstUpdateMetadataWithPartitionsSent)
     var remoteTimeMs: Long = 0
 
     var clientResponse: ClientResponse = null
@@ -337,8 +335,6 @@ class RequestSendThread(val controllerId: Int,
 
 
         if (api == ApiKeys.UPDATE_METADATA && !requestBuilder.asInstanceOf[UpdateMetadataRequest.Builder].partitionStates().isEmpty) {
-          warn("api == ApiKeys.UPDATE_METADATA:" + (api == ApiKeys.UPDATE_METADATA) + ", !partitionsEmpty:" + (!requestBuilder.asInstanceOf[UpdateMetadataRequest.Builder].partitionStates().isEmpty))
-          warn("setting to true for broker " + brokerNode)
           firstUpdateMetadataWithPartitionsSent = true
         }
 

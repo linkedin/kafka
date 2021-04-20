@@ -102,6 +102,9 @@ public class NetworkClient implements KafkaClient {
     /* the client id used to identify this client in requests to the server */
     private final String clientId;
 
+    /* the client software name and commit hash */
+    private final String clientSoftwareNameAndCommit;
+
     /* the current correlation id to use when sending requests to servers */
     private int correlation;
 
@@ -114,8 +117,6 @@ public class NetworkClient implements KafkaClient {
     private final ClientDnsLookup clientDnsLookup;
 
     private final Time time;
-
-    private boolean enableStickyMetadataFetch = true;
 
     /**
      * True if we should send an ApiVersionRequest when first connecting to a broker.
@@ -161,7 +162,8 @@ public class NetworkClient implements KafkaClient {
              discoverBrokerVersions,
              apiVersions,
              null,
-             logContext);
+             logContext,
+             null);
     }
 
     public NetworkClient(Selectable selector,
@@ -194,7 +196,43 @@ public class NetworkClient implements KafkaClient {
              discoverBrokerVersions,
              apiVersions,
              throttleTimeSensor,
-             logContext);
+             logContext,
+             null);
+    }
+
+    public NetworkClient(Selectable selector,
+            Metadata metadata,
+            String clientId,
+            int maxInFlightRequestsPerConnection,
+            long reconnectBackoffMs,
+            long reconnectBackoffMax,
+            int socketSendBuffer,
+            int socketReceiveBuffer,
+            int defaultRequestTimeoutMs,
+            ClientDnsLookup clientDnsLookup,
+            Time time,
+            boolean discoverBrokerVersions,
+            ApiVersions apiVersions,
+            Sensor throttleTimeSensor,
+            LogContext logContext,
+            String clientSoftwareNameAndCommit) {
+        this(null,
+             metadata,
+             selector,
+             clientId,
+             maxInFlightRequestsPerConnection,
+             reconnectBackoffMs,
+             reconnectBackoffMax,
+             socketSendBuffer,
+             socketReceiveBuffer,
+             defaultRequestTimeoutMs,
+             clientDnsLookup,
+             time,
+             discoverBrokerVersions,
+             apiVersions,
+             throttleTimeSensor,
+             logContext,
+             clientSoftwareNameAndCommit);
     }
 
     public NetworkClient(Selectable selector,
@@ -226,7 +264,8 @@ public class NetworkClient implements KafkaClient {
              discoverBrokerVersions,
              apiVersions,
              null,
-             logContext);
+             logContext,
+             null);
     }
 
     private NetworkClient(MetadataUpdater metadataUpdater,
@@ -244,7 +283,8 @@ public class NetworkClient implements KafkaClient {
                           boolean discoverBrokerVersions,
                           ApiVersions apiVersions,
                           Sensor throttleTimeSensor,
-                          LogContext logContext) {
+                          LogContext logContext,
+                          String clientSoftwareNameAndCommit) {
         /* It would be better if we could pass `DefaultMetadataUpdater` from the public constructor, but it's not
          * possible because `DefaultMetadataUpdater` is an inner class and it can only be instantiated after the
          * super constructor is invoked.
@@ -258,6 +298,7 @@ public class NetworkClient implements KafkaClient {
         }
         this.selector = selector;
         this.clientId = clientId;
+        this.clientSoftwareNameAndCommit = clientSoftwareNameAndCommit;
         this.inFlightRequests = new InFlightRequests(maxInFlightRequestsPerConnection);
         this.connectionStates = new ClusterConnectionStates(reconnectBackoffMs, reconnectBackoffMax, logContext);
         this.socketSendBuffer = socketSendBuffer;
@@ -273,10 +314,6 @@ public class NetworkClient implements KafkaClient {
         this.log = logContext.logger(NetworkClient.class);
         this.clientDnsLookup = clientDnsLookup;
         this.state = new AtomicReference<>(State.ACTIVE);
-    }
-
-    public void setEnableStickyMetadataFetch(boolean enableStickyMetadataFetch) {
-        this.enableStickyMetadataFetch = enableStickyMetadataFetch;
     }
 
     /**
@@ -576,12 +613,6 @@ public class NetworkClient implements KafkaClient {
         handleInitiateApiVersionRequests(updatedNow);
         handleTimedOutRequests(responses, updatedNow);
         completeResponses(responses);
-
-        // We changed the metadataUpdater.maybeUpdate() such that it will keep sending MetadataRequest
-        // to the same broker instead choosing the least loaded node. If we don't try to send metadata here, it is possible that
-        // another request is sent to the broker before the next networkClient.poll(). This can cause starvation
-        // for the MetadataRequest and consumer's metadata may be stale for a long time.
-        metadataUpdater.maybeUpdate(updatedNow);
 
         return responses;
     }
@@ -892,7 +923,7 @@ public class NetworkClient implements KafkaClient {
                         maxApiVersion = apiVersion.maxVersion();
                     }
                 }
-                nodesNeedingApiVersionsFetch.put(node, new ApiVersionsRequest.Builder(maxApiVersion));
+                nodesNeedingApiVersionsFetch.put(node, new ApiVersionsRequest.Builder(maxApiVersion, this.clientSoftwareNameAndCommit));
             }
             return;
         }
@@ -927,7 +958,7 @@ public class NetworkClient implements KafkaClient {
             // connection.
             if (discoverBrokerVersions) {
                 this.connectionStates.checkingApiVersions(node);
-                nodesNeedingApiVersionsFetch.put(node, new ApiVersionsRequest.Builder());
+                nodesNeedingApiVersionsFetch.put(node, new ApiVersionsRequest.Builder(this.clientSoftwareNameAndCommit));
                 log.debug("Completed connection to node {}. Fetching API versions.", node);
             } else {
                 this.connectionStates.ready(node);
@@ -994,8 +1025,6 @@ public class NetworkClient implements KafkaClient {
 
         /* the current cluster metadata */
         private final Metadata metadata;
-        // Consumer needs to keep fetching metadata from the same node until that node goes down
-        private Node nodeToFetchMetadata;
 
         // Defined if there is a request in progress, null otherwise
         private Integer inProgressRequestVersion;
@@ -1003,7 +1032,6 @@ public class NetworkClient implements KafkaClient {
         DefaultMetadataUpdater(Metadata metadata) {
             this.metadata = metadata;
             this.inProgressRequestVersion = null;
-            this.nodeToFetchMetadata = null;
         }
 
         @Override
@@ -1033,15 +1061,13 @@ public class NetworkClient implements KafkaClient {
 
             // Beware that the behavior of this method and the computation of timeouts for poll() are
             // highly dependent on the behavior of leastLoadedNode.
-            if (!enableStickyMetadataFetch || nodeToFetchMetadata == null || !connectionStates.isReady(nodeToFetchMetadata.idString(), now))
-                nodeToFetchMetadata = leastLoadedNode(now);
-
-            if (nodeToFetchMetadata == null) {
+            Node node = leastLoadedNode(now);
+            if (node == null) {
                 log.debug("Give up sending metadata request since no node is available");
                 return reconnectBackoffMs;
             }
 
-            return maybeUpdate(now, nodeToFetchMetadata);
+            return maybeUpdate(now, node);
         }
 
         @Override

@@ -19,11 +19,11 @@ package kafka.controller
 
 import java.util
 
-import kafka.utils.Logging
+import kafka.utils.{LiDecomposedControlResponse, LiDecomposedControlResponseUtils, Logging}
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.apache.kafka.common.message.{LeaderAndIsrRequestData, LiCombinedControlRequestData, UpdateMetadataRequestData}
 import org.apache.kafka.common.message.LiCombinedControlRequestData.{LeaderAndIsrPartitionState, StopReplicaPartitionState, UpdateMetadataBroker, UpdateMetadataEndpoint, UpdateMetadataPartitionState}
-import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, LeaderAndIsrRequest, LiCombinedControlRequest, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, LeaderAndIsrRequest, LiCombinedControlRequest, LiCombinedControlResponse, StopReplicaRequest, UpdateMetadataRequest}
 import org.apache.kafka.common.utils.LiCombinedControlRequestUtils
 
 import scala.collection.mutable
@@ -51,8 +51,6 @@ class ControllerRequestMerger extends Logging {
   // given all the requests of the same type sent to the same broker have the same callback
   var leaderAndIsrCallback: AbstractResponse => Unit = null
   var stopReplicaCallback: AbstractResponse => Unit = null
-
-
 
   def addRequest(request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
     callback: AbstractResponse => Unit = null): Unit = {
@@ -165,7 +163,7 @@ class ControllerRequestMerger extends Logging {
     stopReplicaPartitionStates.remove(topicPartition)
   }
 
-  private def pollLatestLeaderAndIsrPartitionStates() : util.List[LiCombinedControlRequestData.LeaderAndIsrPartitionState] = {
+  private def pollLatestLeaderAndIsrInfo() : util.List[LiCombinedControlRequestData.LeaderAndIsrPartitionState] = {
     val latestPartitionStates = new util.ArrayList[LiCombinedControlRequestData.LeaderAndIsrPartitionState]()
 
     leaderAndIsrPartitionStates.keySet.foreach{
@@ -198,13 +196,29 @@ class ControllerRequestMerger extends Logging {
     latestPartitionStates
   }
 
-  private def pollLatestUpdateMetadataPartitionStates(): util.List[UpdateMetadataPartitionState] = {
+  private def pollLatestUpdateMetadataInfo(): (util.List[UpdateMetadataPartitionState], util.List[UpdateMetadataBroker]) = {
+    // since we don't maintain multiple versions of data for the UpdateMetadata partition states or the live brokers
+    // it's guaranteed that, after each pollLatestRequest, the updateMetadata info becomes empty
     val latestPartitionStates = new util.ArrayList[UpdateMetadataPartitionState](updateMetadataPartitionStates.size)
     updateMetadataPartitionStates.foreach{
-      case (partition, latestState) => latestPartitionStates.add(latestState)
+      case (_, latestState) => latestPartitionStates.add(latestState)
     }
     updateMetadataPartitionStates.clear()
-    latestPartitionStates
+
+    val liveBrokers = new util.ArrayList[UpdateMetadataBroker](updateMetadataLiveBrokers)
+    updateMetadataLiveBrokers.clear()
+
+    (latestPartitionStates, liveBrokers)
+  }
+
+  private def hasPendingLeaderAndIsrRequests: Boolean = !leaderAndIsrPartitionStates.isEmpty
+  private def hasPendingUpdateMetadataRequests: Boolean = {
+    (!updateMetadataPartitionStates.isEmpty) || (!updateMetadataLiveBrokers.isEmpty)
+  }
+  private def hasPendingStopReplicaRequests: Boolean = !stopReplicaPartitionStates.isEmpty
+
+  def hasPendingRequests(): Boolean = {
+    hasPendingLeaderAndIsrRequests || hasPendingUpdateMetadataRequests || hasPendingStopReplicaRequests
   }
 
   // TODO: support adding StopReplica requests
@@ -212,11 +226,26 @@ class ControllerRequestMerger extends Logging {
     if (currentControllerState == null) {
       throw new IllegalStateException("No request has been added to the merger")
     } else {
+      val (latestUpdateMetadataPartitions, liveBrokers) = pollLatestUpdateMetadataInfo()
+
       new LiCombinedControlRequest.Builder(0, currentControllerState.controllerId, currentControllerState.controllerEpoch,
-        pollLatestLeaderAndIsrPartitionStates(), leaderAndIsrLiveLeaders,
-        pollLatestUpdateMetadataPartitionStates(), updateMetadataLiveBrokers,
+        pollLatestLeaderAndIsrInfo(), leaderAndIsrLiveLeaders,
+        latestUpdateMetadataPartitions, liveBrokers,
         pollLatestStopReplicaPartitionStates()
       )
     }
+  }
+
+  def triggerCallback(response: AbstractResponse): Unit = {
+    // trigger the callback for the LeaderAndIsr response
+    val LiDecomposedControlResponse(leaderAndIsrResponse, _, stopReplicaResponse) =
+      LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
+    if (leaderAndIsrCallback != null) {
+      leaderAndIsrCallback(leaderAndIsrResponse)
+    }
+    if (stopReplicaCallback != null) {
+      stopReplicaCallback(stopReplicaResponse)
+    }
+    // no need to trigger the callback for the updateMetadataResponse since the callback is always null
   }
 }

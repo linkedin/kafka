@@ -253,29 +253,51 @@ class RequestSendThread(val controllerId: Int,
 
   private var firstUpdateMetadataWithPartitionsSent = false
 
+  def backoff(): Unit = pause(100, TimeUnit.MILLISECONDS)
+
   override def doWork(): Unit = {
+    val (requestBuilder, callback) = nextRequestAndCallback()
+    sendAndReceive(requestBuilder, callback)
+  }
 
-    def backoff(): Unit = pause(100, TimeUnit.MILLISECONDS)
-
-    var QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-    var isCombinedControlRequest = false
-
-    if (firstUpdateMetadataWithPartitionsSent) {
+  private def nextRequestAndCallback(): (AbstractControlRequest.Builder[_ <: AbstractControlRequest], AbstractResponse => Unit) = {
+    if (!firstUpdateMetadataWithPartitionsSent) {
+      warn("getting regular request for broker " + brokerNode)
+      var QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+      (requestBuilder, callback)
+    } else {
+      warn("getting combined request for broker " + brokerNode)
       // only start the merging logic after the first UpdateMetadata request
       // since the first UpdateMetadata request needs to be cached and shared by all brokers
-      isCombinedControlRequest = true
-      mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
-      // drain the queue until it's empty
-      while (!queue.isEmpty) {
+
+      // there are 4 cases regarding the state of the queue and the controllerRequestMerger
+      // case 1: queue not empty, merger not empty {action: merge and send first merged request}
+      // case 2: queue empty, merger not empty {action: send latest merged request}
+      // case 3: queue not empty, merger empty {action: merge and send first merged request}
+      // case 4: queue empty, merger empty {action: block and wait until it becomes case 3}
+
+      // handle case 4 first
+      if (!controllerRequestMerger.hasPendingRequests()) {
         val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-          //unifiedCallback =
         mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
       }
 
-      requestBuilder = controllerRequestMerger.pollLatestRequest()
-    }
+      // now we are guaranteed that the controllerRequestMerger is not empty
+      // drain the queue until the queue is empty
+      while (!queue.isEmpty) {
+        val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+        //unifiedCallback =
+        mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
+      }
 
-    warn("sending request to broker " + brokerNode + ":" + requestBuilder)
+      val requestBuilder = controllerRequestMerger.pollLatestRequest()
+      (requestBuilder, controllerRequestMerger.triggerCallback _)
+    }
+  }
+
+  private def sendAndReceive(requestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+    callback: AbstractResponse => Unit): Unit = {
+    warn("sending request to broker " + brokerNode + ":" + requestBuilder + ", firstUpdateMetadataWithPartitionsSent:"+firstUpdateMetadataWithPartitionsSent)
     var remoteTimeMs: Long = 0
 
     var clientResponse: ClientResponse = null
@@ -311,10 +333,13 @@ class RequestSendThread(val controllerId: Int,
         val api = requestHeader.apiKey
         if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA &&
           api != ApiKeys.LI_COMBINED_CONTROL)
-          throw new KafkaException(s"Unexpected apiKey received: $apiKey")
+          throw new KafkaException(s"Unexpected apiKey received: $api")
+
 
         if (api == ApiKeys.UPDATE_METADATA && !requestBuilder.asInstanceOf[UpdateMetadataRequest.Builder].partitionStates().isEmpty) {
-            firstUpdateMetadataWithPartitionsSent = true
+          warn("api == ApiKeys.UPDATE_METADATA:" + (api == ApiKeys.UPDATE_METADATA) + ", !partitionsEmpty:" + (!requestBuilder.asInstanceOf[UpdateMetadataRequest.Builder].partitionStates().isEmpty))
+          warn("setting to true for broker " + brokerNode)
+          firstUpdateMetadataWithPartitionsSent = true
         }
 
         val response = clientResponse.responseBody
@@ -323,18 +348,7 @@ class RequestSendThread(val controllerId: Int,
           s"${response.toString(requestHeader.apiVersion)} for request $api with correlation id " +
           s"${requestHeader.correlationId} sent to broker $brokerNode")
 
-        if (isCombinedControlRequest) {
-          // trigger the callback for the LeaderAndIsr response
-          val LiDecomposedControlResponse(leaderAndIsrResponse, _, stopReplicaResponse) =
-            LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
-          if (controllerRequestMerger.leaderAndIsrCallback != null) {
-            controllerRequestMerger.leaderAndIsrCallback(leaderAndIsrResponse)
-          }
-          if (controllerRequestMerger.stopReplicaCallback != null) {
-            controllerRequestMerger.stopReplicaCallback(stopReplicaResponse)
-          }
-          // no need to trigger the callback for the updateMetadataResponse since the callback is always null
-        } else if (callback != null) {
+        if (callback != null) {
           callback(response)
         }
         controllerChannelManager.brokerResponseSensors(api).updateRemoteTime(remoteTimeMs)

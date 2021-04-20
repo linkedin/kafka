@@ -135,17 +135,26 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
                 append(", controllerId=").append(controllerId).
                 append(", controllerEpoch=").append(controllerEpoch).
                 append(", brokerEpoch=").append(brokerEpoch).
-                append(", maxBrokerEpoch=").append(maxBrokerEpoch).
-                append(", liveBrokers=").append(Utils.join(liveBrokers, ", ")).
-                append(")");
+                append(", maxBrokerEpoch=").append(maxBrokerEpoch);
+            boolean prettyPrint = false;
 
-            // bld.append("(type: UpdateMetadataRequest=").
-            //   append(", controllerId=").append(controllerId).
-            //   append(", controllerEpoch=").append(controllerEpoch).
-            //   append(", brokerEpoch=").append(brokerEpoch).
-            //   append(", partitionStates=").append(partitionStates).
-            //   append(", liveBrokers=").append(Utils.join(liveBrokers, ", ")).
-            //   append(")");
+            if (prettyPrint) {
+                // It's easier to read the logs when using prettyPrint,
+                // which is nice to have during debugging.
+                 bld.append("\npartitionStates=\n");
+                 for (UpdateMetadataPartitionState partitionState : partitionStates) {
+                    bld.append("\t" + partitionState + "\n");
+                 }
+
+                bld.append("liveBrokers=\n");
+                for (UpdateMetadataBroker broker: liveBrokers) {
+                    bld.append("\t" + broker + "\n");
+                }
+            } else {
+                bld.append(", liveBrokers=").append(Utils.join(liveBrokers, ", "));
+            }
+
+            bld.append(")");
             return bld.toString();
         }
 

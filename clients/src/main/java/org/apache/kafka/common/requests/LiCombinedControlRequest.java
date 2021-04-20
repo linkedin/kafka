@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.kafka.common.Node;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.message.LiCombinedControlRequestData;
 import org.apache.kafka.common.message.LiCombinedControlResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
@@ -127,12 +128,27 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
                 .append(", controllerId=").append(controllerId)
                 .append(", controllerEpoch=").append(controllerEpoch)
                 .append(", brokerEpoch=").append(brokerEpoch)
-                .append(", maxBrokerEpoch=").append(maxBrokerEpoch)
-                .append(", leaderAndIsrPartitionStates=").append(leaderAndIsrPartitionStates)
-                .append(", leaderAndIsrLiveLeaders=(").append(Utils.join(leaderAndIsrLiveLeaders, ", ")).append(")")
-                .append(", updateMetadataLiveBrokers=").append(Utils.join(updateMetadataLiveBrokers, ", "))
-                .append(", stopReplicaPartitions=").append(Utils.join(stopReplicaPartitions, ","))
-                .append(")");
+                .append(", maxBrokerEpoch=").append(maxBrokerEpoch).append("\n")
+                .append("leaderAndIsrPartitionStates=\n");
+            for (LiCombinedControlRequestData.LeaderAndIsrPartitionState leaderAndIsrPartitionState : leaderAndIsrPartitionStates) {
+                bld.append("\t" + leaderAndIsrPartitionState + "\n");
+            }
+            bld.append("leaderAndIsrLiveLeaders=(\n");
+
+            for (Node leader: leaderAndIsrLiveLeaders) {
+                bld.append(Utils.join(leaderAndIsrLiveLeaders, ", ") + "\n");
+            }
+
+            bld.append("updateMetadataLiveBrokers=\n");
+            for (LiCombinedControlRequestData.UpdateMetadataBroker broker: updateMetadataLiveBrokers) {
+                bld.append("\t" + broker + "\n");
+            }
+
+            bld.append("stopReplicaPartitions=\n");
+            for (LiCombinedControlRequestData.StopReplicaPartitionState partitionState: stopReplicaPartitions) {
+                bld.append("\t" + partitionState + "\n");
+            }
+
             return bld.toString();
 
         }

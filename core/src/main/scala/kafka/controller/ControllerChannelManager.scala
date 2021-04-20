@@ -313,6 +313,8 @@ class RequestSendThread(val controllerId: Int,
             val clientRequest = networkClient.newClientRequest(brokerNode.idString, requestBuilder,
               time.milliseconds(), true)
             val remoteTimeStartMs = time.milliseconds()
+            stateChangeLogger.withControllerEpoch(controllerContext.epoch).trace(s"sending request to broker $brokerNode: $requestBuilder")
+
             clientResponse = NetworkClientUtils.sendAndReceive(networkClient, clientRequest, time)
             isSendSuccessful = true
             remoteTimeMs = time.milliseconds() - remoteTimeStartMs

@@ -469,8 +469,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 true,
                 apiVersions,
                 throttleTimeSensor,
-                logContext,
-                producerConfig.getString(ProducerConfig.LI_CLIENT_SOFTWARE_NAME_AND_COMMIT_CONFIG));
+                logContext);
         int retries = configureRetries(producerConfig, transactionManager != null, log);
         short acks = configureAcks(producerConfig, transactionManager != null, log);
         return new Sender(logContext,
@@ -931,7 +930,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             }
             RecordAccumulator.RecordAppendResult result = accumulator.append(tp, timestamp, serializedKey,
                     serializedValue, headers, interceptCallback, remainingWaitMs, true);
-
+            
             if (result.abortForNewBatch) {
                 int prevPartition = partition;
                 partitioner.onNewBatch(record.topic(), cluster, prevPartition);
@@ -946,7 +945,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 result = accumulator.append(tp, timestamp, serializedKey,
                     serializedValue, headers, interceptCallback, remainingWaitMs, false);
             }
-
+            
             if (transactionManager != null && transactionManager.isTransactional())
                 transactionManager.maybeAddPartitionToTransaction(tp);
 

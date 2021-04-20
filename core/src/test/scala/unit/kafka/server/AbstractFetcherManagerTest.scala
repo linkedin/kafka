@@ -39,7 +39,6 @@ class AbstractFetcherManagerTest {
       asInstanceOf[Gauge[Int]].value()
   }
 
-  /*
   @Test
   def testAddAndRemovePartition(): Unit = {
     val fetcher: AbstractFetcherThread = EasyMock.mock(classOf[AbstractFetcherThread])
@@ -134,5 +133,4 @@ class AbstractFetcherManagerTest {
     assertEquals(0, fetcherManager.deadThreadCount)
     EasyMock.verify(fetcher)
   }
-   */
 }

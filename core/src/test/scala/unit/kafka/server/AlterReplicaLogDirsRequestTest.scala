@@ -25,13 +25,12 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
 import org.apache.kafka.common.requests.{AlterReplicaLogDirsRequest, AlterReplicaLogDirsResponse}
 import org.junit.Assert._
-import org.junit.{Ignore, Test}
+import org.junit.Test
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.Random
 
-/*
 class AlterReplicaLogDirsRequestTest extends BaseRequestTest {
   override val logDirCount = 5
   override val brokerCount = 1
@@ -39,7 +38,6 @@ class AlterReplicaLogDirsRequestTest extends BaseRequestTest {
   val topic = "topic"
 
   @Test
-  @Ignore
   def testAlterReplicaLogDirsRequest(): Unit = {
     val partitionNum = 5
 
@@ -119,4 +117,3 @@ class AlterReplicaLogDirsRequestTest extends BaseRequestTest {
   }
 
 }
-*/

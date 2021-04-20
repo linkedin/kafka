@@ -386,7 +386,6 @@ class AdminClientIntegrationTest extends IntegrationTestHarness with Logging {
   }
 
   @Test
-  @Ignore
   def testAlterReplicaLogDirs(): Unit = {
     client = AdminClient.create(createConfig())
     val topic = "topic"
@@ -945,7 +944,6 @@ class AdminClientIntegrationTest extends IntegrationTestHarness with Logging {
   }
 
   @Test
-  @Ignore
   def testAlterLogDirsAfterDeleteRecords(): Unit = {
     client = AdminClient.create(createConfig)
     createTopic(topic, numPartitions = 1, replicationFactor = brokerCount)

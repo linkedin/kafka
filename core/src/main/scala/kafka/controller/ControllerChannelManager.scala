@@ -261,12 +261,11 @@ class RequestSendThread(val controllerId: Int,
   }
 
   private def nextRequestAndCallback(): (AbstractControlRequest.Builder[_ <: AbstractControlRequest], AbstractResponse => Unit) = {
-    if (!firstUpdateMetadataWithPartitionsSent) {
-      warn("getting regular request for broker " + brokerNode)
+    if ((!controllerContext.liCombinedControlRequestEnabled) || (!firstUpdateMetadataWithPartitionsSent)) {
       var QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+      updateMetrics(apiKey, enqueueTimeMs)
       (requestBuilder, callback)
     } else {
-      warn("getting combined request for broker " + brokerNode)
       // only start the merging logic after the first UpdateMetadata request
       // since the first UpdateMetadata request needs to be cached and shared by all brokers
 
@@ -360,19 +359,22 @@ class RequestSendThread(val controllerId: Int,
   }
 
   /**
-   * handle a mergeable Request, i.e. one LeaderAndIsr request or a UpdateMetadata request
+   * merge a control request
    * @param enqueueTimeMs
    * @param apiKey
    * @param requestBuilder
    * @param callback
-   * @return the new unified callback, which should be the first non-null callback among a sequence of mergeable requests
    */
   def mergeControlRequest(enqueueTimeMs: Long, apiKey: ApiKeys, requestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
     callback: AbstractResponse => Unit): Unit = {
+    updateMetrics(apiKey, enqueueTimeMs)
+    controllerRequestMerger.addRequest(requestBuilder, callback)
+  }
+
+  private def updateMetrics(apiKey: ApiKeys, enqueueTimeMs: Long) = {
     val queueTimeMs = time.milliseconds() - enqueueTimeMs
     requestRateAndQueueTimeMetrics.update(queueTimeMs, TimeUnit.MILLISECONDS)
     controllerChannelManager.brokerResponseSensors(apiKey).updateQueueTime(queueTimeMs)
-    controllerRequestMerger.addRequest(requestBuilder, callback)
   }
 
   private def brokerReady(): Boolean = {

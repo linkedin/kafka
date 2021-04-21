@@ -32,7 +32,6 @@ class CacheableBrokerEpochIntegrationTest extends ZooKeeperTestHarness {
   }
 
   @Test
-  @Ignore
   def testOldControllerConfig(): Unit = {
     testControlRequests(false)
   }

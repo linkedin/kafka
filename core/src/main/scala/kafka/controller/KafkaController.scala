@@ -18,7 +18,7 @@ package kafka.controller
 
 import java.util.concurrent.TimeUnit
 import com.yammer.metrics.core.Gauge
-import kafka.admin.{AdminOperationException, AdminUtils}
+import kafka.admin.AdminOperationException
 import kafka.api._
 import kafka.common._
 import kafka.controller.KafkaController.{AlterReassignmentsCallback, ElectLeadersCallback, ListReassignmentsCallback}
@@ -139,6 +139,7 @@ class KafkaController(val config: KafkaConfig,
   private val isrChangeNotificationHandler = new IsrChangeNotificationHandler(eventManager)
   private val logDirEventNotificationHandler = new LogDirEventNotificationHandler(eventManager)
   private val topicDeletionFlagHandler = new TopicDeletionFlagHandler(this, eventManager)
+  private val liCombinedControlRequestFlagHandler = new LiCombinedRequestFlagHandler(this, eventManager)
 
   @volatile private var activeControllerId = -1
   @volatile private var offlinePartitionCount = 0
@@ -348,7 +349,10 @@ class KafkaController(val config: KafkaConfig,
     val childChangeHandlers = Seq(brokerChangeHandler, topicChangeHandler, topicDeletionHandler, logDirEventNotificationHandler,
       isrChangeNotificationHandler)
     childChangeHandlers.foreach(zkClient.registerZNodeChildChangeHandler)
-    val nodeChangeHandlers = Seq(preferredReplicaElectionHandler, partitionReassignmentHandler, topicDeletionFlagHandler)
+
+    zkClient.createLiCombinedControlRequestFlagPath()
+    val nodeChangeHandlers = Seq(preferredReplicaElectionHandler, partitionReassignmentHandler, topicDeletionFlagHandler,
+      liCombinedControlRequestFlagHandler)
     nodeChangeHandlers.foreach(zkClient.registerZNodeChangeHandlerAndCheckExistence)
 
     info("Deleting log dir event notifications")
@@ -434,6 +438,7 @@ class KafkaController(val config: KafkaConfig,
     unregisterPartitionModificationsHandlers(partitionModificationsHandlers.keys.toSeq)
     zkClient.unregisterZNodeChildChangeHandler(topicDeletionHandler.path)
     zkClient.unregisterZNodeChangeHandler(topicDeletionFlagHandler.path)
+    zkClient.unregisterZNodeChangeHandler(liCombinedControlRequestFlagHandler.path)
     // shutdown replica state machine
     replicaStateMachine.shutdown()
     zkClient.unregisterZNodeChildChangeHandler(brokerChangeHandler.path)
@@ -1548,7 +1553,7 @@ class KafkaController(val config: KafkaConfig,
 
     // refresh preferred controller nodes
     controllerContext.setLivePreferredControllerIds(zkClient.getPreferredControllerList.toSet)
-
+    controllerContext.setLiCombinedControlRequestEnabled(config.liCombinedControlRequestEnable)
     activeControllerId = zkClient.getControllerId.getOrElse(-1)
     /*
      * We can get here during the initial startup and the handleDeleted ZK callback. Because of the potential race condition,
@@ -1817,6 +1822,24 @@ class KafkaController(val config: KafkaConfig,
       else {
         info(s"Set isDeleteTopicEnabled flag to $topicDeletionFlag")
         topicDeletionManager.isDeleteTopicEnabled = topicDeletionFlag.toBoolean
+      }
+    }
+  }
+
+  private def processLiCombinedControlRequestFlagChange(reset: Boolean): Unit = {
+    info("Process LiCombinedControlRequestFlagChange event")
+    if (!isActive) return
+    if (reset)
+      controllerContext.setLiCombinedControlRequestEnabled(config.liCombinedControlRequestEnable)
+    else {
+      val liCombinedControlRequestFlag = zkClient.getLiCombinedControlRequestFlag
+      if (!liCombinedControlRequestFlag.equalsIgnoreCase("true") && !liCombinedControlRequestFlag.equalsIgnoreCase("false")) {
+        info(s"Overwrite ${LiCombinedControlRequestFlagZNode.path} to ${controllerContext.liCombinedControlRequestEnabled}")
+        zkClient.setLiCombinedControlRequestFlag(controllerContext.liCombinedControlRequestEnabled.toString)
+      }
+      else {
+        info(s"Set liCombinedControlRequestEnabled flag to $liCombinedControlRequestFlag")
+        controllerContext.setLiCombinedControlRequestEnabled(liCombinedControlRequestFlag.toBoolean)
       }
     }
   }
@@ -2208,6 +2231,8 @@ class KafkaController(val config: KafkaConfig,
           processListPartitionReassignments(partitions, callback)
         case TopicDeletionFlagChange(reset) =>
           processTopicDeletionFlagChange(reset)
+        case LiCombinedControlRequestFlagChange(reset) =>
+          processLiCombinedControlRequestFlagChange(reset)
         case PartitionReassignmentIsrChange(partition) =>
           processPartitionReassignmentIsrChange(partition)
         case IsrChangeNotification =>
@@ -2302,6 +2327,20 @@ class TopicDeletionFlagHandler(controller: KafkaController, eventManager: Contro
   override def handleDataChange(): Unit = eventManager.put(TopicDeletionFlagChange())
 
   override def handleDeletion(): Unit = eventManager.put(TopicDeletionFlagChange(true))
+}
+
+/**
+ * Listener for /li_combined_control_request_flag znode.
+ *   If the data of the znode is set to true/false, it will trigger the in memory liCombinedControlRequestEnabled to be set accordingly.
+ *   If the znode data cannot be converted to boolean, it will overwrite znode with the previous valid value.
+ *   If the znode path is deleted, it will reset the in memory li_combined_control_request_flag to the default value, i.e. false.
+ */
+class LiCombinedRequestFlagHandler(controller: KafkaController, eventManager: ControllerEventManager) extends ZNodeChangeHandler {
+  override val path: String = LiCombinedControlRequestFlagZNode.path
+
+  override def handleDataChange(): Unit = eventManager.put(LiCombinedControlRequestFlagChange())
+
+  override def handleDeletion(): Unit = eventManager.put(LiCombinedControlRequestFlagChange(true))
 }
 
 class PartitionReassignmentHandler(eventManager: ControllerEventManager) extends ZNodeChangeHandler {
@@ -2483,6 +2522,10 @@ case object IsrChangeNotification extends ControllerEvent {
 
 case class TopicDeletionFlagChange(reset: Boolean = false) extends ControllerEvent {
   def state = ControllerState.TopicDeletionFlagChange
+}
+
+case class LiCombinedControlRequestFlagChange(reset: Boolean = false) extends ControllerEvent {
+  def state = ControllerState.LiCombinedControlRequestFlagChange
 }
 
 case class ReplicaLeaderElection(

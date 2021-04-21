@@ -107,13 +107,13 @@ object LiDecomposedControlRequestUtils {
 
       var stopReplicaRequests: List[StopReplicaRequest] = List.empty
 
-      val requestWithDelete = if (partitionsWithDelete.isEmpty) {
+      if (partitionsWithDelete.isEmpty) {
         None
       } else {
         stopReplicaRequests = getStopReplicaRequest(true, partitionsWithDelete) :: stopReplicaRequests
       }
 
-      val requestWithoutDelete = if (partitionsWithoutDelete.isEmpty) {
+      if (partitionsWithoutDelete.isEmpty) {
         None
       } else {
         stopReplicaRequests = getStopReplicaRequest(false, partitionsWithoutDelete) :: stopReplicaRequests

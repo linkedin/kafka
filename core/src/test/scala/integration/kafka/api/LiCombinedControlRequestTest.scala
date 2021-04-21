@@ -1,9 +1,8 @@
 package integration.kafka.api
 
 import java.util.Properties
-
 import com.yammer.metrics.Metrics
-import com.yammer.metrics.core.Timer
+import com.yammer.metrics.core.{Histogram, Timer}
 import kafka.integration.KafkaServerTestHarness
 import kafka.server.KafkaConfig
 import kafka.utils.{Logging, TestUtils}
@@ -30,13 +29,13 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness with Logging {
 
       // verify that no LiCombinedControlRequest has been sent
       val metrics = Metrics.defaultRegistry.allMetrics.asScala.filter { case (n, metric) =>
-        n.getMBeanName.contains("name=LiCombinedControlRequestRateAndTimeMs")
+        n.getMBeanName.contains("name=brokerRequestRemoteTimeMs,request=LI_COMBINED_CONTROL")
       }
-      Assert.assertTrue("Unable to get the LiCombinedControlRequestRateAndTimeMs metric", metrics.size == 1)
+      Assert.assertTrue(s"got ${metrics.size} metrics using filter name=brokerRequestRemoteTimeMs,request=LI_COMBINED_CONTROL", metrics.size == 1)
       metrics.foreach {
         case (_, metric) => {
-          val foundLiCombinedControlRequests = metric.asInstanceOf[Timer].count() != 0
-          Assert.assertTrue("The LiCombinedControlRequestRateAndTimeMs metric doesn't match expectation",
+          val foundLiCombinedControlRequests = metric.asInstanceOf[Histogram].count() != 0
+          Assert.assertTrue("The name=brokerRequestRemoteTimeMs,request=LI_COMBINED_CONTROL metric doesn't match expectation",
             shouldHaveLiCombinedControlRequests == foundLiCombinedControlRequests)
         }
       }

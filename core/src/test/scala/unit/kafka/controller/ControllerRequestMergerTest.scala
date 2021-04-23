@@ -85,7 +85,7 @@ class ControllerRequestMergerTest {
   }
 
   @Test
-  def testSupercedingLeaderAndIsrPartitionStates(): Unit = {
+  def testSupersedingLeaderAndIsrPartitionStates(): Unit = {
     val partitionStates1 = getLeaderAndIsrPartitionStates(topic, 0)
     val leaderAndIsrRequest1 = new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, controllerId, controllerEpoch,
       brokerEpoch, brokerEpoch, partitionStates1.asJava, leaders.asJava)
@@ -108,6 +108,7 @@ class ControllerRequestMergerTest {
     Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.leaderAndIsrPartitionStates())
 
     // test that trying to poll the request again will result in empty LeaderAndIsr partition states
+    Assert.assertTrue(!controllerRequestMerger.hasPendingRequests())
     val liCombinedControlRequest2 = controllerRequestMerger.pollLatestRequest()
     Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest2.controllerId())
     Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest2.controllerEpoch())
@@ -129,7 +130,7 @@ class ControllerRequestMergerTest {
   }
 
   @Test
-  def testMergingDifferentUpdateMatadataPartitions(): Unit = {
+  def testMergingDifferentUpdateMetadataPartitions(): Unit = {
     val partitionStates1 = getUpdateMetadataPartitionStates(topic, 0)
     val updateMetadataRequest1 = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
       partitionStates1.asJava, updateMetadataLiveBrokers)
@@ -153,7 +154,7 @@ class ControllerRequestMergerTest {
   }
 
   @Test
-  def testSupercedingUpdateMetadataPartitionStates(): Unit = {
+  def testSupersedingUpdateMetadataPartitionStates(): Unit = {
     val partitionStates1 = getUpdateMetadataPartitionStates(topic, 0)
     val updateMetadataRequest1 = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
       partitionStates1.asJava, updateMetadataLiveBrokers)
@@ -175,6 +176,7 @@ class ControllerRequestMergerTest {
     Assert.assertEquals("Mismatched partition states", transformedPartitionStates.asJava, liCombinedControlRequest.updateMetadataPartitionStates())
 
     // test that trying to poll the request again will result in empty UpdateMetadata partition states
+    Assert.assertTrue(!controllerRequestMerger.hasPendingRequests())
     val liCombinedControlRequest2 = controllerRequestMerger.pollLatestRequest()
     Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest2.controllerId())
     Assert.assertEquals("Mismatched controller epoch", controllerEpoch, liCombinedControlRequest2.controllerEpoch())
@@ -220,6 +222,9 @@ class ControllerRequestMergerTest {
 
   @Test
   def testMultipleRequestsOnSameStopReplicaPartition(): Unit = {
+    // When two requests having the same partition with different values on the deletePartitions field,
+    // the merger should return two different LiCombinedControlRequests
+
     val partitions1 = List(new TopicPartition(topic, 0))
     val stopReplicaRequest1 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
       brokerEpoch, false, partitions1.asJava)

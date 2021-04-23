@@ -100,8 +100,8 @@ public class StopReplicaRequest extends AbstractControlRequest {
             return deletePartitions;
         }
 
-        public long maxBrokerEpoch() {
-            return maxBrokerEpoch;
+        public long brokerEpoch() {
+            return brokerEpoch;
         }
     }
 

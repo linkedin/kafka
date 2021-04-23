@@ -156,10 +156,6 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
         public List<UpdateMetadataBroker> liveBrokers() {
             return liveBrokers;
         }
-
-        public long maxBrokerEpoch() {
-            return maxBrokerEpoch;
-        }
     }
 
     private final UpdateMetadataRequestData data;

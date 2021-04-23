@@ -27,7 +27,7 @@ import org.apache.kafka.common.{Node, TopicPartition}
 import java.util
 import scala.collection.mutable
 
-class RequestControllerState(val controllerId: Int, val controllerEpoch: Int)
+case class RequestControllerState(controllerId: Int, controllerEpoch: Int)
 
 class ControllerRequestMerger extends Logging {
   val leaderAndIsrPartitionStates: mutable.Map[TopicPartition, util.LinkedList[LeaderAndIsrPartitionState]] = mutable.HashMap.empty
@@ -39,12 +39,12 @@ class ControllerRequestMerger extends Logging {
   val stopReplicaPartitionStates: mutable.Map[TopicPartition, util.LinkedList[StopReplicaPartitionState]] = mutable.HashMap.empty
 
   // If a controller resigns and becomes the active controller again, a new
-  // ControllerRequestMerger object will be create for each RequestSendThread.
-  // Thus the controllerState should not change for the lifetime of this object.
+  // ControllerRequestMerger object will be created for each RequestSendThread.
+  // Thus the controllerState, once set, should not change for the lifetime of this object.
   var controllerState : RequestControllerState = null
 
-  // Here we store one callback for the LeaderAndIsr response and one for the StopReplica response
-  // given all the requests of a given type sent to the same broker have the same callback
+  // Here we store one callback for the LeaderAndIsr response and one for the StopReplica response,
+  // given all the requests of a particular type sent to the same broker always have the same callback.
   var leaderAndIsrCallback: AbstractResponse => Unit = null
   var stopReplicaCallback: AbstractResponse => Unit = null
 
@@ -52,7 +52,7 @@ class ControllerRequestMerger extends Logging {
     callback: AbstractResponse => Unit = null): Unit = {
     val newControllerState = new RequestControllerState(request.controllerId(), request.controllerEpoch())
     if (controllerState != null) {
-      if (controllerState != newControllerState) {
+      if (!controllerState.equals(newControllerState)) {
         throw new IllegalStateException("The controller state in the ControllerRequestMerger should not change")
       }
     } else {
@@ -78,7 +78,7 @@ class ControllerRequestMerger extends Logging {
     }
     val inserted = queuedStates.offerLast(incomingState)
     if (!inserted) {
-      error(s"Unable to insert LeaderAndIsrPartitionState $incomingState to the merger queue")
+      throw new IllegalStateException(s"Unable to insert LeaderAndIsrPartitionState $incomingState to the merger queue")
     }
   }
 
@@ -131,7 +131,7 @@ class ControllerRequestMerger extends Logging {
     }
     val inserted = queuedStates.offerLast(incomingState)
     if (!inserted) {
-      error(s"Unable to insert LeaderAndIsrPartitionState $incomingState to the merger queue")
+      throw new IllegalStateException(s"Unable to insert LeaderAndIsrPartitionState $incomingState to the merger queue")
     }
   }
 

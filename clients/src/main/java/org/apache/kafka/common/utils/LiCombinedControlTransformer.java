@@ -31,9 +31,9 @@ import org.apache.kafka.common.message.UpdateMetadataRequestData;
 public class LiCombinedControlTransformer {
   /**
    * the LeaderAndIsrPartitionState in the LiCombinedControlRequest has one more field
-   * than the LeaderAndIsrPartitionState in the LeaderAndIsr request, i.e. an extra maxBroker epoch field.
+   * than the LeaderAndIsrPartitionState in the LeaderAndIsr request, i.e. an extra broker epoch field.
    * Since one LiCombinedControlRequest may contain LeaderAndIsr partition states scattered across
-   * multiple different maxBrokerEpochs, we need to add the maxBrokerEpoch field to the partition level.
+   * multiple different broker epochs, we need to add the broker field to the partition level.
    * @param partitionState the original partition state
    * @param brokerEpoch the broker epoch in the original LeaderAndIsr request
    * @return the transformed partition state in the LiCombinedControlRequest

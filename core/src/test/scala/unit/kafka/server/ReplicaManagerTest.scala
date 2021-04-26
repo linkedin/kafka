@@ -46,6 +46,7 @@ import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests.{EpochEndOffset, IsolationLevel, LeaderAndIsrRequest}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.Time
+import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.easymock.{Capture, EasyMock}
 import org.junit.Assert._
@@ -1424,24 +1425,28 @@ class ReplicaManagerTest {
       metadataCache, mockLogDirFailureChannel, mockProducePurgatory, mockFetchPurgatory,
       mockDeleteRecordsPurgatory, mockElectLeaderPurgatory, Option(this.getClass.getName)) {
 
-      override protected def createAsyncReplicaFetcherManager(metrics: Metrics,
+      override protected def createReplicaFetcherManager(metrics: Metrics,
                                                      time: Time,
                                                      threadNamePrefix: Option[String],
-                                                     quotaManager: ReplicationQuotaManager): AsyncReplicaFetcherManager = {
-        new AsyncReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager) {
+                                                     quotaManager: ReplicationQuotaManager): ReplicaFetcherManager = {
+        new ReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager) {
 
-          override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): FetcherEventManager = {
-            val fetcherEventBus = new FetcherEventBus(time)
-            val threadName = s"ReplicaFetcherThread-$fetcherId"
-            val replicaFetcher = new AsyncReplicaFetcher(threadName,  fetcherId,
-              sourceBroker, config, failedPartitions, replicaManager, metrics, time, quota.follower, fetcherEventBus, Some(blockingSend))
-            val fetcherEventManager = new FetcherEventManager(threadName, fetcherEventBus, replicaFetcher, time)
+          override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): ReplicaFetcherThread = {
+            new ReplicaFetcherThread(s"ReplicaFetcherThread-$fetcherId", fetcherId,
+              sourceBroker, config, failedPartitions, replicaManager, metrics, time, quota.follower, Some(blockingSend)) {
 
-            val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
+              override def doWork() = {
+                // In case the thread starts before the partition is added by AbstractFetcherManager,
+                // add it here (it's a no-op if already added)
+                val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
+                addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
+                super.doWork()
 
-            fetcherEventManager.addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
-            countDownLatch.countDown()
-            fetcherEventManager
+                // Shut the thread down after one iteration to avoid double-counting truncations
+                initiateShutdown()
+                countDownLatch.countDown()
+              }
+            }
           }
         }
       }

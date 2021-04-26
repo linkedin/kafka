@@ -92,9 +92,16 @@ class ControllerRequestMerger extends Logging {
         new util.LinkedList[LeaderAndIsrPartitionState]())
 
       mergeLeaderAndIsrPartitionState(transformedPartitionState, queuedStates)
+
+      // one LeaderAndIsr request renders the previous StopReplica requests non-applicable
+      clearStopReplicaPartitionState(topicPartition)
     }}
     leaderAndIsrLiveLeaders = request.liveLeaders()
     leaderAndIsrCallback = callback
+  }
+
+  private def clearLeaderAndIsrPartitionState(topicPartition: TopicPartition): Unit = {
+    leaderAndIsrPartitionStates.remove(topicPartition)
   }
 
   private def addUpdateMetadataRequest(request: UpdateMetadataRequest.Builder): Unit = {
@@ -141,9 +148,15 @@ class ControllerRequestMerger extends Logging {
         .setBrokerEpoch(request.brokerEpoch())
 
       mergeStopReplicaPartitionState(transformedPartitionState, queuedStates)
+
+      // one stop replica request renders all previous LeaderAndIsr requests non-applicable
+      clearLeaderAndIsrPartitionState(partition)
     }}
 
     stopReplicaCallback = callback
+  }
+  private def clearStopReplicaPartitionState(topicPartition: TopicPartition): Unit = {
+    stopReplicaPartitionStates.remove(topicPartition)
   }
 
   private def pollLatestLeaderAndIsrPartitions() : util.List[LiCombinedControlRequestData.LeaderAndIsrPartitionState] = {

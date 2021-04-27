@@ -37,7 +37,7 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, ApiError, LeaderAndIsrResponse}
 import org.apache.kafka.common.utils.Time
 import org.apache.zookeeper.KeeperException
-import org.apache.zookeeper.KeeperException.Code
+import org.apache.zookeeper.KeeperException.{Code, NoNodeException}
 import org.apache.kafka.server.policy.CreateTopicPolicy
 
 import scala.collection.JavaConverters._
@@ -1549,11 +1549,20 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
+  private def initLiCombinedControlRequestEnabled(): Unit = {
+    val zkFlag = zkClient.getLiCombinedControlRequestFlag
+    val effectiveFlag: Boolean = if (zkFlag == null || (!zkFlag.equalsIgnoreCase("true") && !zkFlag.equalsIgnoreCase("false")))
+      config.liCombinedControlRequestEnable
+    else zkFlag.toBoolean
+
+    controllerContext.setLiCombinedControlRequestEnabled(effectiveFlag)
+  }
+
   private def elect(): Unit = {
 
     // refresh preferred controller nodes
     controllerContext.setLivePreferredControllerIds(zkClient.getPreferredControllerList.toSet)
-    controllerContext.setLiCombinedControlRequestEnabled(config.liCombinedControlRequestEnable)
+    initLiCombinedControlRequestEnabled()
     activeControllerId = zkClient.getControllerId.getOrElse(-1)
     /*
      * We can get here during the initial startup and the handleDeleted ZK callback. Because of the potential race condition,

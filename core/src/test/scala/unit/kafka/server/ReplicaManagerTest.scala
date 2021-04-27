@@ -81,6 +81,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
   @After
   def tearDown(): Unit = {
     metrics.close()
+    TestUtils.assertNoNonDaemonThreads(this.getClass.getName)
   }
 
   @Test
@@ -119,6 +120,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     // Trigger sending of ISR notifications.
     rm.maybePropagateIsrChanges()
     EasyMock.verify(kafkaZkClient)
+    rm.shutdown(false)
   }
 
   @Test
@@ -856,6 +858,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
     // Truncation should have happened once
     EasyMock.verify(mockLogMgr)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -894,6 +897,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     val preferredReadReplica: Option[Int] = replicaManager.findPreferredReadReplica(
       tp0, metadata, Request.OrdinaryConsumerId, 1L, System.currentTimeMillis)
     assertFalse(preferredReadReplica.isDefined)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -945,6 +949,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
     // But only leader will compute preferred replica
     assertTrue(consumerResult.assertFired.preferredReadReplica.isEmpty)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -996,6 +1001,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
     // Returns a preferred replica (should just be the leader, which is None)
     assertFalse(consumerResult.assertFired.preferredReadReplica.isDefined)
+    replicaManager.shutdown(false)
   }
 
   @Test(expected = classOf[ClassNotFoundException])
@@ -1030,6 +1036,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
       leaderBrokerId, countDownLatch, expectTruncation = true, props)
     assertFalse(replicaManager.replicaSelectorOpt.isDefined)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1068,6 +1075,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     fetchResult = sendConsumerFetch(replicaManager, tp0, partitionData, None)
     assertNotNull(fetchResult.get)
     assertEquals(Errors.NOT_LEADER_FOR_PARTITION, fetchResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1116,6 +1124,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
     assertNotNull(fetchResult.get)
     assertEquals(Errors.NOT_LEADER_FOR_PARTITION, fetchResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1165,6 +1174,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
     assertNotNull(fetchResult.get)
     assertEquals(Errors.FENCED_LEADER_EPOCH, fetchResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1202,6 +1212,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     fetchResult = sendConsumerFetch(replicaManager, tp0, partitionData, Some(clientMetadata))
     assertNotNull(fetchResult.get)
     assertEquals(Errors.NONE, fetchResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1245,6 +1256,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     replicaManager.stopReplica(tp0, deletePartition = true)
     assertNotNull(fetchResult.get)
     assertEquals(Errors.NOT_LEADER_FOR_PARTITION, fetchResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   @Test
@@ -1279,6 +1291,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
     replicaManager.stopReplica(tp0, deletePartition = true)
     assertNotNull(produceResult.get)
     assertEquals(Errors.NOT_LEADER_FOR_PARTITION, produceResult.get.error)
+    replicaManager.shutdown(false)
   }
 
   private def sendProducerAppend(replicaManager: ReplicaManager,

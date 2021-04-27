@@ -22,7 +22,7 @@ import kafka.utils.TestUtils._
 import kafka.utils.{Logging, TestUtils}
 import kafka.zk.{ReassignPartitionsZNode, ZkVersion, ZooKeeperTestHarness}
 import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.{After, Before, Test}
+import org.junit.{After, Before, Ignore, Test}
 import kafka.admin.ReplicationQuotaUtils._
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.admin.{AdminClient => JAdminClient}
@@ -112,6 +112,7 @@ class ReassignPartitionsClusterTest extends ZooKeeperTestHarness with Logging {
   }
 
   @Test
+  @Ignore // ignoring the test since the AlterLogDirs request has been disabled
   def shouldMoveSinglePartition(): Unit = {
     //Given a single replica on server 100
     startBrokers(Seq(100, 101))
@@ -151,6 +152,7 @@ class ReassignPartitionsClusterTest extends ZooKeeperTestHarness with Logging {
   }
 
   @Test
+  @Ignore // ignoring the test since the AlterLogDirs request has been disabled
   def shouldExpandCluster() {
     val brokers = Array(100, 101, 102)
     startBrokers(brokers)
@@ -215,6 +217,7 @@ class ReassignPartitionsClusterTest extends ZooKeeperTestHarness with Logging {
   }
 
   @Test
+  @Ignore // ignoring the test since the AlterLogDirs request has been disabled
   def shouldMoveSubsetOfPartitions() {
     //Given partitions on 3 of 3 brokers
     val brokers = Array(100, 101, 102)

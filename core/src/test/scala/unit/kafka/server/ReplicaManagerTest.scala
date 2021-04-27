@@ -22,7 +22,6 @@ import java.net.InetAddress
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.{Optional, Properties}
-
 import kafka.api.Request
 import kafka.log.{AppendOrigin, Log, LogConfig, LogManager, ProducerStateManager}
 import kafka.cluster.BrokerEndPoint
@@ -50,13 +49,16 @@ import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.easymock.{Capture, EasyMock}
 import org.junit.Assert._
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import org.junit.{After, Before, Ignore, Test}
 import org.mockito.Mockito
 
 import scala.collection.JavaConverters._
 import scala.collection.{Map, Seq}
 
-class ReplicaManagerTest {
+@RunWith(value = classOf[Parameterized])
+class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
   val topic = "test-topic"
   val time = new MockTime
@@ -826,8 +828,10 @@ class ReplicaManagerTest {
     val countDownLatch = new CountDownLatch(1)
 
     // Prepare the mocked components for the test
+    val props = new Properties()
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     val (replicaManager, mockLogMgr) = prepareReplicaManagerAndLogManager(
-      topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId, leaderBrokerId, countDownLatch, expectTruncation = true)
+      topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId, leaderBrokerId, countDownLatch, expectTruncation = true, props)
 
     // Initialize partition state to follower, with leader = 1, leaderEpoch = 1
     val tp = new TopicPartition(topic, topicPartition)
@@ -865,9 +869,11 @@ class ReplicaManagerTest {
     val countDownLatch = new CountDownLatch(1)
 
     // Prepare the mocked components for the test
+    val props = new Properties()
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     val (replicaManager, _) = prepareReplicaManagerAndLogManager(
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
-      leaderBrokerId, countDownLatch, expectTruncation = true)
+      leaderBrokerId, countDownLatch, expectTruncation = true, props)
 
     val tp = new TopicPartition(topic, topicPartition)
     val partition = replicaManager.createPartition(tp)
@@ -900,9 +906,11 @@ class ReplicaManagerTest {
     val countDownLatch = new CountDownLatch(1)
 
     // Prepare the mocked components for the test
+    val props = new Properties()
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     val (replicaManager, _) = prepareReplicaManagerAndLogManager(
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
-      leaderBrokerId, countDownLatch, expectTruncation = true)
+      leaderBrokerId, countDownLatch, expectTruncation = true, props)
 
     val brokerList = Seq[Integer](0, 1).asJava
 
@@ -949,9 +957,11 @@ class ReplicaManagerTest {
     val countDownLatch = new CountDownLatch(1)
 
     // Prepare the mocked components for the test
+    val props = new Properties()
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     val (replicaManager, _) = prepareReplicaManagerAndLogManager(
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
-      leaderBrokerId, countDownLatch, expectTruncation = true)
+      leaderBrokerId, countDownLatch, expectTruncation = true, props)
 
     val brokerList = Seq[Integer](0, 1).asJava
 
@@ -999,6 +1009,7 @@ class ReplicaManagerTest {
 
     val props = new Properties()
     props.put(KafkaConfig.ReplicaSelectorClassProp, "non-a-class")
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     prepareReplicaManagerAndLogManager(
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
       leaderBrokerId, countDownLatch, expectTruncation = true, extraProps = props)
@@ -1013,9 +1024,11 @@ class ReplicaManagerTest {
     val leaderEpochIncrement = 2
     val countDownLatch = new CountDownLatch(1)
 
+    val props = new Properties()
+    props.put(KafkaConfig.LiAsyncFetcherEnableProp, liAsyncFetcherEnabled.toString)
     val (replicaManager, _) = prepareReplicaManagerAndLogManager(
       topicPartition, leaderEpoch + leaderEpochIncrement, followerBrokerId,
-      leaderBrokerId, countDownLatch, expectTruncation = true)
+      leaderBrokerId, countDownLatch, expectTruncation = true, props)
     assertFalse(replicaManager.replicaSelectorOpt.isDefined)
   }
 
@@ -1450,6 +1463,29 @@ class ReplicaManagerTest {
           }
         }
       }
+
+      override protected def createAsyncReplicaFetcherManager(metrics: Metrics,
+        time: Time,
+        threadNamePrefix: Option[String],
+        quotaManager: ReplicationQuotaManager): AsyncReplicaFetcherManager = {
+        new AsyncReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager) {
+
+          override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): FetcherEventManager = {
+            val fetcherEventBus = new FetcherEventBus(time)
+            val threadName = s"ReplicaFetcherThread-$fetcherId"
+            val replicaFetcher = new AsyncReplicaFetcher(threadName,  fetcherId,
+              sourceBroker, config, failedPartitions, replicaManager, metrics, time, quota.follower, fetcherEventBus, Some(blockingSend))
+            val fetcherEventManager = new FetcherEventManager(threadName, fetcherEventBus, replicaFetcher, time)
+
+            val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
+
+            fetcherEventManager.addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
+            countDownLatch.countDown()
+            fetcherEventManager
+          }
+        }
+      }
+
     }
 
     (replicaManager, mockLogMgr)
@@ -1812,3 +1848,11 @@ class ReplicaManagerTest {
   }
 
 }
+
+object ReplicaManagerTest {
+  @Parameters
+  def parameters: util.Collection[Boolean] = {
+    util.Arrays.asList(false, true)
+  }
+}
+

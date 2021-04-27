@@ -75,7 +75,7 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(leaderAndIsrRequest1)
     controllerRequestMerger.addRequest(leaderAndIsrRequest2)
 
-    // test that we can poll two separate tests containing the same partition state
+    // test that we can poll two separate requests containing the same partition state
     for (_ <- 0 until 2) {
       val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
       Assert.assertEquals("Mismatched controller id", controllerId, liCombinedControlRequest.controllerId())

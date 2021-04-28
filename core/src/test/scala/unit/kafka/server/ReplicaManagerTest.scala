@@ -21,7 +21,7 @@ import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
-import java.util.{Optional, Properties}
+import java.util.{Optional, Properties, Arrays, Collection}
 import kafka.api.Request
 import kafka.log.{AppendOrigin, Log, LogConfig, LogManager, ProducerStateManager}
 import kafka.cluster.BrokerEndPoint
@@ -45,12 +45,12 @@ import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests.{EpochEndOffset, IsolationLevel, LeaderAndIsrRequest}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.Time
-import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.easymock.{Capture, EasyMock}
 import org.junit.Assert._
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
+import org.junit.runners.Parameterized.Parameters
 import org.junit.{After, Before, Ignore, Test}
 import org.mockito.Mockito
 
@@ -1851,8 +1851,8 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
 object ReplicaManagerTest {
   @Parameters
-  def parameters: util.Collection[Boolean] = {
-    util.Arrays.asList(false, true)
+  def parameters: Collection[Boolean] = {
+    Arrays.asList(false, true)
   }
 }
 

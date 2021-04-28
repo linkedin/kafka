@@ -430,12 +430,6 @@ object DeleteTopicFlagZNode {
   def decode(bytes: Array[Byte]): String = if (bytes != null) new String(bytes, UTF_8) else ""
 }
 
-object LiCombinedControlRequestFlagZNode {
-  def path = "/li_combined_control_request_flag"
-  def encode(liCombinedRequestFlag: String): Array[Byte] = liCombinedRequestFlag.getBytes(UTF_8)
-  def decode(bytes: Array[Byte]): String = if (bytes != null) new String(bytes, UTF_8) else ""
-}
-
 /**
  * The znode for initiating a partition reassignment.
  * @deprecated Since 2.4, use the PartitionReassignment Kafka API instead.

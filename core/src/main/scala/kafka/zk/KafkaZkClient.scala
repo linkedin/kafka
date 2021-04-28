@@ -931,33 +931,6 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
     }
   }
 
-  // Create the /li_combined_control_request_flag znode if it doesn't already exist
-  def createLiCombinedControlRequestFlagPath(): Unit = {
-    createRecursive(LiCombinedControlRequestFlagZNode.path, null, false)
-  }
-
-  /**
-   * Get the /li_combined_control_request_flag flag in zookeeper.
-   */
-  def getLiCombinedControlRequestFlag: String = {
-    val getDataResponse = retryRequestUntilConnected(GetDataRequest(LiCombinedControlRequestFlagZNode.path))
-    getDataResponse.resultCode match {
-      case Code.OK => LiCombinedControlRequestFlagZNode.decode(getDataResponse.data)
-      case _ => throw getDataResponse.resultException.get
-    }
-  }
-
-  /**
-   * Set the /li_combined_control_request_flag to control whether the LiCombinedControlRequest should be used
-   */
-  def setLiCombinedControlRequestFlag(flag: String): Unit = {
-    val setDataResponse = retryRequestUntilConnected(SetDataRequest(LiCombinedControlRequestFlagZNode.path, LiCombinedControlRequestFlagZNode.encode(flag), -1))
-    setDataResponse.resultCode match {
-      case Code.OK =>
-      case _ => throw setDataResponse.resultException.get
-    }
-  }
-
   /**
    * Remove the given topics from the topics marked for deletion.
    * @param topics the topics to remove.

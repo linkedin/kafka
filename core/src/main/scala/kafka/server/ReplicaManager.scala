@@ -202,8 +202,7 @@ class ReplicaManager(val config: KafkaConfig,
     valueFactory = Some(tp => HostedPartition.Online(Partition(tp, time, this)))
   )
   private val replicaStateChangeLock = new Object
-  val replicaFetcherManager = createReplicaFetcherManager(metrics, time, threadNamePrefix, quotaManagers.follower)
-  val asyncReplicaFetcherManager = createAsyncReplicaFetcherManager(metrics, time, threadNamePrefix, quotaManagers.follower)
+  val replicaFetcherManager: FetcherManagerTrait = createReplicaFetcherManager(metrics, time, threadNamePrefix, quotaManagers.follower)
 //  val replicaAlterLogDirsManager = createReplicaAlterLogDirsManager(quotaManagers.alterLogDirs, brokerTopicStats)
   private val highWatermarkCheckPointThreadStarted = new AtomicBoolean(false)
   @volatile var highWatermarkCheckpoints: Map[String, OffsetCheckpointFile] = logManager.liveLogDirs.map(dir =>
@@ -423,11 +422,7 @@ class ReplicaManager(val config: KafkaConfig,
         val partitions = stopReplicaRequest.partitions.asScala.toSet
         controllerEpoch = stopReplicaRequest.controllerEpoch
         // First stop fetchers for all partitions, then stop the corresponding replicas
-        if (config.liAsyncFetcherEnable) {
-          asyncReplicaFetcherManager.removeFetcherForPartitions(partitions)
-        } else {
-          replicaFetcherManager.removeFetcherForPartitions(partitions)
-        }
+        replicaFetcherManager.removeFetcherForPartitions(partitions)
         // replicaAlterLogDirsManager.removeFetcherForPartitions(partitions)
         for (topicPartition <- partitions){
           try {
@@ -1358,11 +1353,8 @@ class ReplicaManager(val config: KafkaConfig,
           }
         }
 //        replicaAlterLogDirsManager.addFetcherForPartitions(futureReplicasAndInitialOffset)
-        if (config.liAsyncFetcherEnable) {
-          asyncReplicaFetcherManager.shutdownIdleFetcherThreads()
-        } else {
-          replicaFetcherManager.shutdownIdleFetcherThreads()
-        }
+
+        replicaFetcherManager.shutdownIdleFetcherThreads()
         onLeadershipChange(partitionsBecomeLeader, partitionsBecomeFollower)
         val responsePartitions = responseMap.iterator.map { case (tp, error) =>
           new LeaderAndIsrPartitionError()
@@ -1409,11 +1401,7 @@ class ReplicaManager(val config: KafkaConfig,
 
     try {
       // First stop fetchers for all the partitions
-      if (config.liAsyncFetcherEnable) {
-        asyncReplicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition))
-      } else {
-        replicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition))
-      }
+      replicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition))
       // Update the partition information to be the leader
       partitionStates.foreach { case (partition, partitionState) =>
         try {
@@ -1532,11 +1520,7 @@ class ReplicaManager(val config: KafkaConfig,
         }
       }
 
-      if (config.liAsyncFetcherEnable) {
-        asyncReplicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
-      } else {
-        replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
-      }
+      replicaFetcherManager.removeFetcherForPartitions(partitionsToMakeFollower.map(_.topicPartition))
       partitionsToMakeFollower.foreach { partition =>
         stateChangeLogger.trace(s"Stopped fetchers as part of become-follower request from controller $controllerId " +
           s"epoch $controllerEpoch with correlation id $correlationId for partition ${partition.topicPartition} with leader " +
@@ -1568,11 +1552,8 @@ class ReplicaManager(val config: KafkaConfig,
           val fetchOffset = partition.localLogOrException.highWatermark
           partition.topicPartition -> InitialFetchState(leader, partition.getLeaderEpoch, fetchOffset)
        }.toMap
-        if (config.liAsyncFetcherEnable) {
-          asyncReplicaFetcherManager.addFetcherForPartitions(partitionsToMakeFollowerWithLeaderAndOffset)
-        } else {
-          replicaFetcherManager.addFetcherForPartitions(partitionsToMakeFollowerWithLeaderAndOffset)
-        }
+
+        replicaFetcherManager.addFetcherForPartitions(partitionsToMakeFollowerWithLeaderAndOffset)
         partitionsToMakeFollowerWithLeaderAndOffset.foreach { case (partition, initialFetchState) =>
           stateChangeLogger.trace(s"Started fetcher to new leader as part of become-follower " +
             s"request from controller $controllerId epoch $controllerEpoch with correlation id $correlationId for " +
@@ -1699,11 +1680,8 @@ class ReplicaManager(val config: KafkaConfig,
       val partitionsWithOfflineFutureReplica = nonOfflinePartitionsIterator.filter { partition =>
         partition.futureLog.exists { _.parentDir == dir }
       }.toSet
-      if (config.liAsyncFetcherEnable) {
-        asyncReplicaFetcherManager.removeFetcherForPartitions(newOfflinePartitions)
-      } else {
-        replicaFetcherManager.removeFetcherForPartitions(newOfflinePartitions)
-      }
+
+      replicaFetcherManager.removeFetcherForPartitions(newOfflinePartitions)
 //      replicaAlterLogDirsManager.removeFetcherForPartitions(newOfflinePartitions ++ partitionsWithOfflineFutureReplica.map(_.topicPartition))
 
       partitionsWithOfflineFutureReplica.foreach(partition => partition.removeFutureLocalReplica(deleteFromLogDir = false))
@@ -1741,11 +1719,7 @@ class ReplicaManager(val config: KafkaConfig,
     removeMetrics()
     if (logDirFailureHandler != null)
       logDirFailureHandler.shutdown()
-    if (config.liAsyncFetcherEnable) {
-      asyncReplicaFetcherManager.shutdown()
-    } else {
-      replicaFetcherManager.shutdown()
-    }
+    replicaFetcherManager.shutdown()
 //    replicaAlterLogDirsManager.shutdown()
     delayedFetchPurgatory.shutdown()
     delayedProducePurgatory.shutdown()
@@ -1757,12 +1731,20 @@ class ReplicaManager(val config: KafkaConfig,
     info("Shut down completely")
   }
 
-  protected def createReplicaFetcherManager(metrics: Metrics, time: Time, threadNamePrefix: Option[String], quotaManager: ReplicationQuotaManager) = {
+  protected def createLockBasedReplicaFetcherManager(metrics: Metrics, time: Time, threadNamePrefix: Option[String], quotaManager: ReplicationQuotaManager) = {
     new ReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager)
   }
 
   protected def createAsyncReplicaFetcherManager(metrics: Metrics, time: Time, threadNamePrefix: Option[String], quotaManager: ReplicationQuotaManager) = {
     new AsyncReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager)
+  }
+
+  protected def createReplicaFetcherManager(metrics: Metrics, time: Time, threadNamePrefix: Option[String], quotaManager: ReplicationQuotaManager) = {
+    if (config.liAsyncFetcherEnable) {
+      createAsyncReplicaFetcherManager(metrics, time, threadNamePrefix, quotaManager)
+    } else {
+      createLockBasedReplicaFetcherManager(metrics, time, threadNamePrefix, quotaManager)
+    }
   }
 
 //  protected def createReplicaAlterLogDirsManager(quotaManager: ReplicationQuotaManager, brokerTopicStats: BrokerTopicStats) = {

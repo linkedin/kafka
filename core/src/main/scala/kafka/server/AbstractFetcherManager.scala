@@ -28,7 +28,7 @@ import scala.collection.mutable
 import scala.collection.{Map, Set}
 
 abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: String, clientId: String, numFetchers: Int)
-  extends Logging with KafkaMetricsGroup {
+  extends FetcherManagerTrait with Logging with KafkaMetricsGroup {
   // map of (source broker_id, fetcher_id per source broker) => fetcher.
   // package private for test
   private[server] val fetcherThreadMap = new mutable.HashMap[BrokerIdAndFetcherId, T]

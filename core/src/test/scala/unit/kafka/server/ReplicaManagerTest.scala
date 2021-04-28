@@ -1438,7 +1438,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
       metadataCache, mockLogDirFailureChannel, mockProducePurgatory, mockFetchPurgatory,
       mockDeleteRecordsPurgatory, mockElectLeaderPurgatory, Option(this.getClass.getName)) {
 
-      override protected def createReplicaFetcherManager(metrics: Metrics,
+      override protected def createLockBasedReplicaFetcherManager(metrics: Metrics,
                                                      time: Time,
                                                      threadNamePrefix: Option[String],
                                                      quotaManager: ReplicationQuotaManager): ReplicaFetcherManager = {

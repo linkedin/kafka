@@ -104,9 +104,6 @@ class ControllerContext {
 
   @volatile var livePreferredControllerIds: Set[Int] = Set.empty
 
-  // making the liCombinedControlRequestEnabled volatile in order to check its status in a test
-  @volatile var liCombinedControlRequestEnabled = false
-
   private def clearTopicsState(): Unit = {
     allTopics = Set.empty
     partitionAssignments.clear()
@@ -206,10 +203,6 @@ class ControllerContext {
 
   def setLivePreferredControllerIds(preferredControllerIds: Set[Int]): Unit = {
     livePreferredControllerIds = preferredControllerIds
-  }
-
-  def setLiCombinedControlRequestEnabled(enabled: Boolean): Unit = {
-    liCombinedControlRequestEnabled = enabled
   }
 
   // getter

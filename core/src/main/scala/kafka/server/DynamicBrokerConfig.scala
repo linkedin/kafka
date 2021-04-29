@@ -83,6 +83,7 @@ object DynamicBrokerConfig {
     Set(KafkaConfig.MetricReporterClassesProp) ++
     Set(KafkaConfig.AutoCreateTopicsEnableProp) ++
     Set(KafkaConfig.AllowPreferredControllerFallbackProp) ++
+    Set(KafkaConfig.LiCombinedControlRequestEnableProp) ++
     DynamicListenerConfig.ReconfigurableConfigs ++
     SocketServer.ReconfigurableConfigs
 
@@ -259,7 +260,6 @@ class DynamicBrokerConfig(private val kafkaConfig: KafkaConfig) extends Logging 
     addBrokerReconfigurable(new DynamicListenerConfig(kafkaServer))
     addBrokerReconfigurable(kafkaServer.socketServer)
     addBrokerReconfigurable(new DynamicAllowPreferredControllerFallback(kafkaServer))
-    addBrokerReconfigurable(new LiCombinedControlRequestEnable(kafkaServer))
   }
 
   def addReconfigurable(reconfigurable: Reconfigurable): Unit = CoreUtils.inWriteLock(lock) {
@@ -688,20 +688,6 @@ class DynamicAllowPreferredControllerFallback(server: KafkaServer) extends Broke
     if (newConfig.allowPreferredControllerFallback) {
       server.kafkaController.enablePreferredControllerFallback
     }
-  }
-}
-class LiCombinedControlRequestEnable(server: KafkaServer) extends BrokerReconfigurable {
-
-  override def reconfigurableConfigs: Set[String] = {
-    Set(KafkaConfig.LiCombinedControlRequestEnableProp)
-  }
-
-  override def validateReconfiguration(newConfig: KafkaConfig): Unit = {
-    // no additional validation is needed.
-  }
-
-  override def reconfigure(oldConfig: KafkaConfig, newConfig: KafkaConfig): Unit = {
-    server.kafkaController.controllerContext.setLiCombinedControlRequestEnabled(newConfig.liCombinedControlRequestEnable)
   }
 }
 

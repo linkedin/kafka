@@ -73,6 +73,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
   @Before
   def setUp(): Unit = {
+    TestUtils.assertNoNonDaemonThreads(this.getClass.getName)
     kafkaZkClient = EasyMock.createMock(classOf[KafkaZkClient])
     EasyMock.expect(kafkaZkClient.getEntityConfigs(EasyMock.anyString(), EasyMock.anyString())).andReturn(new Properties()).anyTimes()
     EasyMock.replay(kafkaZkClient)

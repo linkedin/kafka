@@ -261,11 +261,10 @@ class RequestSendThread(val controllerId: Int,
   }
 
   private def nextRequestAndCallback(): (AbstractControlRequest.Builder[_ <: AbstractControlRequest], AbstractResponse => Unit) = {
-    if ((!config.liCombinedControlRequestEnable) || (!firstUpdateMetadataWithPartitionsSent)) {
-      val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-      updateMetrics(apiKey, enqueueTimeMs)
-      (requestBuilder, callback)
-    } else {
+    if (controllerRequestMerger.hasPendingRequests() ||
+      (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1 &&
+        config.liCombinedControlRequestEnable &&
+        firstUpdateMetadataWithPartitionsSent)) {
       // Only start the merging logic after the first UpdateMetadata request with partitions,
       // since the first UpdateMetadata request with partitions may contain hundreds of thousands of partitions,
       // and thus needs to be cached and shared by all brokers in order to prevent OOM
@@ -294,6 +293,11 @@ class RequestSendThread(val controllerId: Int,
 
       val requestBuilder = controllerRequestMerger.pollLatestRequest()
       (requestBuilder, controllerRequestMerger.triggerCallback _)
+    } else {
+      // use the old behavior of sending each item in the queue as a separate request
+      val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+      updateMetrics(apiKey, enqueueTimeMs)
+      (requestBuilder, callback)
     }
   }
 

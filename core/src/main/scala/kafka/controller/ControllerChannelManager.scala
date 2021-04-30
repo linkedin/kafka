@@ -266,14 +266,15 @@ class RequestSendThread(val controllerId: Int,
       updateMetrics(apiKey, enqueueTimeMs)
       (requestBuilder, callback)
     } else {
-      // only start the merging logic after the first UpdateMetadata request
-      // since the first UpdateMetadata request needs to be cached and shared by all brokers
+      // Only start the merging logic after the first UpdateMetadata request with partitions,
+      // since the first UpdateMetadata request with partitions may contain hundreds of thousands of partitions,
+      // and thus needs to be cached and shared by all brokers in order to prevent OOM
 
       // there are 4 cases regarding the state of the queue and the controllerRequestMerger
       // case 1: queue not empty, merger not empty {action: merge and send first merged request}
-      // case 2: queue empty, merger not empty {action: send latest merged request}
-      // case 3: queue not empty, merger empty {action: merge and send first merged request}
-      // case 4: queue empty, merger empty {action: block and wait until it becomes case 3}
+      // case 2: queue not empty, merger empty {action: merge and send first merged request}
+      // case 3: queue empty, merger not empty {action: send latest merged request}
+      // case 4: queue empty, merger empty {action: block and wait until queue becomes non-empty, then transition to case 1 or 3}
 
       // handle case 4 first
       if (!controllerRequestMerger.hasPendingRequests()) {
@@ -281,8 +282,11 @@ class RequestSendThread(val controllerId: Int,
         mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
       }
 
-      // now we are guaranteed that the controllerRequestMerger is not empty
+      // now we are guaranteed that the controllerRequestMerger is not empty (case 1 or 3)
       // drain the queue until the queue is empty
+      // one concurrent access case considering the producer of the queue:
+      // an item is put to the queue right after the condition check below.
+      // That behavior does not change correctness since the inserted item will be picked up in the next round
       while (!queue.isEmpty) {
         val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
         mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)

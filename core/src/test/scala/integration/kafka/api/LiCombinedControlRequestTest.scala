@@ -44,6 +44,39 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
   }
 
 
+  @Test
+  def testChangingLiCombinedControlRequestFlag(): Unit = {
+    // check that no LiCombinedControlRequest can be sent with the default config
+    Assert.assertTrue(createTopicAndGetCombinedRequestCount(Set(0, 1).map("topic" + _)) == 0)
+
+    // turn on the feature by setting the /li_combined_control_request_flag to true
+    val props = new Properties
+    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "true")
+    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "true"))
+
+    // Each RequestSendThread is already blocked waiting for either a regular request or a combined request.
+    // Suppose the next 3 requests coming out of the blocking queue are R1, R2 and R3.
+    // After the flag is turned on, R1 will still be sent as a regular request. But all requests starting from R2
+    // will be sent using the LiCombinedControlRequest. Thus we need to start measuring after generating some event
+    // to pass the R1 phase. Below we create one more topic in order to pass the R1 phase.
+    createTopic("topic2")
+    Assert.assertTrue(createTopicAndGetCombinedRequestCount(Set(3, 4).map("topic" + _)) > 0)
+
+
+    // turn off the feature now
+    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "false")
+    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "false"))
+    // again we create one more topic to pass the R1 phase, as explained in the comment above.
+    createTopic("topic5")
+
+    // when the request merging feature is turned off, creating more topics won't cause the following metric
+    // to increase any more
+    val combinedRequestsSent2 = createTopicAndGetCombinedRequestCount(Set(6, 7).map("topic" + _))
+    val combinedRequestsSent3 = createTopicAndGetCombinedRequestCount(Set(8, 9).map("topic" + _))
+    Assert.assertTrue(combinedRequestsSent2 > 0 && combinedRequestsSent3 > 0)
+    Assert.assertEquals(combinedRequestsSent2, combinedRequestsSent3)
+  }
+
   private def createAdminClient(): Admin = {
     val config = new Properties()
     val bootstrapServers = TestUtils.bootstrapServers(servers, ListenerName.forSecurityProtocol(SecurityProtocol.PLAINTEXT))
@@ -80,38 +113,6 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
     val metric = metrics.values.head
 
     metric.asInstanceOf[Histogram].count()
-  }
-
-  @Test
-  def testChangingLiCombinedControlRequestFlag(): Unit = {
-    // check that no LiCombinedControlRequest has been sent with the default config
-    Assert.assertTrue(createTopicAndGetCombinedRequestCount(Set(0, 1).map("topic" + _)) == 0)
-
-    // turn on the feature by setting the /li_combined_control_request_flag to true
-    val props = new Properties
-    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "true")
-    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "true"))
-
-    // Each RequestSendThread is already blocked waiting for either a regular request or a combined request.
-    // Suppose the next 3 requests coming out of the blocking queue are R1, R2 and R3.
-    // After the flag is turned on, R1 will still be sent as a regular request. But all requests starting from R2
-    // will be sent using the LiCombinedControlRequest. Thus we need to start measuring after generating some event
-    // to pass the R1 phase. Below we create one more topic in order to pass the R1 phase.
-    createTopic("topic2")
-    Assert.assertTrue(createTopicAndGetCombinedRequestCount(Set(3, 4).map("topic" + _)) > 0)
-
-
-    // turn off the feature now
-    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "false")
-    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "false"))
-    // again we create one more topic to pass the R1 phase.
-    createTopic("topic5")
-
-    // when the request merging feature is turned off, creating more topics won't cause the following metric
-    // to increase any more
-    val combinedRequestsSent2 = createTopicAndGetCombinedRequestCount(Set(6, 7).map("topic" + _))
-    val combinedRequestsSent3 = createTopicAndGetCombinedRequestCount(Set(8, 9).map("topic" + _))
-    Assert.assertEquals(combinedRequestsSent2, combinedRequestsSent3)
   }
 }
 

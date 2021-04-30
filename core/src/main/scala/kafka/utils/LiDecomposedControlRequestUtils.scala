@@ -23,7 +23,7 @@ object LiDecomposedControlRequestUtils {
     val leadersInRequest = request.liveLeaders()
 
     val effectivePartitionStates = new util.ArrayList[LeaderAndIsrPartitionState]()
-    partitionsInRequest.forEach{partition =>
+    partitionsInRequest.forEach { partition =>
       if (partition.brokerEpoch() >= brokerEpoch)
         effectivePartitionStates.add(LiCombinedControlTransformer.restoreLeaderAndIsrPartition(partition))
     }
@@ -32,7 +32,7 @@ object LiDecomposedControlRequestUtils {
       None
     } else {
       val leaderNodes = new util.ArrayList[Node]()
-      leadersInRequest.forEach{leader =>
+      leadersInRequest.forEach { leader =>
         leaderNodes.add(new Node(leader.brokerId(), leader.hostName(), leader.port()))
       }
 
@@ -50,8 +50,8 @@ object LiDecomposedControlRequestUtils {
     val brokersInRequest = request.liveBrokers()
 
     val effectivePartitionStates = new util.ArrayList[UpdateMetadataPartitionState]()
-    partitionsInRequest.forEach{partition =>
-        effectivePartitionStates.add(LiCombinedControlTransformer.restoreUpdateMetadataPartition(partition))
+    partitionsInRequest.forEach { partition =>
+      effectivePartitionStates.add(LiCombinedControlTransformer.restoreUpdateMetadataPartition(partition))
     }
 
     val liveBrokers = new util.ArrayList[UpdateMetadataBroker]()
@@ -75,7 +75,7 @@ object LiDecomposedControlRequestUtils {
     val partitionsInRequest = request.stopReplicaPartitionStates()
 
     val effectivePartitionStates = new util.ArrayList[LiCombinedControlRequestData.StopReplicaPartitionState]()
-    partitionsInRequest.forEach{partition =>
+    partitionsInRequest.forEach { partition =>
       if (partition.brokerEpoch() >= brokerEpoch) {
         effectivePartitionStates.add(partition)
       }
@@ -99,26 +99,27 @@ object LiDecomposedControlRequestUtils {
         }
       }
 
-      def getStopReplicaRequest(deletePartitions: Boolean, partitions: util.List[TopicPartition]): StopReplicaRequest = {
-        new StopReplicaRequest.Builder(stopReplicaRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
-          request.maxBrokerEpoch(), true, partitionsWithDelete).build()
-      }
-
       var stopReplicaRequests: List[StopReplicaRequest] = List.empty
 
       if (partitionsWithDelete.isEmpty) {
         None
       } else {
-        stopReplicaRequests = getStopReplicaRequest(true, partitionsWithDelete) :: stopReplicaRequests
+        stopReplicaRequests = getStopReplicaRequest(stopReplicaRequestVersion, request, true, partitionsWithDelete) :: stopReplicaRequests
       }
 
       if (partitionsWithoutDelete.isEmpty) {
         None
       } else {
-        stopReplicaRequests = getStopReplicaRequest(false, partitionsWithoutDelete) :: stopReplicaRequests
+        stopReplicaRequests = getStopReplicaRequest(stopReplicaRequestVersion, request, false, partitionsWithoutDelete) :: stopReplicaRequests
       }
 
       stopReplicaRequests
     }
+  }
+
+  def getStopReplicaRequest(stopReplicaRequestVersion: Short, request: LiCombinedControlRequest,
+    deletePartitions: Boolean, partitions: util.List[TopicPartition]): StopReplicaRequest = {
+    new StopReplicaRequest.Builder(stopReplicaRequestVersion, request.controllerId(), request.controllerEpoch(), request.brokerEpoch(),
+      request.maxBrokerEpoch(), deletePartitions, partitions).build()
   }
 }

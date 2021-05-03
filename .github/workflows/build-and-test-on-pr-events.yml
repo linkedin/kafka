@@ -42,4 +42,17 @@ jobs:
           java-version: 1.8
       - name: Build with Gradle and run all unit tests
         # exclude the streams test and connect test
-        run: ./gradlew cleanTest checkstyleMain checkstyleTest :clients:unitTest :core:unitTest --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+        run: ./gradlew cleanTest checkstyleMain checkstyleTest :clients:unitTest :core:unitTest --no-daemon -PxmlFindBugsReport=true
+      - name: Archive client test output
+        uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: client-test-output
+          path: client/build/reports/testOutput
+      - name: Archive core test output
+        uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: core-test-output
+          path: core/build/reports/testOutput
+

@@ -35,6 +35,11 @@ class ReplicaFetcherManager(brokerConfig: KafkaConfig,
   override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): ReplicaFetcherThread = {
     val prefix = threadNamePrefix.map(tp => s"$tp:").getOrElse("")
     val threadName = s"${prefix}ReplicaFetcherThread-$fetcherId-${sourceBroker.id}"
+    try {
+      throw new Exception("test message")
+    } catch {
+      case e:Exception => e.printStackTrace()
+    }
     new ReplicaFetcherThread(threadName, fetcherId, sourceBroker, brokerConfig, failedPartitions, replicaManager,
       metrics, time, quotaManager)
   }

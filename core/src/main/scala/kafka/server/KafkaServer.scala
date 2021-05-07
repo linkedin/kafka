@@ -521,6 +521,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
 
         while (!shutdownSucceeded && remainingRetries > 0) {
           remainingRetries = remainingRetries - 1
+          shutdownResponse = null
 
           // 1. Find the controller and establish a connection to it.
 
@@ -553,7 +554,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
           // 2. issue a controlled shutdown to the controller
           if (prevController != null) {
             try {
-
               if (!NetworkClientUtils.awaitReady(networkClient, node(prevController), time, socketTimeoutMs))
                 throw new SocketTimeoutException(s"Failed to connect within $socketTimeoutMs ms")
 
@@ -603,7 +603,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
             warn("Retrying controlled shutdown after the previous attempt failed...")
           }
           /** In case {@link KafkaController.safeToShutdown} reported that it's not safe to shutdown,
-           * the delegate KafkaAction will invoke Cruise-Control to demote this broker. */
+           * the delegate KafkaAction will invoke Cruise-Control to demote this broker in Azure environment only. */
           kafkaActions.notifyControlledShutdownStatus(shutdownSucceeded, shutdownResponse, remainingRetries)
         }
       }

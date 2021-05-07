@@ -1319,6 +1319,13 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def safeToShutdown(id: Int, brokerEpoch: Long): Boolean = {
+    // First, check whether or not the broker requesting shutdown has already been told that it is OK to shut down
+    // at this epoch.
+    if (controllerContext.shuttingDownBrokerIds.contains(id)
+      && controllerContext.shuttingDownBrokerIds(id) >= brokerEpoch) {
+      return true
+    }
+
     // If a topic doesn't have min.insync.replicas configured, default to 1
     val defaultMinISRPropertyValue = 1
 

@@ -19,10 +19,12 @@ package org.apache.kafka.clients.admin;
 
 import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.LeastLoadedNodeAlgorithm;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
+import org.apache.kafka.common.config.EnumValueValidator;
 import org.apache.kafka.common.metrics.Sensor;
 
 import java.util.Map;
@@ -109,6 +111,12 @@ public class AdminClientConfig extends AbstractConfig {
 
     public static final String RETRIES_CONFIG = CommonClientConfigs.RETRIES_CONFIG;
 
+    // LinkedIn Hotfixes
+
+    public static final String LEAST_LOADED_NODE_ALGORITHM_CONFIG = CommonClientConfigs.LEAST_LOADED_NODE_ALGORITHM_CONFIG;
+    public static final String LEAST_LOADED_NODE_ALGORITHM_DOC = CommonClientConfigs.LEAST_LOADED_NODE_ALGORITHM_DOC;
+    public static final String DEFAULT_LEAST_LOADED_NODE_ALGORITHM = CommonClientConfigs.DEFAULT_LEAST_LOADED_NODE_ALGORITHM;
+
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG,
                                         Type.LIST,
@@ -186,6 +194,12 @@ public class AdminClientConfig extends AbstractConfig {
                                         DEFAULT_SECURITY_PROTOCOL,
                                         Importance.MEDIUM,
                                         SECURITY_PROTOCOL_DOC)
+                                .define(LEAST_LOADED_NODE_ALGORITHM_CONFIG,
+                                       Type.STRING,
+                                       DEFAULT_LEAST_LOADED_NODE_ALGORITHM,
+                                       new EnumValueValidator<>(LeastLoadedNodeAlgorithm.class),
+                                       Importance.MEDIUM,
+                                       LEAST_LOADED_NODE_ALGORITHM_DOC)
                                 .withClientSslSupport()
                                 .withClientSaslSupport();
     }

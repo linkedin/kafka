@@ -109,6 +109,13 @@ public class CommonClientConfigs {
                                                          + "retries are exhausted.";
 
 
+    public static final String LEAST_LOADED_NODE_ALGORITHM_CONFIG = "linkedin.least.loaded.node.algorithm";
+    public static final String LEAST_LOADED_NODE_ALGORITHM_DOC = "when clients look for the least loaded (from the client point of view) node to route requests to "
+                                                                 + "(usually metadata requests) - which algorithm to use. values are in class org.apache.kafka.clients "
+                                                                 + "and are currently VANILLA (picks node with least expected latency) and AT_LEAST_THREE (random out "
+                                                                 + "of 3 lowest-expected-latency nodes)";
+    public static final String DEFAULT_LEAST_LOADED_NODE_ALGORITHM = LeastLoadedNodeAlgorithm.VANILLA.name();
+
     /**
      * Postprocess the configuration so that exponential backoff is disabled when reconnect backoff
      * is explicitly configured but the maximum reconnect backoff is not explicitly configured.

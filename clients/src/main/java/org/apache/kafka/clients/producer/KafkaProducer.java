@@ -20,6 +20,7 @@ import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.KafkaClient;
+import org.apache.kafka.clients.LeastLoadedNodeAlgorithm;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -444,6 +445,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(producerConfig, time);
         ProducerMetrics metricsRegistry = new ProducerMetrics(this.metrics);
         Sensor throttleTimeSensor = Sender.throttleTimeSensor(metricsRegistry.senderMetrics);
+        LeastLoadedNodeAlgorithm leastLoadedNodeAlgorithm = LeastLoadedNodeAlgorithm.valueOf(
+            producerConfig.getString(ProducerConfig.LEAST_LOADED_NODE_ALGORITHM_CONFIG)
+        );
         KafkaClient client = kafkaClient != null ? kafkaClient : new NetworkClient(
                 new Selector(producerConfig.getLong(ProducerConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG),
                         this.metrics, time, "producer", channelBuilder, logContext),
@@ -460,7 +464,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 true,
                 apiVersions,
                 throttleTimeSensor,
-                logContext);
+                logContext,
+                leastLoadedNodeAlgorithm);
         int retries = configureRetries(producerConfig, transactionManager != null, log);
         short acks = configureAcks(producerConfig, transactionManager != null, log);
         return new Sender(logContext,

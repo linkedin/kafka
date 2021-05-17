@@ -1301,6 +1301,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(completeTopicMetadata.mkString(","),
       brokers.mkString(","), request.header.correlationId, request.header.clientId))
 
+    val brokersAsJava: java.util.List[Node] = new java.util.ArrayList[Node](brokers.size)
+    for (b: Node <- brokers) {
+      brokersAsJava.add(b)
+    }
+
     requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
        MetadataResponse.prepareResponse(
          requestVersion,

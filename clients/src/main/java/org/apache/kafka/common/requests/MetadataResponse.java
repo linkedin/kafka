@@ -41,8 +41,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Possible topic-level error codes:
@@ -418,8 +416,19 @@ public class MetadataResponse extends AbstractResponse {
         }
 
         private Map<Integer, Node> createBrokers(MetadataResponseData data) {
-            return data.brokers().valuesList().stream().map(b -> new Node(b.nodeId(), b.host(), b.port(), b.rack()))
-                    .collect(Collectors.toMap(Node::id, Function.identity()));
+            final Map<Integer, Node> brokerMap = new HashMap<>(data.brokers().size());
+            for (MetadataResponseData.MetadataResponseBroker brokerMetadata: data.brokers().valuesList()) {
+                brokerMap.put(
+                    brokerMetadata.nodeId(),
+                    new Node(
+                        brokerMetadata.nodeId(),
+                        brokerMetadata.host(),
+                        brokerMetadata.port(),
+                        brokerMetadata.rack()
+                    )
+                );
+            }
+            return brokerMap;
         }
 
         private Collection<TopicMetadata> createTopicMetadata(MetadataResponseData data) {
@@ -474,19 +483,21 @@ public class MetadataResponse extends AbstractResponse {
                                                    int clusterAuthorizedOperations) {
         MetadataResponseData responseData = new MetadataResponseData();
         responseData.setThrottleTimeMs(throttleTimeMs);
-        brokers.forEach(broker ->
+        for (Node broker: brokers) {
             responseData.brokers().add(new MetadataResponseBroker()
                 .setNodeId(broker.id())
                 .setHost(broker.host())
                 .setPort(broker.port())
-                .setRack(broker.rack()))
-        );
-
+                .setRack(broker.rack()));
+        }
         responseData.setClusterId(clusterId);
         responseData.setControllerId(controllerId);
         responseData.setClusterAuthorizedOperations(clusterAuthorizedOperations);
 
-        topics.forEach(topicMetadata -> responseData.topics().add(topicMetadata));
+        for (MetadataResponseTopic topicMetadata: topics) {
+            responseData.topics().add(topicMetadata);
+        }
+
         return new MetadataResponse(responseData, hasReliableEpoch);
     }
 

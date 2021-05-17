@@ -41,6 +41,8 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{MetadataResponse, UpdateMetadataRequest}
 import org.apache.kafka.common.security.auth.SecurityProtocol
 
+import scala.collection.mutable.ArrayBuffer
+
 /**
  *  A cache for the state (e.g., current leader) of each partition. This cache is updated through
  *  UpdateMetadataRequest from the controller. Every broker maintains the same cache, asynchronously.
@@ -83,9 +85,12 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
   // Otherwise, return LEADER_NOT_AVAILABLE for broker unavailable and missing listener (Metadata response v5 and below).
   private def getPartitionMetadata(snapshot: MetadataSnapshot, topic: String, listenerName: ListenerName, errorUnavailableEndpoints: Boolean,
                                    errorUnavailableListeners: Boolean): Option[Iterable[MetadataResponsePartition]] = {
-    snapshot.partitionStates.get(topic).map { partitions =>
-      partitions.map { case (partitionId, partitionState) =>
-        val topicPartition = new TopicPartition(topic, partitionId.toInt)
+    val result = new ArrayBuffer[MetadataResponsePartition]
+    for (partitionsMap <- snapshot.partitionStates.get(topic)) {
+      for (partitionEntry <- partitionsMap) {
+        val partitionId = partitionEntry._1.toInt
+        val partitionState = partitionEntry._2
+        val topicPartition = new TopicPartition(topic, partitionId)
         val leaderBrokerId = partitionState.leader
         val leaderEpoch = partitionState.leaderEpoch
         val maybeLeader = getAliveEndpoint(snapshot, leaderBrokerId, listenerName)
@@ -109,7 +114,7 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
               if (errorUnavailableListeners) Errors.LISTENER_NOT_FOUND else Errors.LEADER_NOT_AVAILABLE
             }
 
-            new MetadataResponsePartition()
+            result += new MetadataResponsePartition()
               .setErrorCode(error.code)
               .setPartitionIndex(partitionId.toInt)
               .setLeaderId(MetadataResponse.NO_LEADER_ID)
@@ -131,7 +136,7 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
               Errors.NONE
             }
 
-            new MetadataResponsePartition()
+            result += new MetadataResponsePartition()
               .setErrorCode(error.code)
               .setPartitionIndex(partitionId.toInt)
               .setLeaderId(maybeLeader.map(_.id()).getOrElse(MetadataResponse.NO_LEADER_ID))
@@ -142,6 +147,10 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
         }
       }
     }
+    if (result.isEmpty)
+      None
+    else
+      Option(result)
   }
 
   /**
@@ -169,9 +178,11 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
                        errorUnavailableEndpoints: Boolean = false,
                        errorUnavailableListeners: Boolean = false): Seq[MetadataResponseTopic] = {
     val snapshot = metadataSnapshot
-    topics.toSeq.flatMap { topic =>
-      getPartitionMetadata(snapshot, topic, listenerName, errorUnavailableEndpoints, errorUnavailableListeners).map { partitionMetadata =>
-        new MetadataResponseTopic()
+    val topicMetadata = new ArrayBuffer[MetadataResponseTopic]
+    for (topic <- topics) {
+      val partitionMetadataSet = getPartitionMetadata(snapshot, topic, listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
+      for (partitionMetadata <- partitionMetadataSet) {
+        topicMetadata += new MetadataResponseTopic()
           .setErrorCode(Errors.NONE.code)
           .setName(topic)
           .setTopicId(snapshot.topicIds.getOrElse(topic, Uuid.ZERO_UUID))
@@ -179,6 +190,7 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
           .setPartitions(partitionMetadata.toBuffer.asJava)
       }
     }
+    topicMetadata
   }
 
   override def getAllTopics(): Set[String] = {

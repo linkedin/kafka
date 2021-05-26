@@ -87,8 +87,6 @@ public class MemoryRecordsBuilder {
     private MemoryRecords builtRecords;
     private boolean aborted = false;
 
-    private boolean enableBatchingInPassthrough = true;
-
     public MemoryRecordsBuilder(ByteBufferOutputStream bufferStream,
                                 byte magic,
                                 CompressionType compressionType,
@@ -140,61 +138,6 @@ public class MemoryRecordsBuilder {
         bufferStream.position(initialPosition + batchHeaderSizeInBytes);
         this.bufferStream = bufferStream;
         this.appendStream = new DataOutputStream(compressionType.wrapForOutput(this.bufferStream, magic));
-    }
-
-    public MemoryRecordsBuilder(ByteBufferOutputStream bufferStream,
-        byte magic,
-        CompressionType compressionType,
-        TimestampType timestampType,
-        long baseOffset,
-        long logAppendTime,
-        long producerId,
-        short producerEpoch,
-        int baseSequence,
-        boolean isTransactional,
-        boolean isControlBatch,
-        int partitionLeaderEpoch,
-        int writeLimit,
-        boolean enableBatchingInPassthrough) {
-        if (magic > RecordBatch.MAGIC_VALUE_V0 && timestampType == TimestampType.NO_TIMESTAMP_TYPE)
-            throw new IllegalArgumentException("TimestampType must be set for magic >= 0");
-        if (magic < RecordBatch.MAGIC_VALUE_V2) {
-            if (isTransactional)
-                throw new IllegalArgumentException("Transactional records are not supported for magic " + magic);
-            if (isControlBatch)
-                throw new IllegalArgumentException("Control records are not supported for magic " + magic);
-        }
-
-        this.magic = magic;
-        this.timestampType = timestampType;
-        this.baseOffset = baseOffset;
-        this.logAppendTime = logAppendTime;
-        this.numRecords = 0;
-        this.uncompressedRecordsSizeInBytes = 0;
-        this.actualCompressionRatio = 1;
-        this.maxTimestamp = RecordBatch.NO_TIMESTAMP;
-        this.producerId = producerId;
-        this.producerEpoch = producerEpoch;
-        this.baseSequence = baseSequence;
-        this.isTransactional = isTransactional;
-        this.isControlBatch = isControlBatch;
-        this.partitionLeaderEpoch = partitionLeaderEpoch;
-        this.writeLimit = writeLimit;
-        this.initialPosition = bufferStream.position();
-
-        if (compressionType == CompressionType.PASSTHROUGH) {
-            usePassthrough = true;
-            this.compressionType = CompressionType.NONE;
-        } else {
-            this.compressionType = compressionType;
-        }
-
-        this.batchHeaderSizeInBytes = usePassthrough ? 0 : AbstractRecords.recordBatchHeaderSizeInBytes(magic, this.compressionType);
-
-        bufferStream.position(initialPosition + batchHeaderSizeInBytes);
-        this.bufferStream = bufferStream;
-        this.appendStream = new DataOutputStream(compressionType.wrapForOutput(this.bufferStream, magic));
-        this.enableBatchingInPassthrough = enableBatchingInPassthrough;
     }
 
     /**
@@ -232,26 +175,7 @@ public class MemoryRecordsBuilder {
                                 int writeLimit) {
         this(new ByteBufferOutputStream(buffer), magic, compressionType, timestampType, baseOffset, logAppendTime,
                 producerId, producerEpoch, baseSequence, isTransactional, isControlBatch, partitionLeaderEpoch,
-                writeLimit, true);
-    }
-
-    public MemoryRecordsBuilder(ByteBuffer buffer,
-                                byte magic,
-                                CompressionType compressionType,
-                                TimestampType timestampType,
-                                long baseOffset,
-                                long logAppendTime,
-                                long producerId,
-                                short producerEpoch,
-                                int baseSequence,
-                                boolean isTransactional,
-                                boolean isControlBatch,
-                                int partitionLeaderEpoch,
-                                int writeLimit,
-                                boolean enableBatchingInPassthrough) {
-        this(new ByteBufferOutputStream(buffer), magic, compressionType, timestampType, baseOffset, logAppendTime,
-                producerId, producerEpoch, baseSequence, isTransactional, isControlBatch, partitionLeaderEpoch,
-                writeLimit, enableBatchingInPassthrough);
+                writeLimit);
     }
 
     public ByteBuffer buffer() {
@@ -868,13 +792,8 @@ public class MemoryRecordsBuilder {
 
         // For passthrough V2, ensure one producerBatch only has one DefaultRecordBatch, and since
         // in this case, DefaultRecordBatch is the value part of a DefaultRecord, so we only allow one record
-        // For passthrough V1, ideally we can append multiple passthrough records to the same batch, it
-        // will not work when we are migrating from V1 to V2 message format as we cannot append V1 and V2 messages
-        // in the same batch.
-        // If enableBatchingInPassthrough is false, turn off batching in passthrough mode.
-        if (usePassthrough && !enableBatchingInPassthrough) {
+        if (magic >= RecordBatch.MAGIC_VALUE_V2 && usePassthrough)
             return false;
-        }
 
         final int recordSize;
         if (magic < RecordBatch.MAGIC_VALUE_V2) {

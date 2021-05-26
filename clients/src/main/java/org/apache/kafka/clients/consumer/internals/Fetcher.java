@@ -26,7 +26,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
-import org.apache.kafka.clients.consumer.PassThroughConsumerRecord;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
@@ -1153,13 +1152,6 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                 (enableShallowIteration ? ((AbstractLegacyRecordBatch) record).outerRecord().buffer() : record.value());
             byte[] valueByteArray = valueBytes == null ? null : Utils.toArray(valueBytes);
             V value = valueBytes == null ? null : this.valueDeserializer.deserialize(partition.topic(), headers, valueByteArray);
-            if (enableShallowIteration) {
-                return new PassThroughConsumerRecord<>(partition.topic(), partition.partition(), offset, timestamp,
-                    timestampType, record.checksumOrNull(),
-                    keyByteArray == null ? ConsumerRecord.NULL_SIZE : keyByteArray.length,
-                    valueByteArray == null ? ConsumerRecord.NULL_SIZE : valueByteArray.length, key, value, headers,
-                    batch.magic());
-            }
             return new ConsumerRecord<>(partition.topic(), partition.partition(), offset,
                                         timestamp, timestampType, record.checksumOrNull(),
                                         keyByteArray == null ? ConsumerRecord.NULL_SIZE : keyByteArray.length,

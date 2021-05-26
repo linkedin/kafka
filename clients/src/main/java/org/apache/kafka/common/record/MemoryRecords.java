@@ -445,20 +445,6 @@ public class MemoryRecords extends AbstractRecords {
     }
 
     public static MemoryRecordsBuilder builder(ByteBuffer buffer,
-                                                byte magic,
-                                                CompressionType compressionType,
-                                                TimestampType timestampType,
-                                                long baseOffset,
-                                                boolean enableBatchingInPassthrough) {
-        long logAppendTime = RecordBatch.NO_TIMESTAMP;
-        if (timestampType == TimestampType.LOG_APPEND_TIME)
-            logAppendTime = System.currentTimeMillis();
-        return builder(buffer, magic, compressionType, timestampType, baseOffset, logAppendTime,
-                RecordBatch.NO_PRODUCER_ID, RecordBatch.NO_PRODUCER_EPOCH, RecordBatch.NO_SEQUENCE, false,
-                RecordBatch.NO_PARTITION_LEADER_EPOCH, enableBatchingInPassthrough);
-    }
-
-    public static MemoryRecordsBuilder builder(ByteBuffer buffer,
                                                byte magic,
                                                CompressionType compressionType,
                                                TimestampType timestampType,
@@ -510,22 +496,6 @@ public class MemoryRecords extends AbstractRecords {
     }
 
     public static MemoryRecordsBuilder builder(ByteBuffer buffer,
-                                                byte magic,
-                                                CompressionType compressionType,
-                                                TimestampType timestampType,
-                                                long baseOffset,
-                                                long logAppendTime,
-                                                long producerId,
-                                                short producerEpoch,
-                                                int baseSequence,
-                                                boolean isTransactional,
-                                                int partitionLeaderEpoch,
-                                                boolean enableBatchingInPassthrough) {
-        return builder(buffer, magic, compressionType, timestampType, baseOffset,
-              logAppendTime, producerId, producerEpoch, baseSequence, isTransactional, false, partitionLeaderEpoch, enableBatchingInPassthrough);
-    }
-
-    public static MemoryRecordsBuilder builder(ByteBuffer buffer,
                                                byte magic,
                                                CompressionType compressionType,
                                                TimestampType timestampType,
@@ -540,24 +510,6 @@ public class MemoryRecords extends AbstractRecords {
         return new MemoryRecordsBuilder(buffer, magic, compressionType, timestampType, baseOffset,
                 logAppendTime, producerId, producerEpoch, baseSequence, isTransactional, isControlBatch, partitionLeaderEpoch,
                 buffer.remaining());
-    }
-
-    public static MemoryRecordsBuilder builder(ByteBuffer buffer,
-                                                byte magic,
-                                                CompressionType compressionType,
-                                                TimestampType timestampType,
-                                                long baseOffset,
-                                                long logAppendTime,
-                                                long producerId,
-                                                short producerEpoch,
-                                                int baseSequence,
-                                                boolean isTransactional,
-                                                boolean isControlBatch,
-                                                int partitionLeaderEpoch,
-                                                boolean enableBatchingInPassthrough) {
-        return new MemoryRecordsBuilder(buffer, magic, compressionType, timestampType, baseOffset,
-                logAppendTime, producerId, producerEpoch, baseSequence, isTransactional, isControlBatch, partitionLeaderEpoch,
-                buffer.remaining(), enableBatchingInPassthrough);
     }
 
     public static MemoryRecords withRecords(CompressionType compressionType, SimpleRecord... records) {

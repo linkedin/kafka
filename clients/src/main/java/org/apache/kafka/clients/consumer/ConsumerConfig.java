@@ -288,7 +288,7 @@ public class ConsumerConfig extends AbstractConfig {
     public static final boolean DEFAULT_ALLOW_AUTO_CREATE_TOPICS = false;
 
     /** <code>skip.metadata.cache.update.upon.unassign</code> */
-    public static final String SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN = "skip.metadata.cache.update.upon.unassign";
+    public static final String SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN = "linkedin.skip.metadata.cache.update.upon.unassign";
     private static final String SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN_DOC = "Skip metadata cache update if the new " +
             "partition assignment passed to the <code>assign</code> method is a subset of the current assignment since " +
             "the consumer instance should already have metadata for assigned partitions.";

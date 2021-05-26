@@ -28,15 +28,13 @@ import joptsimple.OptionParser
 import kafka.consumer.BaseConsumerRecord
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils.{CommandLineUtils, CoreUtils, Logging, Whitelist}
-import org.apache.kafka.clients.consumer.{CommitFailedException, Consumer, ConsumerConfig, ConsumerRebalanceListener, ConsumerRecord, KafkaConsumer, OffsetAndMetadata, PassThroughConsumerRecord}
+import org.apache.kafka.clients.consumer.{CommitFailedException, Consumer, ConsumerConfig, ConsumerRebalanceListener, ConsumerRecord, KafkaConsumer, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.internals.ErrorLoggingCallback
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import org.apache.kafka.common.serialization.ByteArrayDeserializer
 import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.errors.WakeupException
-import org.apache.kafka.common.header.Headers
-import org.apache.kafka.common.header.internals.{RecordHeader, RecordHeaders}
 import org.apache.kafka.common.record.RecordBatch
 
 import scala.collection.JavaConverters._
@@ -71,22 +69,6 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
   private var offsetCommitIntervalMs = 0
   private var abortOnSendFailure: Boolean = true
   @volatile private var exitingOnSendFailure: Boolean = false
-  private var passThroughEnabled: Boolean = false
-  private val PASS_THROUGH_MAGIC_VALUE = "__passThroughMagicValue";
-
-  val recordHeadersV1: Headers = {
-    val magicValueV1 = Array[Byte] {
-      RecordBatch.MAGIC_VALUE_V1
-    }
-    new RecordHeaders().add(new RecordHeader(PASS_THROUGH_MAGIC_VALUE, magicValueV1))
-  }
-
-  val recordHeadersV2: Headers = {
-    val magicValueV2 = Array[Byte] {
-      RecordBatch.MAGIC_VALUE_V2
-    }
-    new RecordHeaders().add(new RecordHeader(PASS_THROUGH_MAGIC_VALUE, magicValueV2))
-  }
 
   // If a message send failed after retries are exhausted. The offset of the messages will also be removed from
   // the unacked offset list to avoid offset commit being stuck on that offset. In this case, the offset of that
@@ -232,7 +214,6 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
       producerProps.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
       producerProps.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
       if (options.has(passthroughCompressionOpt)) {
-        passThroughEnabled = true
         consumerProps.setProperty("enable.shallow.iterator", "true")
         producerProps.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG, "passthrough")
       }
@@ -272,11 +253,7 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
           else
             CoreUtils.createObject[MirrorMakerMessageHandler](customMessageHandlerClass)
         } else {
-          if (passThroughEnabled) {
-              passThroughMirrorMakerMessageHandler
-          } else  {
-              defaultMirrorMakerMessageHandler
-          }
+          defaultMirrorMakerMessageHandler
         }
       }
     } catch {
@@ -385,17 +362,6 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
         record.value,
         record.headers)
 
-    private def toBaseConsumerRecordWithPassThrough(record: PassThroughConsumerRecord[Array[Byte], Array[Byte]]): BaseConsumerRecord =
-      BaseConsumerRecord(record.topic,
-        record.partition,
-        record.offset,
-        record.timestamp,
-        record.timestampType,
-        record.key,
-        record.value,
-        record.headers,
-        record.magic)
-
     override def run() {
       info("Starting mirror maker thread " + threadName)
       try {
@@ -411,13 +377,7 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
               } else {
                 trace("Sending message with null value and offset %d.".format(data.offset))
               }
-              val records = {
-                if (passThroughEnabled) {
-                  messageHandler.handle(toBaseConsumerRecordWithPassThrough(data.asInstanceOf[PassThroughConsumerRecord[Array[Byte], Array[Byte]]]))
-                } else {
-                  messageHandler.handle(toBaseConsumerRecord(data))
-                }
-              }
+              val records = messageHandler.handle(toBaseConsumerRecord(data))
               records.asScala.foreach(producer.send)
               maybeFlushAndCommitOffsets()
             }
@@ -624,20 +584,6 @@ object MirrorMaker extends Logging with KafkaMetricsGroup {
     override def handle(record: BaseConsumerRecord): util.List[ProducerRecord[Array[Byte], Array[Byte]]] = {
       val timestamp: java.lang.Long = if (record.timestamp == RecordBatch.NO_TIMESTAMP) null else record.timestamp
       Collections.singletonList(new ProducerRecord(record.topic, null, timestamp, record.key, record.value, record.headers))
-    }
-  }
-
-  private[tools] object passThroughMirrorMakerMessageHandler extends MirrorMakerMessageHandler {
-    override def handle(record: BaseConsumerRecord): util.List[ProducerRecord[Array[Byte], Array[Byte]]] = {
-      val timestamp: java.lang.Long = if (record.timestamp == RecordBatch.NO_TIMESTAMP) null else record.timestamp
-      // It is assumed that we don't have message format V0 anymore at Linkedin
-      if (record.magic.equals(RecordBatch.MAGIC_VALUE_V1)) {
-        Collections.singletonList(new ProducerRecord(record.topic, null, timestamp, record.key, record.value, recordHeadersV1))
-      } else if (record.magic.equals(RecordBatch.MAGIC_VALUE_V2)) {
-        Collections.singletonList(new ProducerRecord(record.topic, null, timestamp, record.key, record.value, recordHeadersV2))
-      } else {
-        throw new IllegalArgumentException("Record Batch with magic value : " + record.magic + ", is not supported in PassThrough mode")
-      }
     }
   }
 

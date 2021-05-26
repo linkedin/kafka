@@ -242,11 +242,6 @@ public class ProducerConfig extends AbstractConfig {
     private static final String ALLOW_AUTO_CREATE_TOPICS_DOC = "The client-side (producer) permission to allow auto-topic creation. Both the client-side and the broker-side should enable auto-topic creation in order for a topic to be automatically created";
     public static final boolean DEFAULT_ALLOW_AUTO_CREATE_TOPICS = false;
 
-    /** <code>enable.passthrough.batching</code> */
-    public static final String ENABLE_PASSTHROUGH_BATCHING_CONFIG = "enable.passthrough.batching";
-    private static final String ENABLE_PASSTHROUGH_BATCHING_DOC = "The client-side (producer) permission to enable record batching in passthrough mode";
-    public static final boolean DEFAULT_ENABLE_PASSTHROUGH_BATCHING = true;
-
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG, Type.LIST, Collections.emptyList(), new ConfigDef.NonNullValidator(), Importance.HIGH, CommonClientConfigs.BOOTSTRAP_SERVERS_DOC)
                                 .define(BUFFER_MEMORY_CONFIG, Type.LONG, 32 * 1024 * 1024L, atLeast(0L), Importance.HIGH, BUFFER_MEMORY_DOC)
@@ -377,10 +372,7 @@ public class ProducerConfig extends AbstractConfig {
                                         Type.BOOLEAN,
                                         DEFAULT_ALLOW_AUTO_CREATE_TOPICS,
                                         Importance.MEDIUM,
-                                        ALLOW_AUTO_CREATE_TOPICS_DOC)
-                                .define(ENABLE_PASSTHROUGH_BATCHING_CONFIG,
-                                        Type.BOOLEAN, DEFAULT_ENABLE_PASSTHROUGH_BATCHING,
-                                        Importance.MEDIUM, ENABLE_PASSTHROUGH_BATCHING_DOC);
+                                        ALLOW_AUTO_CREATE_TOPICS_DOC);
     }
 
     @Override

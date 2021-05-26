@@ -30,5 +30,4 @@ case class BaseConsumerRecord(topic: String,
                               timestampType: TimestampType = TimestampType.NO_TIMESTAMP_TYPE,
                               key: Array[Byte],
                               value: Array[Byte],
-                              headers: Headers = new RecordHeaders(),
-                              magic: Byte = -1)
+                              headers: Headers = new RecordHeaders())

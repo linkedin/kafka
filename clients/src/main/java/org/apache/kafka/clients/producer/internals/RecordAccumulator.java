@@ -69,8 +69,6 @@ import org.slf4j.Logger;
  */
 public final class RecordAccumulator {
 
-    private static final String PASS_THROUGH_MAGIC_VALUE = "__passThroughMagicValue";
-
     private final Logger log;
     private volatile boolean closed;
     private final AtomicInteger flushesInProgress;
@@ -90,7 +88,6 @@ public final class RecordAccumulator {
     private int drainIndex;
     private final TransactionManager transactionManager;
     private long nextBatchExpiryTimeMs = Long.MAX_VALUE; // the earliest time (absolute) a batch will expire.
-    private final boolean enableBatchingInPassthrough;
 
     /**
      * Create a new record accumulator
@@ -121,23 +118,6 @@ public final class RecordAccumulator {
                              ApiVersions apiVersions,
                              TransactionManager transactionManager,
                              BufferPool bufferPool) {
-        this(logContext, batchSize, compression, lingerMs, retryBackoffMs, deliveryTimeoutMs, true,
-            metrics, metricGrpName, time, apiVersions, transactionManager, bufferPool);
-    }
-
-    public RecordAccumulator(LogContext logContext,
-                            int batchSize,
-                            CompressionType compression,
-                            long lingerMs,
-                            long retryBackoffMs,
-                            long deliveryTimeoutMs,
-                            boolean enableBatchingInPassthrough,
-                            Metrics metrics,
-                            String metricGrpName,
-                            Time time,
-                            ApiVersions apiVersions,
-                            TransactionManager transactionManager,
-                            BufferPool bufferPool) {
         this.log = logContext.logger(RecordAccumulator.class);
         this.drainIndex = 0;
         this.closed = false;
@@ -148,7 +128,6 @@ public final class RecordAccumulator {
         this.lingerMs = lingerMs;
         this.retryBackoffMs = retryBackoffMs;
         this.deliveryTimeoutMs = deliveryTimeoutMs;
-        this.enableBatchingInPassthrough = enableBatchingInPassthrough;
         this.batches = new CopyOnWriteMap<>();
         this.free = bufferPool;
         this.incomplete = new IncompleteBatches();
@@ -243,20 +222,6 @@ public final class RecordAccumulator {
                     return appendResult;
                 }
 
-                // HOTFIX for enabling mirroring data with passthrough compression with mixed message format
-                // In PassThrough mode, KMM will set a header with key = "__passThroughMagicValue" and value = magic byte of the message.
-                // This code enables passthrough were source is in 0.10 format and destination is in 2.0 format (not the other way round).
-                if (compression.equals(CompressionType.PASSTHROUGH)) {
-                    for (Header header : headers) {
-                        if (header.key().equals(PASS_THROUGH_MAGIC_VALUE)) {
-                            byte srcMagicValue = header.value()[0];
-                            if (maxUsableMagic > srcMagicValue) {
-                                maxUsableMagic = srcMagicValue;
-                            }
-                        }
-                    }
-                }
-
                 MemoryRecordsBuilder recordsBuilder = recordsBuilder(buffer, maxUsableMagic);
                 ProducerBatch batch = new ProducerBatch(tp, recordsBuilder, time.milliseconds());
                 FutureRecordMetadata future = Utils.notNull(batch.tryAppend(timestamp, key, value, headers, callback, time.milliseconds()));
@@ -280,7 +245,7 @@ public final class RecordAccumulator {
             throw new UnsupportedVersionException("Attempting to use idempotence with a broker which does not " +
                 "support the required message format (v2). The broker must be version 0.11 or later.");
         }
-        return MemoryRecords.builder(buffer, maxUsableMagic, compression, TimestampType.CREATE_TIME, 0L, enableBatchingInPassthrough);
+        return MemoryRecords.builder(buffer, maxUsableMagic, compression, TimestampType.CREATE_TIME, 0L);
     }
 
     /**

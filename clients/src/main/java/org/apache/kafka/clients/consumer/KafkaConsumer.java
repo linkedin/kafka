@@ -822,6 +822,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
             this.kafkaConsumerMetrics = new KafkaConsumerMetrics(metrics, metricGrpPrefix);
             this.skipMetadataCacheUpdateUponUnassignment = config.getBoolean(ConsumerConfig.SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN);
+
             config.logUnused();
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics, time.milliseconds());
             log.debug("Kafka consumer initialized");

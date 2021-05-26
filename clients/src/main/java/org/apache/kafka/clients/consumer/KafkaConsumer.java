@@ -597,6 +597,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     // to keep from repeatedly scanning subscriptions in poll(), cache the result during metadata updates
     private boolean cachedSubscriptionHashAllFetchPositions;
 
+    private final boolean skipMetadataCacheUpdateUponUnassignment;
+
     /**
      * A consumer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
      * are documented <a href="http://kafka.apache.org/documentation.html#consumerconfigs" >here</a>. Values can be
@@ -819,7 +821,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     apiVersions);
 
             this.kafkaConsumerMetrics = new KafkaConsumerMetrics(metrics, metricGrpPrefix);
-
+            this.skipMetadataCacheUpdateUponUnassignment = config.getBoolean(ConsumerConfig.SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN);
             config.logUnused();
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics, time.milliseconds());
             log.debug("Kafka consumer initialized");
@@ -867,6 +869,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.assignors = assignors;
         this.groupId = groupId;
         this.kafkaConsumerMetrics = new KafkaConsumerMetrics(metrics, "consumer");
+        this.skipMetadataCacheUpdateUponUnassignment = false;
     }
 
     private static String buildClientId(String configuredClientId, GroupRebalanceConfig rebalanceConfig) {
@@ -1131,8 +1134,12 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     this.coordinator.maybeAutoCommitOffsetsAsync(time.milliseconds());
 
                 log.info("Subscribed to partition(s): {}", Utils.join(partitions, ", "));
-                if (this.subscriptions.assignFromUser(new HashSet<>(partitions)))
-                    metadata.requestUpdateForNewTopics();
+                boolean skipMetadataCacheUpdate = this.skipMetadataCacheUpdateUponUnassignment && this.subscriptions.isAllAssigned(partitions);
+                if (this.subscriptions.assignFromUser(new HashSet<>(partitions))) {
+                    if (!skipMetadataCacheUpdate) {
+                        metadata.requestUpdateForNewTopics();
+                    }
+                }
             }
         } finally {
             release();

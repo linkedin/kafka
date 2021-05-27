@@ -1876,9 +1876,9 @@ class KafkaController(val config: KafkaConfig,
     } else {
       val reassignmentResults = mutable.Map.empty[TopicPartition, ApiError]
       val partitionsToReassign = mutable.Map.empty[TopicPartition, ReplicaAssignment]
-
+      val noNewPartitionBrokers = partitionUnassignableBrokerIds.toSet
       reassignments.foreach { case (tp, targetReplicas) =>
-        if (replicasAreValid(tp, targetReplicas)) {
+        if (replicasAreValid(tp, targetReplicas, noNewPartitionBrokers)) {
           maybeBuildReassignment(tp, targetReplicas) match {
             case Some(context) => partitionsToReassign.put(tp, context)
             case None => reassignmentResults.put(tp, new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
@@ -1897,7 +1897,8 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
-  private def replicasAreValid(topicPartition: TopicPartition, replicasOpt: Option[Seq[Int]]): Boolean = {
+  private def replicasAreValid(topicPartition: TopicPartition, replicasOpt: Option[Seq[Int]],
+    noNewPartitionBrokers: Set[Int]): Boolean = {
     replicasOpt match {
       case Some(replicas) =>
         val replicaSet = replicas.toSet
@@ -1905,7 +1906,10 @@ class KafkaController(val config: KafkaConfig,
           false
         else if (replicas.exists(_ < 0))
           false
-        else {
+        else if (!replicaSet.intersect(noNewPartitionBrokers).isEmpty) {
+          warn(s"reject reassignment of $topicPartition to unassignable hosts $noNewPartitionBrokers")
+          false
+        } else {
           // Ensure that any new replicas are among the live brokers
           val currentAssignment = controllerContext.partitionFullReplicaAssignment(topicPartition)
           val newAssignment = currentAssignment.reassignTo(replicas)

@@ -645,7 +645,7 @@ public class SubscriptionState {
         return assignment.contains(tp);
     }
 
-    public synchronized boolean isAllAssigned(Collection<TopicPartition> tps) {
+    public synchronized boolean areAllAssigned(Collection<TopicPartition> tps) {
         return assignment.containsAll(tps);
     }
 

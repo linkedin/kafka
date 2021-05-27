@@ -849,6 +849,29 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                   long requestTimeoutMs,
                   int defaultApiTimeoutMs,
                   List<ConsumerPartitionAssignor> assignors,
+                  String groupId) {
+        this(logContext, clientId, coordinator, keyDeserializer, valueDeserializer, fetcher, interceptors, time, client,
+                metrics, subscriptions, metadata, retryBackoffMs, requestTimeoutMs, defaultApiTimeoutMs, assignors, groupId,
+                false);
+    }
+
+    // visible for testing
+    KafkaConsumer(LogContext logContext,
+                  String clientId,
+                  ConsumerCoordinator coordinator,
+                  Deserializer<K> keyDeserializer,
+                  Deserializer<V> valueDeserializer,
+                  Fetcher<K, V> fetcher,
+                  ConsumerInterceptors<K, V> interceptors,
+                  Time time,
+                  ConsumerNetworkClient client,
+                  Metrics metrics,
+                  SubscriptionState subscriptions,
+                  ConsumerMetadata metadata,
+                  long retryBackoffMs,
+                  long requestTimeoutMs,
+                  int defaultApiTimeoutMs,
+                  List<ConsumerPartitionAssignor> assignors,
                   String groupId,
                   boolean skipMetadataCacheUpdateUponUnassignment) {
         this.log = logContext.logger(getClass());
@@ -1134,7 +1157,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     this.coordinator.maybeAutoCommitOffsetsAsync(time.milliseconds());
 
                 log.info("Subscribed to partition(s): {}", Utils.join(partitions, ", "));
-                boolean skipMetadataCacheUpdate = this.skipMetadataCacheUpdateUponUnassignment && this.subscriptions.isAllAssigned(partitions);
+                boolean skipMetadataCacheUpdate = this.skipMetadataCacheUpdateUponUnassignment && this.subscriptions.areAllAssigned(partitions);
                 if (this.subscriptions.assignFromUser(new HashSet<>(partitions))) {
                     if (!skipMetadataCacheUpdate) {
                         metadata.requestUpdateForNewTopics();

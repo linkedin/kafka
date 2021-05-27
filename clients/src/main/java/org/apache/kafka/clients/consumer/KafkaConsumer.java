@@ -62,7 +62,6 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Timer;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
-
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collection;
@@ -596,7 +595,6 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
     // to keep from repeatedly scanning subscriptions in poll(), cache the result during metadata updates
     private boolean cachedSubscriptionHashAllFetchPositions;
-
     private final boolean skipMetadataCacheUpdateUponUnassignment;
 
     /**
@@ -851,7 +849,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                   long requestTimeoutMs,
                   int defaultApiTimeoutMs,
                   List<ConsumerPartitionAssignor> assignors,
-                  String groupId) {
+                  String groupId,
+                  boolean skipMetadataCacheUpdateUponUnassignment) {
         this.log = logContext.logger(getClass());
         this.clientId = clientId;
         this.coordinator = coordinator;
@@ -870,7 +869,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.assignors = assignors;
         this.groupId = groupId;
         this.kafkaConsumerMetrics = new KafkaConsumerMetrics(metrics, "consumer");
-        this.skipMetadataCacheUpdateUponUnassignment = false;
+        this.skipMetadataCacheUpdateUponUnassignment = skipMetadataCacheUpdateUponUnassignment;
     }
 
     private static String buildClientId(String configuredClientId, GroupRebalanceConfig rebalanceConfig) {

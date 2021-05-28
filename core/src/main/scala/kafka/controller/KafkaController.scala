@@ -880,7 +880,11 @@ class KafkaController(val config: KafkaConfig,
     //    between the moment this broker started and right now when it becomes controller again.
     loadMinIsrForTopics(controllerContext.allTopics)
 
+    // scan partitions of all topics and ensure they don't lie on partitionUnassignableBrokerIds
+    // the controllerContext.partitionAssignments is still not initialized yet
+    // thus every single partition will be checked inside rearrangePartitionReplicaAssignmentForNewPartitions
     rearrangePartitionReplicaAssignmentForNewPartitions(controllerContext.allTopics.toSet)
+
     registerPartitionModificationsHandlers(controllerContext.allTopics.toSeq)
     getReplicaAssignmentPolicyCompliant(controllerContext.allTopics.toSet).foreach {
       case (topicPartition, replicaAssignment) =>

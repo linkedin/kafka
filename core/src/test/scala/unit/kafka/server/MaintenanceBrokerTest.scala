@@ -18,13 +18,14 @@
 package kafka.server
 
 import java.util.{Optional, Properties}
-
 import kafka.server.KafkaConfig.fromProps
 import kafka.utils.CoreUtils._
 import kafka.utils.TestUtils
 import kafka.utils.TestUtils._
 import kafka.zk.ZooKeeperTestHarness
 import org.apache.kafka.clients.admin._
+import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.InvalidReplicaAssignmentException
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
 
@@ -32,7 +33,8 @@ import scala.collection.JavaConverters._
 import org.junit.Assert._
 import org.junit.{After, Test}
 
-import scala.collection.Map
+import scala.collection.{Map, Seq}
+import scala.concurrent.ExecutionException
 
 /**
   * This is the main test which ensure maintenance broker work correctly.
@@ -171,6 +173,71 @@ class MaintenanceBrokerTest extends ZooKeeperTestHarness {
 
     client.close()
   }
+
+  @Test
+  def testAddPartitionByAdminZkClientShouldHonorMaintenanceBrokers(): Unit = {
+    brokers = (0 to 2).map { id => createServer(fromProps(createBrokerConfig(id, zkConnect))) }
+
+    TestUtils.waitUntilControllerElected(zkClient)
+    // setting broker 1 to not take new topic partitions
+    setMaintenanceBrokers(Seq(1))
+
+    // create topic using admin client
+    val topic = "topic1"
+    TestUtils.createTopic(zkClient, topic, 3, 2, brokers)
+
+    assertTrue("topic1 should not be in broker 1", ensureTopicNotInBrokers("topic1", Set(1)))
+
+    val existingAssignment = zkClient.getFullReplicaAssignmentForTopics(Set(topic)).map {
+      case (topicPartition, assignment) => topicPartition.partition -> assignment
+    }
+    val allBrokers = adminZkClient.getBrokerMetadatas()
+    val newPartitionsCount = 5
+    adminZkClient.addPartitions(topic, existingAssignment, allBrokers, 5)
+    (0 until newPartitionsCount).map { i =>
+      TestUtils.waitUntilMetadataIsPropagated(brokers, topic, i)
+      i -> TestUtils.waitUntilLeaderIsElectedOrChanged(zkClient, topic, i)
+    }
+
+    assertTrue("topic1 should not be in broker 1 after increasing partition count",
+      ensureTopicNotInBrokers("topic1", Set(1)))
+  }
+
+  @Test
+  def testPartitionReassignmentShouldHonorMaintenanceBrokers(): Unit = {
+    brokers = (0 to 2).map { id => createServer(fromProps(createBrokerConfig(id, zkConnect))) }
+
+    TestUtils.waitUntilControllerElected(zkClient)
+    // setting broker 1 to not take new topic partitions
+    setMaintenanceBrokers(Seq(1))
+
+    // create topic using admin client
+    val topic = "topic1"
+    TestUtils.createTopic(zkClient, topic, 1, 2, brokers)
+    assertTrue("topic1 should not be in broker 1", ensureTopicNotInBrokers("topic1", Set(1)))
+
+    // get the admin client
+    val adminClientConfig = new Properties
+    val brokerList = TestUtils.bootstrapServers(brokers, ListenerName.forSecurityProtocol(SecurityProtocol.PLAINTEXT))
+    adminClientConfig.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
+    val client = AdminClient.create(adminClientConfig)
+
+    val reassignmentsResult = client.alterPartitionReassignments(Map(reassignmentEntry(new TopicPartition(topic, 0), Seq(0, 1))).asJava)
+    var reassignmentFailed = false
+    try {
+      reassignmentsResult.all().get()
+    } catch {
+      case e : ExecutionException =>
+        assertTrue(e.getCause.isInstanceOf[InvalidReplicaAssignmentException])
+        reassignmentFailed = true
+    }
+    assertTrue("the partition reassignment should have failed", reassignmentFailed)
+    client.close()
+  }
+
+  def reassignmentEntry(tp: TopicPartition, replicas: Seq[Int]): (TopicPartition, java.util.Optional[NewPartitionReassignment]) =
+    tp -> Optional.of(new NewPartitionReassignment((replicas.map(_.asInstanceOf[Integer]).asJava)))
+
 
   @Test
   def testTopicCreatedInZkShouldBeRearrangedForMaintenanceBrokers(): Unit = {

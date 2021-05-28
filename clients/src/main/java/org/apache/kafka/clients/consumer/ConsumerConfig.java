@@ -299,6 +299,14 @@ public class ConsumerConfig extends AbstractConfig {
     public static final boolean DEFAULT_ALLOW_AUTO_CREATE_TOPICS = false;
 
     // LinkedIn Hotfixes
+    /** <code>skip.metadata.cache.update.upon.unassign</code> */
+    public static final String SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN = "linkedin.skip.metadata.cache.update.upon.unassign";
+    private static final String SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN_DOC = "Skip metadata cache update if the new " +
+            "partition assignment passed to the <code>assign</code> method is a subset of the current assignment since " +
+            "the consumer instance should already have metadata for assigned partitions.";
+    public static final boolean DEFAULT_SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN = false;
+
+    // LinkedIn Hotfixes
 
     public static final String LEAST_LOADED_NODE_ALGORITHM_CONFIG = CommonClientConfigs.LEAST_LOADED_NODE_ALGORITHM_CONFIG;
     public static final String LEAST_LOADED_NODE_ALGORITHM_DOC = CommonClientConfigs.LEAST_LOADED_NODE_ALGORITHM_DOC;
@@ -532,6 +540,11 @@ public class ConsumerConfig extends AbstractConfig {
                                         DEFAULT_ALLOW_AUTO_CREATE_TOPICS,
                                         Importance.MEDIUM,
                                         ALLOW_AUTO_CREATE_TOPICS_DOC)
+                                .define(SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN,
+                                        Type.BOOLEAN,
+                                        DEFAULT_SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN,
+                                        Importance.LOW,
+                                        SKIP_METADATA_CACHE_UPDATE_UPON_UNASSIGN_DOC)
                                 // security support
                                 .define(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
                                         Type.STRING,

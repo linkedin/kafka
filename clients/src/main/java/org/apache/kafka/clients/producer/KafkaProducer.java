@@ -256,7 +256,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final ProducerConfig producerConfig;
     private final long maxBlockTimeMs;
     private final int requestTimeoutMs;
-    private final boolean enablePassthroughBatching;
     private final ProducerInterceptors<K, V> interceptors;
     private final ApiVersions apiVersions;
     private final TransactionManager transactionManager;
@@ -393,7 +392,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.maxBlockTimeMs = config.getLong(ProducerConfig.MAX_BLOCK_MS_CONFIG);
             this.requestTimeoutMs = config.getInt(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG);
             this.transactionManager = configureTransactionState(config, logContext, log);
-            this.enablePassthroughBatching = config.getBoolean(ProducerConfig.ENABLE_PASSTHROUGH_BATCHING_CONFIG);
             int retries = configureRetries(config, transactionManager != null, log);
             int maxInflightRequests = configureInflightRequests(config, transactionManager != null);
             short acks = configureAcks(config, transactionManager != null, log);
@@ -401,7 +399,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             this.apiVersions = new ApiVersions();
             this.accumulator = new RecordAccumulator(logContext, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), this.compressionType,
-                    config.getInt(ProducerConfig.LINGER_MS_CONFIG), retryBackoffMs, deliveryTimeoutMs, enablePassthroughBatching, metrics,
+                    config.getInt(ProducerConfig.LINGER_MS_CONFIG), retryBackoffMs, deliveryTimeoutMs, metrics,
                     PRODUCER_METRIC_GROUP_NAME, time, apiVersions, transactionManager,
                     new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time,
                         PRODUCER_METRIC_GROUP_NAME));

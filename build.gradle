@@ -18,11 +18,13 @@ import org.ajoberstar.grgit.Grgit
 import javax.xml.bind.DatatypeConverter
 import java.security.MessageDigest
 
-
 buildscript {
   repositories {
     mavenCentral()
     jcenter()
+    maven {
+      url "https://plugins.gradle.org/m2/"
+    }
   }
   apply from: file('gradle/buildscript.gradle'), to: buildscript
 
@@ -98,14 +100,13 @@ ext {
   skipSigning = project.hasProperty('skipSigning') && skipSigning.toBoolean()
   shouldSign = !skipSigning && !version.endsWith("SNAPSHOT") && project.gradle.startParameter.taskNames.any { it.contains("upload") }
 
-  bintrayUsername = System.getenv('BINTRAY_USER')
-  bintrayKey=System.getenv('BINTRAY_KEY')
-  bintrayUrl = bintrayApiBaseUrl + '/maven/linkedin/' + bintrayRepo + '/' + bintrayPackage + '/;publish=1'
+  jfrogUsername = System.getenv('JFROG_USERNAME')
+  jfrogApiKey = System.getenv('JFROG_API_KEY')
 
-  // By default, publish to Bintray.
-  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : bintrayUrl
-  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : bintrayUsername
-  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : bintrayKey
+  // By default, publish to JFrog.
+  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : jfrogRepoUrl
+  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : jfrogUsername
+  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : jfrogApiKey
 
   userShowStandardStreams = project.hasProperty("showStandardStreams") ? showStandardStreams : null
 

@@ -39,8 +39,8 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v2
         with:
-          distribution: 'zulu'
-          java-version: '11'
+          distribution: 'adopt'
+          java-version: '8'
       - name: Build with Gradle and run all unit tests
         uses: eskatos/gradle-command-action@v1
         with:

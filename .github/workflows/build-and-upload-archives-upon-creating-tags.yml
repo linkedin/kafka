@@ -51,9 +51,10 @@ jobs:
         uses: eskatos/gradle-command-action@v1
         with:
           gradle-version: 5.6
-          # 1. rat is not included as there are missing licenses to be fixed in 2.0-li
-          # 2. exclude the streams test and connect test
-          arguments: cleanTest checkstyleMain checkstyleTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+          # Excluded integration tests for now because Travis will hit build timeout (50 minutes) when including them.
+          # Also excluded streams unitTest because they often fail with "pure virtual method called" error (KAFKA-3502).
+          # TODO: re-enable these tests when the mentioned issues are resolved.
+          arguments: cleanTest checkstyleMain checkstyleTest unitTest -x :streams:unitTest rat --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
       - name: Upload archive
         uses: eskatos/gradle-command-action@v1
         env:

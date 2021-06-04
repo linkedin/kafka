@@ -44,7 +44,8 @@ jobs:
         uses: eskatos/gradle-command-action@v1
         with:
           gradle-version: 5.6
-          arguments: wrapper
+          # Pin 4.0.1 as the old Travis builds for 2.0-li
+          arguments: wrapper  --gradle-version 4.0.1
       - name: Build with Gradle and run all unit tests
         run: |
           ./gradlew cleanTest checkstyleMain checkstyleTest unitTest -x :streams:unitTest rat --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed

@@ -40,11 +40,11 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
-      - name: Build with Gradle and run all unit tests
+      - name: Build Gradle wrapper
         uses: eskatos/gradle-command-action@v1
         with:
           gradle-version: 5.6
-          # Excluded integration tests for now because Travis will hit build timeout (50 minutes) when including them.
-          # Also excluded streams unitTest because they often fail with "pure virtual method called" error (KAFKA-3502).
-          # TODO: re-enable these tests when the mentioned issues are resolved.
-          arguments: cleanTest checkstyleMain checkstyleTest unitTest -x :streams:unitTest rat --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+          arguments: wrapper
+      - name: Build with Gradle and run all unit tests
+        run: |
+          ./gradlew cleanTest checkstyleMain checkstyleTest unitTest -x :streams:unitTest rat --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed

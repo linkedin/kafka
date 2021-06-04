@@ -1162,7 +1162,7 @@ public class SslTransportLayerTest {
     public static Collection<Object[]> data() {
         Collection<Object[]> p = new ArrayList<>();
         p.add(new Object[]{SSLProvider.DEFAULT});
-        p.add(new Object[]{SSLProvider.OPENSSL});
+        // p.add(new Object[]{SSLProvider.OPENSSL});
         return p;
     }
 }

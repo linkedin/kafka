@@ -44,6 +44,8 @@ import scala.jdk.CollectionConverters.mapAsScalaMapConverter
 class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging {
   val numNodes = 2
   val overridingProps = new Properties()
+  overridingProps.put(KafkaConfig.LiCombinedControlRequestEnableProp, "true")
+
   private var adminClient: Admin = null
   override def generateConfigs = TestUtils.createBrokerConfigs(numNodes, zkConnect)
     .map(KafkaConfig.fromProps(_, overridingProps))
@@ -60,6 +62,16 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
     super.tearDown()
   }
 
+  @Test
+  def testControlRequestSequence(): Unit = {
+    // shutdown one broker
+    val shuttingDownBroker = servers(0)
+    shuttingDownBroker.shutdown()
+
+    createTopic("topic1")
+    shuttingDownBroker.startup()
+    
+  }
 
   @Test
   def testChangingLiCombinedControlRequestFlag(): Unit = {

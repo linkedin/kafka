@@ -450,6 +450,24 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
   }
 
   /**
+   * Get the epocs of the specified topics
+   * @return a map from topic names to the corresponding epochs
+   */
+  def getTopicEpochs(topics: Set[String]): Map[String, Long] = {
+    val getDataRequests = topics.toSeq.map(topic => GetDataRequest(TopicZNode.path(topic), ctx = Some(topic)))
+    val getDataResponses = retryRequestsUntilConnected(getDataRequests)
+    getDataResponses.flatMap { getDataResponse =>
+      val topic = getDataResponse.ctx.get.asInstanceOf[String]
+      getDataResponse.resultCode match {
+        case Code.OK =>
+          Some((topic, getDataResponse.stat.getCzxid))
+        case Code.NONODE => None
+        case _ => throw getDataResponse.resultException.get
+      }
+    }.toMap
+  }
+
+  /**
     * Gets all brokers with broker epoch in the cluster.
     * @return map of broker to epoch in the cluster.
     */

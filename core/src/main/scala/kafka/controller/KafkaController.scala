@@ -864,7 +864,9 @@ class KafkaController(val config: KafkaConfig,
     controllerContext.setLiveBrokerAndEpochs(curBrokerAndEpochs)
     info(s"Initialized broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
 
-    controllerContext.allTopics = zkClient.getAllTopicsInCluster
+    val allTopics = zkClient.getAllTopicsInCluster
+    controllerContext.allTopics = allTopics
+    controllerContext.topicEpochs = zkClient.getTopicEpochs(allTopics)
 
     // Load the min.insync.replicas config for each topic. This updates the controllerContext.topicMinIsrConfig map.
     //
@@ -1705,6 +1707,7 @@ class KafkaController(val config: KafkaConfig,
     val newTopics = topics -- controllerContext.allTopics
     val deletedTopics = controllerContext.allTopics -- topics
     controllerContext.allTopics = topics
+    controllerContext.topicEpochs = zkClient.getTopicEpochs(topics)
     rearrangePartitionReplicaAssignmentForNewTopics(newTopics)
 
     registerPartitionModificationsHandlers(newTopics.toSeq)

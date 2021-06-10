@@ -69,6 +69,7 @@ class ControllerContext {
   var epochZkVersion: Int = KafkaController.InitialControllerEpochZkVersion
 
   var allTopics: Set[String] = Set.empty
+  var topicEpochs: Map[String, Long] = mutable.Map.empty
   val partitionAssignments = mutable.Map.empty[String, mutable.Map[Int, ReplicaAssignment]]
   val partitionLeadershipInfo = mutable.Map.empty[TopicPartition, LeaderIsrAndControllerEpoch]
   val partitionsBeingReassigned = mutable.Set.empty[TopicPartition]
@@ -106,6 +107,7 @@ class ControllerContext {
 
   private def clearTopicsState(): Unit = {
     allTopics = Set.empty
+    topicEpochs = mutable.Map.empty
     partitionAssignments.clear()
     partitionLeadershipInfo.clear()
     partitionsBeingReassigned.clear()
@@ -304,6 +306,7 @@ class ControllerContext {
 
   def removeTopic(topic: String): Unit = {
     allTopics -= topic
+    topicEpochs -= topic
     partitionAssignments.remove(topic)
     partitionStates.foreach {
       case (topicPartition, _) if topicPartition.topic == topic => partitionStates.remove(topicPartition)

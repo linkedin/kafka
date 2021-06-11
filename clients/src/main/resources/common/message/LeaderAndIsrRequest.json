@@ -46,6 +46,7 @@
       "about": "Each topic.", "fields": [
       { "name": "TopicName", "type": "string", "versions": "2+", "entityType": "topicName",
         "about": "The topic name." },
+      { "name": "TopicEpoch", "type": "int64", "versions": "5+", "default": "-1", "about": "The topic epoch."},
       { "name": "PartitionStates", "type": "[]LeaderAndIsrPartitionState", "versions": "2+",
         "about": "The state of each partition" }
     ]},
@@ -63,6 +64,8 @@
     { "name": "LeaderAndIsrPartitionState", "versions": "0+", "fields": [
       { "name": "TopicName", "type": "string", "versions": "0-1", "entityType": "topicName", "ignorable": true,
         "about": "The topic name.  This is only present in v0 or v1." },
+      { "name": "TopicEpoch", "type": "int64", "versions": "0", "ignorable": true, 
+        "default": "-1", "about": "The topic epoch. This field will not be included in the serialized payload"},
       { "name": "PartitionIndex", "type": "int32", "versions": "0+",
         "about": "The partition index." },
       { "name": "ControllerEpoch", "type": "int32", "versions": "0+",

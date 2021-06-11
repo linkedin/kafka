@@ -95,7 +95,9 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
             // the generated code if version >= 2
             for (LeaderAndIsrPartitionState partition : partitionStates) {
                 LeaderAndIsrTopicState topicState = topicStates.computeIfAbsent(partition.topicName(),
-                    t -> new LeaderAndIsrTopicState().setTopicName(partition.topicName()));
+                    t -> new LeaderAndIsrTopicState()
+                        .setTopicName(partition.topicName())
+                        .setTopicEpoch(partition.topicEpoch()));
                 topicState.partitionStates().add(partition);
             }
             return topicStates;
@@ -132,6 +134,7 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
                 for (LeaderAndIsrPartitionState partitionState : topicState.partitionStates()) {
                     // Set the topic name so that we can always present the ungrouped view to callers
                     partitionState.setTopicName(topicState.topicName());
+                    partitionState.setTopicEpoch(topicState.topicEpoch());
                 }
             }
         }

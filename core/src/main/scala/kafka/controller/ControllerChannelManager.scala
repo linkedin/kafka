@@ -481,6 +481,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       val leaderAndIsr = leaderIsrAndControllerEpoch.leaderAndIsr
       result.put(topicPartition, new LeaderAndIsrPartitionState()
         .setTopicName(topicPartition.topic)
+        .setTopicEpoch(controllerContext.topicEpochs.get(topicPartition.topic).getOrElse(-1))
         .setPartitionIndex(topicPartition.partition)
         .setControllerEpoch(leaderIsrAndControllerEpoch.controllerEpoch)
         .setLeader(leaderAndIsr.leader)

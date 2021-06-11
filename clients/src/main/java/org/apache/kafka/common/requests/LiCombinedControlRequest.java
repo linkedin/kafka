@@ -186,6 +186,7 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
             for (LiCombinedControlRequestData.LeaderAndIsrPartitionState partitionState : topicState.partitionStates()) {
                 // Set the topic name so that we can always present the ungrouped view to callers
                 partitionState.setTopicName(topicState.topicName());
+                partitionState.setTopicEpoch(topicState.topicEpoch());
             }
         }
     }

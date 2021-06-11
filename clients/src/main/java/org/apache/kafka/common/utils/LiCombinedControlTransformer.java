@@ -41,6 +41,7 @@ public class LiCombinedControlTransformer {
         LeaderAndIsrRequestData.LeaderAndIsrPartitionState partitionState, long brokerEpoch) {
         return new LiCombinedControlRequestData.LeaderAndIsrPartitionState().setBrokerEpoch(brokerEpoch)
             .setTopicName(partitionState.topicName())
+            .setTopicEpoch(partitionState.topicEpoch())
             .setPartitionIndex(partitionState.partitionIndex())
             .setControllerEpoch(partitionState.controllerEpoch())
             .setLeader(partitionState.leader())
@@ -56,6 +57,7 @@ public class LiCombinedControlTransformer {
     public static LeaderAndIsrRequestData.LeaderAndIsrPartitionState restoreLeaderAndIsrPartition(
         LiCombinedControlRequestData.LeaderAndIsrPartitionState partitionState) {
         return new LeaderAndIsrRequestData.LeaderAndIsrPartitionState().setTopicName(partitionState.topicName())
+            .setTopicEpoch(partitionState.topicEpoch())
             .setPartitionIndex(partitionState.partitionIndex())
             .setControllerEpoch(partitionState.controllerEpoch())
             .setLeader(partitionState.leader())

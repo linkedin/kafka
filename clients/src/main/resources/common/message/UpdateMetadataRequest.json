@@ -47,8 +47,6 @@
       "about": "In newer versions of this RPC, each topic that we would like to update.", "fields": [
       { "name": "TopicName", "type": "string", "versions": "5+", "entityType": "topicName",
         "about": "The topic name." },
-      { "name": "TopicEpoch", "type": "int64", "versions": "6+", "default": "-1",
-        "about": "The topic epoch." },
       { "name": "PartitionStates", "type": "[]UpdateMetadataPartitionState", "versions": "5+",
         "about": "The partition that we would like to update." }
     ]},

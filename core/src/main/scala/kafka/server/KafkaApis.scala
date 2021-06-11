@@ -294,10 +294,6 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
   }
 
-  private def handleOrphanedPartitions(updateMetadataRequest: UpdateMetadataRequest): Unit = {
-
-  }
-
   private def doHandleUpdateMetadataRequest(request: RequestChannel.Request, correlationId: Int, updateMetadataRequest: UpdateMetadataRequest): UpdateMetadataResponse = {
     val deletedPartitions = replicaManager.maybeUpdateMetadataCache(correlationId, updateMetadataRequest)
     if (deletedPartitions.nonEmpty)

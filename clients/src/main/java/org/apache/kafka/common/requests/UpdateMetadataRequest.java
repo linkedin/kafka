@@ -50,19 +50,16 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
     public static class Builder extends AbstractControlRequest.Builder<UpdateMetadataRequest> {
         private final List<UpdateMetadataPartitionState> partitionStates;
         private final List<UpdateMetadataBroker> liveBrokers;
-        //private final Map<String, Long> topicEpocs;
         private Lock buildLock = new ReentrantLock();
 
         // LIKAFKA-18349 - Cache the UpdateMetadataRequest Objects to reduce memory usage
         private final Map<Short, UpdateMetadataRequest> requestCache = new HashMap<>();
 
         public Builder(short version, int controllerId, int controllerEpoch, long brokerEpoch, long maxBrokerEpoch,
-            List<UpdateMetadataPartitionState> partitionStates, List<UpdateMetadataBroker> liveBrokers
-            /*, Map<String, Long> topicEpochs*/) {
+                       List<UpdateMetadataPartitionState> partitionStates, List<UpdateMetadataBroker> liveBrokers) {
             super(ApiKeys.UPDATE_METADATA, version, controllerId, controllerEpoch, brokerEpoch, maxBrokerEpoch);
             this.partitionStates = partitionStates;
             this.liveBrokers = liveBrokers;
-            //this.topicEpocs = topicEpochs;
         }
 
         @Override
@@ -101,7 +98,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
                     .setLiveBrokers(liveBrokers);
 
             if (version >= 5) {
-                Map<String, UpdateMetadataTopicState> topicStatesMap = groupByTopic(partitionStates/*, topicEpocs*/);
+                Map<String, UpdateMetadataTopicState> topicStatesMap = groupByTopic(partitionStates);
                 data.setTopicStates(new ArrayList<>(topicStatesMap.values()));
             } else {
                 data.setUngroupedPartitionStates(partitionStates);
@@ -116,8 +113,7 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
             }
         }
 
-        private static Map<String, UpdateMetadataTopicState> groupByTopic(List<UpdateMetadataPartitionState> partitionStates
-            /*, Map<String, Long> topicEpochs*/) {
+        private static Map<String, UpdateMetadataTopicState> groupByTopic(List<UpdateMetadataPartitionState> partitionStates) {
             Map<String, UpdateMetadataTopicState> topicStates = new HashMap<>();
             for (UpdateMetadataPartitionState partition : partitionStates) {
                 // We don't null out the topic name in UpdateMetadataTopicState since it's ignored by the generated
@@ -126,11 +122,6 @@ public class UpdateMetadataRequest extends AbstractControlRequest {
                     t -> new UpdateMetadataTopicState().setTopicName(partition.topicName()));
                 topicState.partitionStates().add(partition);
             }
-            /*
-            for (UpdateMetadataTopicState topicState: topicStates.values()) {
-                topicState.setTopicEpoch(topicEpochs.get(topicState.topicName()));
-            }
-            */
             return topicStates;
         }
 

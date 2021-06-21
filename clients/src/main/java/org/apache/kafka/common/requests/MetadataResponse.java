@@ -264,6 +264,15 @@ public class MetadataResponse extends AbstractResponse {
             this(error, topic, isInternal, partitionMetadata, 0);
         }
 
+        private static final List<PartitionMetadata> EMPTY_PARTITION_METADATA = new ArrayList<>();
+
+        public TopicMetadata(Errors error,
+                             String topic,
+                             boolean isInternal) {
+            this(error, topic, isInternal, EMPTY_PARTITION_METADATA, 0);
+        }
+
+
         public Errors error() {
             return error;
         }

@@ -1169,10 +1169,9 @@ class KafkaApis(val requestChannel: RequestChannel,
       if (authorizedTopics.isEmpty)
         Seq.empty[MetadataResponse.TopicMetadata]
       else if (metadataRequest.excludePartitions()) {
-        val topicsOnlyMetadata = new ArrayBuffer[MetadataResponse.TopicMetadata]
-        val emptyPartitionMetadata = new util.ArrayList[MetadataResponse.PartitionMetadata]()
+        val topicsOnlyMetadata = new ArrayBuffer[MetadataResponse.TopicMetadata](authorizedTopics.size)
         for (t <- authorizedTopics) {
-          topicsOnlyMetadata += new MetadataResponse.TopicMetadata(Errors.NONE, t, Topic.isInternal(t), emptyPartitionMetadata)
+          topicsOnlyMetadata += new MetadataResponse.TopicMetadata(Errors.NONE, t, Topic.isInternal(t))
         }
         topicsOnlyMetadata
       } else {

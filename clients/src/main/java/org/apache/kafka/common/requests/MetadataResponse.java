@@ -19,6 +19,7 @@ package org.apache.kafka.common.requests;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -264,7 +265,7 @@ public class MetadataResponse extends AbstractResponse {
             this(error, topic, isInternal, partitionMetadata, 0);
         }
 
-        private static final List<PartitionMetadata> EMPTY_PARTITION_METADATA = new ArrayList<>();
+        private static final List<PartitionMetadata> EMPTY_PARTITION_METADATA = Collections.emptyList();
 
         public TopicMetadata(Errors error,
                              String topic,

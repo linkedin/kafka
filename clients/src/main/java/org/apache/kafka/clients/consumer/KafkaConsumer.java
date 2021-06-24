@@ -737,6 +737,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     throttleTimeSensor,
                     logContext);
             netClient.setEnableStickyMetadataFetch(config.getBoolean(CommonClientConfigs.ENABLE_STICKY_METADATA_FETCH_CONFIG));
+            netClient.setEnableClientResponseWithFinalize(config.getBoolean(CommonClientConfigs.ENABLE_CLIENT_RESPONSE_LEAK_CHECK));
             this.client = new ConsumerNetworkClient(
                     logContext,
                     netClient,

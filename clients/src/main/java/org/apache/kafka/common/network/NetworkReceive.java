@@ -105,7 +105,7 @@ public class NetworkReceive implements Receive {
 
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         if (buffer != null && buffer != EMPTY_BUFFER) {
             memoryPool.release(buffer);
             buffer = null;
@@ -155,4 +155,7 @@ public class NetworkReceive implements Receive {
         return this.buffer;
     }
 
+    public MemoryPool memoryPool() {
+        return this.memoryPool;
+    }
 }

@@ -21,6 +21,7 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
+import org.apache.kafka.common.memory.MemoryPool;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.network.ChannelState;
 import org.apache.kafka.common.network.NetworkReceive;
@@ -63,6 +64,8 @@ import java.util.stream.Collectors;
  */
 public class NetworkClient implements KafkaClient {
 
+    private final LogContext logContext;
+
     private final Logger log;
 
     /* the selector used to perform network i/o */
@@ -99,6 +102,8 @@ public class NetworkClient implements KafkaClient {
     private final Time time;
 
     private boolean enableStickyMetadataFetch = true;
+
+    private boolean enableClientResponseWithFinalize = false;
 
     /**
      * True if we should send an ApiVersionRequest when first connecting to a broker.
@@ -244,11 +249,16 @@ public class NetworkClient implements KafkaClient {
         this.discoverBrokerVersions = discoverBrokerVersions;
         this.apiVersions = apiVersions;
         this.throttleTimeSensor = throttleTimeSensor;
+        this.logContext = logContext;
         this.log = logContext.logger(NetworkClient.class);
     }
 
     public void setEnableStickyMetadataFetch(boolean enableStickyMetadataFetch) {
         this.enableStickyMetadataFetch = enableStickyMetadataFetch;
+    }
+
+    public void setEnableClientResponseWithFinalize(boolean enableClientResponseWithFinalize) {
+        this.enableClientResponseWithFinalize = enableClientResponseWithFinalize;
     }
 
     /**
@@ -603,6 +613,8 @@ public class NetworkClient implements KafkaClient {
     public void close() {
         this.selector.close();
         this.metadataUpdater.close();
+        this.selector.completedReceives().forEach(NetworkReceive::close);
+        this.selector.completedReceives().clear();
     }
 
     /**
@@ -789,8 +801,16 @@ public class NetworkClient implements KafkaClient {
                 metadataUpdater.handleCompletedMetadataResponse(req.header, now, (MetadataResponse) body);
             else if (req.isInternalRequest && body instanceof ApiVersionsResponse)
                 handleApiVersionsResponse(responses, req, now, (ApiVersionsResponse) body);
-            else
-                responses.add(req.completed(body, now));
+            else {
+                responses.add(req.completed(body, now, receive.memoryPool(), receive.payload(), this.logContext,
+                    this.enableClientResponseWithFinalize));
+            }
+
+            // If request is an internal request such as Metadata or ApiVersion, then close the network receive
+            // Otherwise, it's ClientResponse's responsibility to release the buffer to MemoryPool via ref counting
+            if (req.isInternalRequest) {
+                receive.close();
+            }
         }
     }
 
@@ -1146,9 +1166,19 @@ public class NetworkClient implements KafkaClient {
             this.sendTimeMs = sendTimeMs;
         }
 
+        public ClientResponse completed(AbstractResponse response, long timeMs, MemoryPool memoryPool,
+            ByteBuffer responsePayload, LogContext logContext, boolean enableClientResponseWithFinalize) {
+            if (enableClientResponseWithFinalize) {
+                return new ClientResponseWithFinalize(header, callback, destination, createdTimeMs, timeMs, false, null, null, response,
+                    memoryPool, responsePayload, logContext);
+            }
+            return new ClientResponse(header, callback, destination, createdTimeMs, timeMs, false, null, null, response,
+                memoryPool, responsePayload);
+        }
+
         public ClientResponse completed(AbstractResponse response, long timeMs) {
             return new ClientResponse(header, callback, destination, createdTimeMs, timeMs,
-                    false, null, null, response);
+                false, null, null, response);
         }
 
         public ClientResponse disconnected(long timeMs, AuthenticationException authenticationException) {

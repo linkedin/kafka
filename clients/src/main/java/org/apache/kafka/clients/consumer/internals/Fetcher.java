@@ -324,7 +324,8 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                                             log.debug("Fetch {} at offset {} for partition {} returned fetch data {}",
                                                     isolationLevel, fetchOffset, partition, fetchData);
                                             completedFetches.add(new CompletedFetch(partition, fetchOffset, fetchData, metricAggregator,
-                                                    resp.requestHeader().apiVersion()));
+                                                    resp.requestHeader().apiVersion(), resp));
+                                            resp.incRefCount();
                                         }
                                     }
 
@@ -604,6 +605,11 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
 
                         try {
                             nextInLineRecords = parseCompletedFetch(completedFetch);
+
+                            // nextInLineRecords might be null when completedFetch contains error
+                            if (nextInLineRecords == null) {
+                                completedFetch.response.decRefCount();
+                            }
                         } catch (Exception e) {
                             // Remove a completedFetch upon a parse with exception if (1) it contains no records, and
                             // (2) there are no fetched records with actual content preceding this exception.
@@ -613,6 +619,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                             FetchResponse.PartitionData partition = completedFetch.partitionData;
                             if (fetched.isEmpty() && (partition.records == null || partition.records.sizeInBytes() == 0)) {
                                 completedFetches.poll();
+                                completedFetch.response.decRefCount();
                             }
                             throw e;
                         }
@@ -1192,8 +1199,9 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
     public void filterUnassignedPartitions(Set<TopicPartition> assignedPartitions) {
         Iterator<CompletedFetch> itr = completedFetches.iterator();
         while (itr.hasNext()) {
-            TopicPartition tp = itr.next().partition;
-            if (!assignedPartitions.contains(tp)) {
+            CompletedFetch completedFetch = itr.next();
+            if (!assignedPartitions.contains(completedFetch.partition)) {
+                completedFetch.response.decRefCount();
                 itr.remove();
             }
         }
@@ -1249,6 +1257,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
             if (!isFetched) {
                 maybeCloseRecordStream();
                 cachedRecordException = null;
+                this.completedFetch.response.decRefCount();
                 this.isFetched = true;
                 this.completedFetch.metricAggregator.record(partition, bytesRead, recordsRead);
 
@@ -1445,17 +1454,20 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
         private final FetchResponse.PartitionData<Records> partitionData;
         private final FetchResponseMetricAggregator metricAggregator;
         private final short responseVersion;
+        private final ClientResponse response;
 
         private CompletedFetch(TopicPartition partition,
                                long fetchedOffset,
                                FetchResponse.PartitionData<Records> partitionData,
                                FetchResponseMetricAggregator metricAggregator,
-                               short responseVersion) {
+                               short responseVersion,
+                               ClientResponse response) {
             this.partition = partition;
             this.fetchedOffset = fetchedOffset;
             this.partitionData = partitionData;
             this.metricAggregator = metricAggregator;
             this.responseVersion = responseVersion;
+            this.response = response;
         }
     }
 
@@ -1654,6 +1666,10 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
     public void close() {
         if (nextInLineRecords != null)
             nextInLineRecords.drain();
+        for (CompletedFetch completedFetch : completedFetches) {
+            completedFetch.response.decRefCount();
+        }
+        completedFetches.clear();
         decompressionBufferSupplier.close();
     }
 

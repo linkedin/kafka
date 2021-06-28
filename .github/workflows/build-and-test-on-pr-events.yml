@@ -37,9 +37,9 @@ jobs:
           # bring in all history because the gradle versions plugin needs to "walk back" to the closest ancestor tag
           fetch-depth: 0
       - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
+        uses: joschi/setup-jdk@v2
         with:
-          java-version: 1.8
+          java-version: '8'
       - name: Build with Gradle and run all unit tests
         uses: eskatos/gradle-command-action@v1
         with:

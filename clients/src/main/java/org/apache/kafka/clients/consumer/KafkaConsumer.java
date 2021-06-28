@@ -553,6 +553,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     static final long DEFAULT_CLOSE_TIMEOUT_MS = 30 * 1000;
 
     // Visible for testing
+    // Some useless comment
     final Metrics metrics;
 
     private final Logger log;

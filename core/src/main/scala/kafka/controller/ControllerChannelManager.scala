@@ -17,6 +17,9 @@
 package kafka.controller
 
 import java.net.SocketTimeoutException
+import java.util
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
 
 import com.yammer.metrics.core.{Gauge, Timer}
@@ -125,7 +128,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   private def addNewBroker(broker: Broker) {
-    val messageQueue = new LinkedBlockingQueue[QueueItem]
+    val messageQueue = new RequestSendQueue()
     debug(s"Controller ${config.brokerId} trying to connect to broker ${broker.id}")
     val controllerToBrokerListenerName = config.controlPlaneListenerName.getOrElse(config.interBrokerListenerName)
     val controllerToBrokerSecurityProtocol = config.controlPlaneSecurityProtocol.getOrElse(config.interBrokerSecurityProtocol)
@@ -228,12 +231,12 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 }
 
-case class QueueItem(apiKey: ApiKeys, request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
-                     callback: AbstractResponse => Unit, enqueueTimeMs: Long)
+case class QueueItem(apiKey: ApiKeys, var request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+  var callback: AbstractResponse => Unit, enqueueTimeMs: Long)
 
 class RequestSendThread(val controllerId: Int,
                         val controllerContext: ControllerContext,
-                        val queue: BlockingQueue[QueueItem],
+                        val queue: RequestSendQueue,
                         val networkClient: NetworkClient,
                         val brokerNode: Node,
                         val config: KafkaConfig,
@@ -477,11 +480,10 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
             stateChangeLog.trace(s"Sending $typeOfRequest LeaderAndIsr request $state to broker $broker for partition $topicPartition")
         }
         val leaderIds = leaderAndIsrPartitionStates.map(_._2.basePartitionState.leader).toSet
-        val leaders = controllerContext.liveOrShuttingDownBrokers.filter(b => leaderIds.contains(b.id)).map {
+        val leaders = controllerContext.liveOrShuttingDownBrokers.to[mutable.Set].filter(b => leaderIds.contains(b.id)).map {
           _.node(config.interBrokerListenerName)
         }
         val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(broker)
-
         val leaderAndIsrRequestBuilder = new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, controllerId, controllerEpoch,
           brokerEpoch, maxBrokerEpoch, leaderAndIsrPartitionStates.asJava, leaders.asJava)
         sendRequest(broker, leaderAndIsrRequestBuilder, (r: AbstractResponse) => sendEvent(LeaderAndIsrResponseReceived(r, broker)))
@@ -496,7 +498,6 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
         s"for partition $tp")
     }
 
-    val partitionStates = Map.empty ++ updateMetadataRequestPartitionInfoMap
     val updateMetadataRequestVersion: Short =
       if (config.interBrokerProtocolVersion >= KAFKA_2_5_IV0) 6
       else if (config.interBrokerProtocolVersion >= KAFKA_2_2_IV0) 5
@@ -524,12 +525,12 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       }
     }
 
-    if (updateMetadataRequestVersion >= 6) {
+    if (updateMetadataRequestVersion >= 6 && updateMetadataRequestPartitionInfoMap.size >= config.updateMetadataRequestCacheThreshold) {
       // We should only create one copy UpdateMetadataRequest that should apply to all brokers.
       // The goal is to reduce memory footprint on the controller.
       val maxBrokerEpoch = controllerContext.maxBrokerEpoch
       val updateMetadataRequest = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch,
-        AbstractControlRequest.UNKNOWN_BROKER_EPOCH, maxBrokerEpoch, partitionStates.asJava, liveBrokers.asJava)
+        AbstractControlRequest.UNKNOWN_BROKER_EPOCH, maxBrokerEpoch, updateMetadataRequestPartitionInfoMap.asJava, liveBrokers.asJava, true)
 
       updateMetadataRequestBrokerSet.intersect(controllerContext.liveOrShuttingDownBrokerIds).foreach { broker =>
         sendRequest(broker, updateMetadataRequest)
@@ -538,7 +539,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       updateMetadataRequestBrokerSet.intersect(controllerContext.liveOrShuttingDownBrokerIds).foreach { broker =>
         val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(broker)
         val updateMetadataRequest = new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch,
-          brokerEpoch, AbstractControlRequest.UNKNOWN_BROKER_EPOCH, partitionStates.asJava, liveBrokers.asJava)
+          brokerEpoch, AbstractControlRequest.UNKNOWN_BROKER_EPOCH, updateMetadataRequestPartitionInfoMap.asJava, liveBrokers.asJava, false)
         sendRequest(broker, updateMetadataRequest)
       }
     }
@@ -618,7 +619,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
 case class ControllerBrokerStateInfo(networkClient: NetworkClient,
                                      brokerNode: Node,
-                                     messageQueue: BlockingQueue[QueueItem],
+                                     messageQueue: RequestSendQueue,
                                      requestSendThread: RequestSendThread,
                                      queueSizeGauge: Gauge[Int],
                                      requestRateAndTimeMetrics: Timer,
@@ -642,4 +643,155 @@ class BrokerResponseTimeStats(val key: ApiKeys) extends KafkaMetricsGroup {
     removeMetric("brokerRequestQueueTimeMs", responseTimeTags)
     removeMetric("brokerRequestRemoteTimeMs", responseTimeTags)
   }
+}
+
+case class QueueItemWrapper(var queueItem: QueueItem, var id: Int)
+
+class RequestSendQueue {
+  val count: AtomicInteger = new AtomicInteger()
+  var openLeaderAndIsrRequestItem: Option[QueueItemWrapper] = None
+  var openUpdateMetadataRequestItem: Option[QueueItemWrapper] = None
+  var nextId: Int = 0
+  val lock = new ReentrantLock()
+  val notEmpty: Condition = lock.newCondition();
+  val queue = new util.LinkedList[QueueItemWrapper]()
+
+  private def wrapItem(item: QueueItem): QueueItemWrapper = {
+    val wrappedItem = QueueItemWrapper(item, nextId)
+    nextId+=1
+    wrappedItem
+  }
+
+  def size(): Int = {
+    count.get()
+  }
+
+  /**
+   * This method is invoked the the caller wants to enqueue a controller request to be sent out to a specific broker.
+   * The controller request is either merged with another request in the queue of the same type or enqueued as a
+   * separate item without breaking the guarantees listed below:
+   * U = UpdateMetadataRequest
+   * L = LeaderAndIsrRequest
+   * S = StopReplicaRequest
+   *
+   * 1. U enqueued after L/S should be seen by the broker after L/S. Otherwise the broker may see the updated metadata
+   *    before the changes are taken.
+   * 2. S enqueued after L should be seen by the broker after L. Otherwise the broker may re-create an already deleted
+   *    replica.
+   * 3. L enqueued after S should be seen by the broker after S. Otherwise the broker may miss to create a replica.
+   *
+   * In this class, apart from have a single request queue, we also maintain the currently opened
+   * LeaderAndIsrRequestItem (LI) and UpdateMetadataRequestItem (UI) in the queue, which are eligible of merging with
+   * the items being put into the queue. With this structure, we can coalesce the following patterns:
+   * - Adjacent UpdateMetadataRequests:       U  U  U    =>   U
+   *                                              (UI)      (UI)
+   *
+   * - Adjacent LeaderAndIsrRequests:         L  L  L    =>   L
+   *                                              (LI)      (LI)
+   *
+   * - Adjacent (U, L) pairs:     U   L   U   L   U   L  =>   U   L
+   *                                            (UI) (LI)   (UI) (LI)
+   *
+   *
+   * Caveats:
+   * - StopReplicaRequest acts like a barrier meaning that coalescing is not allowed across S. For example,
+   *   "U L S U L => S U L" is not allowed, otherwise guarantee 1) and 3) are broken.
+   *
+   * - Two requests can be merged only if they have the same (brokerEpoch, maxBrokerEpoch, controllerEpoch) because
+   *   otherwise we may mistakenly convert a stale request into a non-stale request.
+   *
+   * - For S/L enqueued after U, it is not an requirement to make sure they are seen by the broker after U
+   *   because reordering S/L and U in this case will only cause delay for the broker on learning about the changes
+   *   made by S/L, which is always the case since the U reflecting changes made by S/L always comes after S/L.
+   *   Moreover, with the coalescing pattern describe above, we will end up minimizing that delay. For example,
+   *   "U L U U L" will be coalesced into "U L", not "U U U L" so the U reflecting changes made by L will be delayed
+   *   only by one request.
+   *
+   */
+  def put(item: QueueItem): Unit = {
+    lock.lock()
+    try {
+      val newWrappedItem: Option[QueueItemWrapper] = item.apiKey match {
+        case ApiKeys.LEADER_AND_ISR =>
+          // Update the openLeaderAndIsrRequestItem
+          openLeaderAndIsrRequestItem match {
+            case Some(openItem) =>
+              val openBuilder = openItem.queueItem.request.asInstanceOf[LeaderAndIsrRequest.Builder]
+              val newBuilder = item.request.asInstanceOf[LeaderAndIsrRequest.Builder]
+              if (!openBuilder.merge(newBuilder)) {
+                // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
+                openUpdateMetadataRequestItem = None
+                openLeaderAndIsrRequestItem = Some(wrapItem(item))
+                openLeaderAndIsrRequestItem
+              }
+              else None
+            case None =>
+              // Seal the openUpdateMetadataRequestItem to prevent reordering between LeaderAndIsr and UpdateMetadata
+              openUpdateMetadataRequestItem = None
+              openLeaderAndIsrRequestItem = Some(wrapItem(item))
+              openLeaderAndIsrRequestItem
+          }
+        case ApiKeys.UPDATE_METADATA =>
+          openUpdateMetadataRequestItem match {
+            case Some(openItem) =>
+              val openBuilder = openItem.queueItem.request.asInstanceOf[UpdateMetadataRequest.Builder]
+              val newBuilder = item.request.asInstanceOf[UpdateMetadataRequest.Builder]
+              if (!openBuilder.merge(newBuilder)) {
+                openUpdateMetadataRequestItem = Some(wrapItem(item))
+                openUpdateMetadataRequestItem
+              }
+              else None
+            case None => {
+              openUpdateMetadataRequestItem = Some(wrapItem(item))
+              openUpdateMetadataRequestItem
+            }
+          }
+        case ApiKeys.STOP_REPLICA =>
+          // Seal the openLeaderAndIsrRequestItem and openUpdateMetadataRequestItem
+          openUpdateMetadataRequestItem = None
+          openLeaderAndIsrRequestItem = None
+          Some(wrapItem(item))
+        case _ => throw new IllegalArgumentException()
+      }
+
+      if (newWrappedItem.isDefined) {
+        queue.addLast(newWrappedItem.get)
+        count.getAndIncrement()
+        notEmpty.signal()
+      }
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  def take(): QueueItem = {
+    lock.lock()
+    try {
+      while (queue.isEmpty()) {
+        notEmpty.await();
+      }
+      val QueueItemWrapper(queueItem, id) = queue.removeFirst()
+      count.getAndDecrement()
+      if (openLeaderAndIsrRequestItem.isDefined && openLeaderAndIsrRequestItem.get.id == id)
+        openLeaderAndIsrRequestItem = None
+      else if (openUpdateMetadataRequestItem.isDefined && openUpdateMetadataRequestItem.get.id == id)
+        openUpdateMetadataRequestItem = None
+      queueItem
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  def clear(): Unit = {
+    lock.lock()
+    try {
+      queue.clear()
+      openUpdateMetadataRequestItem = None
+      openLeaderAndIsrRequestItem = None
+      count.set(0)
+    } finally {
+      lock.unlock()
+    }
+  }
+
 }

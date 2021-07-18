@@ -321,7 +321,7 @@ class Log(@volatile private var _dir: File,
 
   private def remoteLogEnabled(): Boolean = {
     // remote logging is enabled only for non-compact and non-internal topics
-    rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic()))
+    rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic())) && config.remoteStorageEnable
   }
   locally {
     val startMs = time.milliseconds
@@ -1485,7 +1485,7 @@ class Log(@volatile private var _dir: File,
       // For the earliest and latest, we do not need to return the timestamp.
       if (targetTimestamp == ListOffsetsRequest.EARLIEST_TIMESTAMP ||
         (!remoteLogEnabled() && targetTimestamp == ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP)) {
-        // If remote log is not enabled, EARLIEST_LOCAL_TIMESTAMP is same with EARLIEST_TIMESTAMP
+        // If remote log is not enabled, LI_EARLIEST_LOCAL_TIMESTAMP is same with EARLIEST_TIMESTAMP
         // The first cached epoch usually corresponds to the log start offset, but we have to verify this since
         // it may not be true following a message format version bump as the epoch will not be available for
         // log entries written in the older format.
@@ -1496,7 +1496,7 @@ class Log(@volatile private var _dir: File,
         }
         Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, logStartOffset, epochOpt))
       } else if (targetTimestamp == ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP) {
-        // EARLIEST_LOCAL_TIMESTAMP is only used by follower brokers, to find out the offset that they
+        // LI_EARLIEST_LOCAL_TIMESTAMP is only used by follower brokers, to find out the offset that they
         // should start fetching from. Since the followers do not need the epoch, we can return
         // an empty epoch here to keep things simple.
         Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, localLogStartOffset, Optional.empty[Integer]()))

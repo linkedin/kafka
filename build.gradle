@@ -1562,7 +1562,6 @@ project(':storage') {
     testImplementation project(':core').sourceSets.test.output
     testImplementation project(':metadata')
     testImplementation libs.junitJupiter
-    testImplementation libs.junitPlatformRunner
     testImplementation libs.mockitoCore
     testImplementation libs.bcpkix
     testImplementation libs.hamcrest

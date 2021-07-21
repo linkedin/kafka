@@ -1065,7 +1065,7 @@ class LogTest {
   @Test
   def testSegmentDeletionDisabledBeforeUploadToRemoteTier(): Unit = {
     val logConfig = LogTestUtils.createLogConfig(indexIntervalBytes = 1, segmentIndexBytes = 12, retentionBytes = 1,
-      fileDeleteDelayMs = 0)
+      fileDeleteDelayMs = 0, remoteLogStorageEnable = true)
     val log = createLog(logDir, logConfig, remoteLogEnable = true)
     val pid = 1L
     val epoch = 0.toShort
@@ -1086,7 +1086,7 @@ class LogTest {
   @Test
   def testSegmentDeletionEnabledAfterUploadToRemoteTier(): Unit = {
     val logConfig = LogTestUtils.createLogConfig(indexIntervalBytes = 1, segmentIndexBytes = 12,
-      retentionBytes = 1, fileDeleteDelayMs = 0)
+      retentionBytes = 1, fileDeleteDelayMs = 0, remoteLogStorageEnable = true)
     val log = createLog(logDir, logConfig, remoteLogEnable = true)
     val pid = 1L
     val epoch = 0.toShort

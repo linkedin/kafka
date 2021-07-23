@@ -50,6 +50,8 @@ object LogTestUtils {
                       segmentBytes: Int = Defaults.SegmentSize,
                       retentionMs: Long = Defaults.RetentionMs,
                       retentionBytes: Long = Defaults.RetentionSize,
+                      localRetentionMs: Long = Defaults.LocalRetentionMs,
+                      localRetentionBytes: Long = Defaults.LocalRetentionBytes,
                       segmentJitterMs: Long = Defaults.SegmentJitterMs,
                       cleanupPolicy: String = Defaults.CleanupPolicy,
                       maxMessageBytes: Int = Defaults.MaxMessageSize,
@@ -71,6 +73,8 @@ object LogTestUtils {
     logProps.put(LogConfig.FileDeleteDelayMsProp, fileDeleteDelayMs: java.lang.Long)
     logProps.put(LogConfig.ProducerBatchDecompressionEnableProp, producerBatchDecompressionEnable: java.lang.Boolean)
     logProps.put(LogConfig.RemoteLogStorageEnableProp, remoteLogStorageEnable: java.lang.Boolean)
+    logProps.put(LogConfig.LocalLogRetentionMsProp, localRetentionMs)
+    logProps.put(LogConfig.LocalLogRetentionBytesProp, localRetentionBytes)
     LogConfig(logProps)
   }
 

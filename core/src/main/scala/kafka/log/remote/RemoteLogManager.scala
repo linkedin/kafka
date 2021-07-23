@@ -592,8 +592,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
             }
           }
 
-          //b. cleanup/delete expired remote segments
-          // handleExpiredRemoteLogSegments()
+          // b. cleanup/delete expired remote segments
+          handleExpiredRemoteLogSegments()
         }
       } catch {
         case ex: InterruptedException =>

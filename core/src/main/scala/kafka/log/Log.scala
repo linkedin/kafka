@@ -1678,9 +1678,9 @@ class Log(@volatile private var _dir: File,
             (logEndOffset, segment.size == 0)
           }
 
-        // check not to delete segments which do not have remote indexes locally.
+        // Check not to delete segments which do not have remote indexes locally.
         val deleteOnlyWhenRemoteIndexExistsLocally =
-          if(remoteLogEnabled()) upperBoundOffset > 0 && upperBoundOffset-1 <= highestOffsetWithRemoteIndex else true
+          if (remoteLogEnabled()) upperBoundOffset > 0 && upperBoundOffset - 1 <= highestOffsetWithRemoteIndex else true
 
         if (deleteOnlyWhenRemoteIndexExistsLocally && highWatermark >= upperBoundOffset
           && predicate(segment, nextSegmentOpt) && !isLastSegmentAndEmpty) {
@@ -1711,19 +1711,21 @@ class Log(@volatile private var _dir: File,
   }
 
   private def deleteRetentionMsBreachedSegments(): Int = {
-    if (config.retentionMs < 0) return 0
+    val retentionMs: Long = if (config.remoteStorageEnable) config.localRetentionMs else config.retentionMs
+    if (retentionMs < 0) return 0
     val startMs = time.milliseconds
 
     def shouldDelete(segment: LogSegment, nextSegmentOpt: Option[LogSegment]): Boolean = {
-      startMs - segment.largestTimestamp > config.retentionMs
+      startMs - segment.largestTimestamp > retentionMs
     }
 
     deleteOldSegments(shouldDelete, RetentionMsBreach)
   }
 
   private def deleteRetentionSizeBreachedSegments(): Int = {
-    if (config.retentionSize < 0 || size < config.retentionSize) return 0
-    var diff = size - config.retentionSize
+    val retentionSize: Long = if (config.remoteStorageEnable) config.localRetentionBytes else config.retentionSize
+    if (retentionSize < 0 || size < retentionSize) return 0
+    var diff = size - retentionSize
     def shouldDelete(segment: LogSegment, nextSegmentOpt: Option[LogSegment]): Boolean = {
       if (diff - segment.size >= 0) {
         diff -= segment.size

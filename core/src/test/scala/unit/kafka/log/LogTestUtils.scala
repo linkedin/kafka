@@ -73,8 +73,8 @@ object LogTestUtils {
     logProps.put(LogConfig.FileDeleteDelayMsProp, fileDeleteDelayMs: java.lang.Long)
     logProps.put(LogConfig.ProducerBatchDecompressionEnableProp, producerBatchDecompressionEnable: java.lang.Boolean)
     logProps.put(LogConfig.RemoteLogStorageEnableProp, remoteLogStorageEnable: java.lang.Boolean)
-    logProps.put(LogConfig.LocalLogRetentionMsProp, localRetentionMs)
-    logProps.put(LogConfig.LocalLogRetentionBytesProp, localRetentionBytes)
+    logProps.put(LogConfig.LocalLogRetentionMsProp, localRetentionMs: java.lang.Long)
+    logProps.put(LogConfig.LocalLogRetentionBytesProp, localRetentionBytes: java.lang.Long)
     LogConfig(logProps)
   }
 

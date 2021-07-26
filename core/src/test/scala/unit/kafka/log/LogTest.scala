@@ -1128,11 +1128,11 @@ class LogTest {
     assertEquals(3, log.logSegments.size)
 
     // Update remoteIndexHighestOffset to 2, that means all the segments are copied. But the local retention bytes
-    // is set as 1, which means one/active segment should exist in the local log.
+    // is set as 1, which means 1 active segment should exist even though it is already copied to remote storage.
     log.updateRemoteIndexHighestOffset(2L)
     log.deleteOldSegments()
     mockTime.sleep(1)
-    // It should have deleted earlier two segments as they are eligible because of localRetentionBytes is 1.
+    // It should have deleted earlier 2 segments as they are eligible because of localRetentionBytes is 1.
     assertEquals(1, log.logSegments.size)
   }
 

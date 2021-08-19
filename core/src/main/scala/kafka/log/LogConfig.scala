@@ -66,6 +66,7 @@ object Defaults {
   val MaxIdMapSnapshots = kafka.server.Defaults.MaxIdMapSnapshots
   val MessageDownConversionEnable = kafka.server.Defaults.MessageDownConversionEnable
   val ProducerBatchDecompressionEnable = kafka.server.Defaults.ProducerBatchDecompressionEnable
+  val UnofficialClientLoggingEnable = kafka.server.Defaults.UnofficialClientLoggingEnable
 }
 
 case class LogConfig(props: java.util.Map[_, _], overriddenConfigs: Set[String] = Set.empty)
@@ -102,6 +103,7 @@ case class LogConfig(props: java.util.Map[_, _], overriddenConfigs: Set[String] 
   val FollowerReplicationThrottledReplicas = getList(LogConfig.FollowerReplicationThrottledReplicasProp)
   val messageDownConversionEnable = getBoolean(LogConfig.MessageDownConversionEnableProp)
   val producerBatchDecompressionEnable = getBoolean(LogConfig.ProducerBatchDecompressionEnableProp)
+  val unofficialClientLoggingEnable = getBoolean(LogConfig.UnofficialClientLoggingEnableProp)
 
   def randomSegmentJitter: Long =
     if (segmentJitterMs == 0) 0 else Utils.abs(scala.util.Random.nextInt()) % math.min(segmentJitterMs, segmentMs)
@@ -144,6 +146,7 @@ object LogConfig {
   val MessageTimestampTypeProp = TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG
   val MessageTimestampDifferenceMaxMsProp = TopicConfig.MESSAGE_TIMESTAMP_DIFFERENCE_MAX_MS_CONFIG
   val MessageDownConversionEnableProp = TopicConfig.MESSAGE_DOWNCONVERSION_ENABLE_CONFIG
+  val UnofficialClientLoggingEnableProp = KafkaConfig.UnofficialClientLoggingEnableProp
 
   // Leave these out of TopicConfig for now as they are replication quota configs
   val LeaderReplicationThrottledReplicasProp = "leader.replication.throttled.replicas"
@@ -173,6 +176,7 @@ object LogConfig {
   val MessageTimestampTypeDoc = TopicConfig.MESSAGE_TIMESTAMP_TYPE_DOC
   val MessageTimestampDifferenceMaxMsDoc = TopicConfig.MESSAGE_TIMESTAMP_DIFFERENCE_MAX_MS_DOC
   val MessageDownConversionEnableDoc = TopicConfig.MESSAGE_DOWNCONVERSION_ENABLE_DOC
+  val UnofficialClientLoggingEnableDoc = KafkaConfig.UnofficialClientLoggingEnableDoc
 
   val ProducerBatchDecompressionEnableProp = "producer.batch.decompression.enable"
 
@@ -304,6 +308,8 @@ object LogConfig {
         MessageDownConversionEnableDoc, KafkaConfig.LogMessageDownConversionEnableProp)
       .define(ProducerBatchDecompressionEnableProp, BOOLEAN, Defaults.ProducerBatchDecompressionEnable, LOW,
         ProducerBatchDecompressionEnableDoc, KafkaConfig.ProducerBatchDecompressionEnableProp)
+      .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW,
+        UnofficialClientLoggingEnableDoc, KafkaConfig.UnofficialClientLoggingEnableProp)
   }
 
   def apply(): LogConfig = LogConfig(new Properties())

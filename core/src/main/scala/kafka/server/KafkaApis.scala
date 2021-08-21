@@ -75,7 +75,7 @@ import org.apache.kafka.server.authorizer._
 import java.lang.{Long => JLong}
 import java.nio.ByteBuffer
 import java.util
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Collections, Optional}
 
@@ -113,6 +113,9 @@ class KafkaApis(val requestChannel: RequestChannel,
   val authHelper = new AuthHelper(authorizer)
   val requestHelper = new RequestHandlerHelper(requestChannel, quotas, time)
   val aclApis = new AclApis(authHelper, authorizer, requestHelper, "broker", config)
+  private val unofficialClientIdentities = scala.collection.mutable.Set[String]()
+  private var flushStartTime = System.currentTimeMillis()
+  private val unofficialClientSetTtl = TimeUnit.HOURS.toMillis(1)
 
   def close(): Unit = {
     aclApis.close()
@@ -1840,8 +1843,48 @@ class KafkaApis(val requestChannel: RequestChannel,
     // If this is considered to leak information about the broker version a workaround is to use SSL
     // with client authentication which is performed at an earlier stage of the connection where the
     // ApiVersionRequest is not available.
+    val apiVersionRequest = request.body[ApiVersionsRequest]
+
+    // flush unofficial client set every hour
+    if (System.currentTimeMillis() - flushStartTime > unofficialClientSetTtl) {
+      unofficialClientIdentities.clear()
+      flushStartTime = System.currentTimeMillis()
+    }
+
+    if (config.unofficialClientLoggingEnable) {
+      val softwareName = apiVersionRequest.data.clientSoftwareName()
+      val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
+      val UNOFFICIAL_CLIENT = "UNOFFICIAL"
+
+      def getClientTypeFromClientSoftwareName(softwareName: String): String = {
+        val AVRO = "AvroKafka"
+        val RAW = "RawKafka"
+        val ADMIN = "Admin"
+        val TRACKING = "TrackingConsumer"
+        val TRACKER = "TrackerProcessor"
+
+        if (softwareName.contains(AVRO)) {
+          AVRO
+        } else if (softwareName.contains(RAW)) {
+          RAW
+        } else if (softwareName.contains(ADMIN)) {
+          ADMIN
+        } else if (softwareName.contains(TRACKING)) {
+          TRACKING
+        } else if (softwareName.contains(TRACKER)) {
+          TRACKER
+        } else {
+          UNOFFICIAL_CLIENT
+        }
+      }
+
+      if (getClientTypeFromClientSoftwareName(softwareName) == UNOFFICIAL_CLIENT && !unofficialClientIdentities.contains(clientIdentity)) {
+        unofficialClientIdentities += clientIdentity
+        warn(s"received ApiVersionsRequest from user with unofficial client type. clientId clientAddress principal = $clientIdentity")
+      }
+    }
+
     def createResponseCallback(requestThrottleMs: Int): ApiVersionsResponse = {
-      val apiVersionRequest = request.body[ApiVersionsRequest]
       if (apiVersionRequest.hasUnsupportedRequestVersion) {
         apiVersionRequest.getErrorResponse(requestThrottleMs, Errors.UNSUPPORTED_VERSION.exception)
       } else if (!apiVersionRequest.isValid) {

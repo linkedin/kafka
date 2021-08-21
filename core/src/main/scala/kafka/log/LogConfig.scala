@@ -68,6 +68,7 @@ object Defaults {
   val FollowerReplicationThrottledReplicas = Collections.emptyList[String]()
   val MaxIdMapSnapshots = kafka.server.Defaults.MaxIdMapSnapshots
   val MessageDownConversionEnable = kafka.server.Defaults.MessageDownConversionEnable
+  val UnofficialClientLoggingEnable = kafka.server.Defaults.UnofficialClientLoggingEnable
 }
 
 case class LogConfig(props: java.util.Map[_, _], overriddenConfigs: Set[String] = Set.empty)
@@ -108,6 +109,7 @@ case class LogConfig(props: java.util.Map[_, _], overriddenConfigs: Set[String] 
   val FollowerReplicationThrottledReplicas = getList(LogConfig.FollowerReplicationThrottledReplicasProp)
   val messageDownConversionEnable = getBoolean(LogConfig.MessageDownConversionEnableProp)
   val remoteStorageEnable = getBoolean(LogConfig.RemoteLogStorageEnableProp)
+  val unofficialClientLoggingEnable = getBoolean(LogConfig.UnofficialClientLoggingEnableProp)
 
   val localRetentionMs: Long = {
     val localLogRetentionMs = getLong(LogConfig.LocalLogRetentionMsProp)
@@ -211,6 +213,7 @@ object LogConfig {
   val MessageTimestampTypeProp = TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG
   val MessageTimestampDifferenceMaxMsProp = TopicConfig.MESSAGE_TIMESTAMP_DIFFERENCE_MAX_MS_CONFIG
   val MessageDownConversionEnableProp = TopicConfig.MESSAGE_DOWNCONVERSION_ENABLE_CONFIG
+  val UnofficialClientLoggingEnableProp = KafkaConfig.UnofficialClientLoggingEnableProp
 
   // Leave these out of TopicConfig for now as they are replication quota configs
   val LeaderReplicationThrottledReplicasProp = "leader.replication.throttled.replicas"
@@ -247,6 +250,7 @@ object LogConfig {
   val MessageTimestampTypeDoc = TopicConfig.MESSAGE_TIMESTAMP_TYPE_DOC
   val MessageTimestampDifferenceMaxMsDoc = TopicConfig.MESSAGE_TIMESTAMP_DIFFERENCE_MAX_MS_DOC
   val MessageDownConversionEnableDoc = TopicConfig.MESSAGE_DOWNCONVERSION_ENABLE_DOC
+  val UnofficialClientLoggingEnableDoc = KafkaConfig.UnofficialClientLoggingEnableDoc
 
   val LeaderReplicationThrottledReplicasDoc = "A list of replicas for which log replication should be throttled on " +
     "the leader side. The list should describe a set of replicas in the form " +
@@ -370,6 +374,8 @@ object LogConfig {
         FollowerReplicationThrottledReplicasDoc, FollowerReplicationThrottledReplicasProp)
       .define(MessageDownConversionEnableProp, BOOLEAN, Defaults.MessageDownConversionEnable, LOW,
         MessageDownConversionEnableDoc, KafkaConfig.LogMessageDownConversionEnableProp)
+      .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW,
+        UnofficialClientLoggingEnableDoc, KafkaConfig.UnofficialClientLoggingEnableProp)
 
     // RemoteLogStorageEnableProp, LocalLogRetentionMsProp, LocalLogRetentionBytesProp do not have server default
     // config names.

@@ -81,7 +81,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.compat.java8.OptionConverters._
 import scala.util.{Failure, Success, Try}
-
+import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 /**
  * Logic to handle the various Kafka requests
@@ -110,9 +110,15 @@ class KafkaApis(val requestChannel: RequestChannel,
   this.logIdent = "[KafkaApi-%d] ".format(brokerId)
   val adminZkClient = new AdminZkClient(zkClient)
   private val alterAclsPurgatory = new DelayedFuturePurgatory(purgatoryName = "AlterAcls", brokerId = config.brokerId)
-  private val unofficialClientIdentities = scala.collection.mutable.Set[String]()
-  private var flushStartTime = System.currentTimeMillis()
-  private val unofficialClientSetTtl = TimeUnit.HOURS.toMillis(1)
+
+  val unofficialClientsCache: LoadingCache[String, String] = CacheBuilder.newBuilder()
+    .expireAfterWrite(1, TimeUnit.HOURS)
+    .build(
+      new CacheLoader[String, String]() {
+        @Override
+        def load(key: String): String = { key }
+      }
+    )
 
   def close(): Unit = {
     alterAclsPurgatory.shutdown()
@@ -1688,41 +1694,13 @@ class KafkaApis(val requestChannel: RequestChannel,
     // ApiVersionRequest is not available.
     val apiVersionRequest = request.body[ApiVersionsRequest]
 
-    // flush unofficial client set every hour
-    if (System.currentTimeMillis() - flushStartTime > unofficialClientSetTtl) {
-      unofficialClientIdentities.clear()
-      flushStartTime = System.currentTimeMillis()
-    }
-
     if (config.unofficialClientLoggingEnable) {
       val softwareName = apiVersionRequest.data.clientSoftwareName()
-      val clientIdentity = request.context.clientId() + "-" + request.context.clientAddress() + "-" + request.context.principal()
-      val UNOFFICIAL_CLIENT = "UNOFFICIAL"
+      val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
+      val isUnofficial = softwareName.equals("linkedin-kafka-java") || softwareName.equals("apache-kafka-java") || softwareName.equals("li-oss-producer-java") || softwareName.equals("li-oss-consumer-java")
 
-      def getClientTypeFromClientSoftwareName(softwareName: String): String = {
-        val AVRO = "AvroKafka"
-        val RAW = "RawKafka"
-        val ADMIN = "Admin"
-        val TRACKING = "TrackingConsumer"
-        val TRACKER = "TrackerProcessor"
-
-        if (softwareName.contains(AVRO)) {
-          AVRO
-        } else if (softwareName.contains(RAW)) {
-          RAW
-        } else if (softwareName.contains(ADMIN)) {
-          ADMIN
-        } else if (softwareName.contains(TRACKING)) {
-          TRACKING
-        } else if (softwareName.contains(TRACKER)) {
-          TRACKER
-        } else {
-          UNOFFICIAL_CLIENT
-        }
-      }
-
-      if (getClientTypeFromClientSoftwareName(softwareName) == UNOFFICIAL_CLIENT && !unofficialClientIdentities.contains(clientIdentity)) {
-        unofficialClientIdentities += clientIdentity
+      if (isUnofficial) {
+        unofficialClientsCache.get(clientIdentity)
         warn(s"received ApiVersionsRequest from user with unofficial client type. clientId clientAddress principal = $clientIdentity")
       }
     }

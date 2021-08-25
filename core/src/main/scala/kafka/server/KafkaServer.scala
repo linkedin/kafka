@@ -83,7 +83,6 @@ object KafkaServer {
     logProps.put(LogConfig.MessageTimestampDifferenceMaxMsProp, kafkaConfig.logMessageTimestampDifferenceMaxMs: java.lang.Long)
     logProps.put(LogConfig.MessageDownConversionEnableProp, kafkaConfig.logMessageDownConversionEnable: java.lang.Boolean)
     logProps.put(LogConfig.ProducerBatchDecompressionEnableProp, kafkaConfig.producerBatchDecompressionEnable: java.lang.Boolean)
-    logProps.put(LogConfig.UnofficialClientLoggingEnableProp, kafkaConfig.unofficialClientLoggingEnable: java.lang.Boolean)
     logProps
   }
 

@@ -112,7 +112,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   private val alterAclsPurgatory = new DelayedFuturePurgatory(purgatoryName = "AlterAcls", brokerId = config.brokerId)
 
   val unofficialClientsCache: LoadingCache[String, String] = CacheBuilder.newBuilder()
-    .expireAfterWrite(1, TimeUnit.HOURS)
+    .expireAfterWrite(config.unofficialClientCacheTtl, TimeUnit.HOURS)
     .build(
       new CacheLoader[String, String]() {
         @Override

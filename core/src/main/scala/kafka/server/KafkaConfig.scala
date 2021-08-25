@@ -72,7 +72,8 @@ object Defaults {
   val ProducerBatchDecompressionEnable = true
   val PreferredController = false
   val AllowPreferredControllerFallback = true
-  val UnofficialClientLoggingEnable = true
+  val UnofficialClientLoggingEnable = false
+  val UnofficialClientCacheTtl = 1
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
@@ -378,6 +379,7 @@ object KafkaConfig {
   val LiCombinedControlRequestEnableProp = "li.combined.control.request.enable"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
+  val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
@@ -678,7 +680,8 @@ object KafkaConfig {
   val AllowPreferredControllerFallbackDoc = "Specifies whether a non-preferred controller node (broker) is allowed to become the controller." +
   " This configuration is expected to be configured at cluster level via dynamic broker configuration to provide a consistent configuration among all brokers." +
   " If AllowPreferredControllerFallback is dynamically set to false and there is no preferred controllers, the non-preferred active controller does not resign."
-  val UnofficialClientLoggingEnableDoc = "Controls whether logging occurs when an ApiVersionsRequest is received from an unofficial client."
+  val UnofficialClientLoggingEnableDoc = "Controls whether logging occurs when an ApiVersionsRequest is received from a client unsupported by LinkedIn, such as an Apache Kafka client."
+  val UnofficialClientCacheTtlDoc = "The amount of time (in hours) for the identity of an unofficial client to live in the local cache to avoid duplicate log messages."
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = s"The fully qualified name of a class that implements s${classOf[Authorizer].getName}" +
@@ -1080,6 +1083,7 @@ object KafkaConfig {
       .define(LiCombinedControlRequestEnableProp, BOOLEAN, Defaults.LiCombinedControlRequestEnabled, HIGH, LiCombinedControlRequestEnableDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
+      .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
@@ -1482,6 +1486,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   def liCombinedControlRequestEnable = getBoolean(KafkaConfig.LiCombinedControlRequestEnableProp)
 
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)
+  def unofficialClientCacheTtl = getLong(KafkaConfig.UnofficialClientCacheTtlProp)
 
   def getNumReplicaAlterLogDirsThreads: Int = {
     val numThreads: Integer = Option(getInt(KafkaConfig.NumReplicaAlterLogDirsThreadsProp)).getOrElse(logDirs.size)

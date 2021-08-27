@@ -74,6 +74,7 @@ object Defaults {
   val AllowPreferredControllerFallback = true
   val UnofficialClientLoggingEnable = false
   val UnofficialClientCacheTtl = 1
+  val UnofficialClientSoftwareNames = util.Arrays.asList("linkedin-kafka-java", "apache-kafka-java", "li-oss-producer-java", "li-oss-consumer-java")
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassName = ""
@@ -380,6 +381,7 @@ object KafkaConfig {
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
   val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
+  val UnofficialClientSoftwareNamesProp = "unofficial.client.software.names"
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
@@ -682,6 +684,7 @@ object KafkaConfig {
   " If AllowPreferredControllerFallback is dynamically set to false and there is no preferred controllers, the non-preferred active controller does not resign."
   val UnofficialClientLoggingEnableDoc = "Controls whether logging occurs when an ApiVersionsRequest is received from a client unsupported by LinkedIn, such as an Apache Kafka client."
   val UnofficialClientCacheTtlDoc = "The amount of time (in hours) for the identity of an unofficial client to live in the local cache to avoid duplicate log messages."
+  val UnofficialClientSoftwareNamesDoc = "The software names of clients that are unsupported by LinkedIn, such as Apache Kafka clients."
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = s"The fully qualified name of a class that implements s${classOf[Authorizer].getName}" +
@@ -1084,6 +1087,7 @@ object KafkaConfig {
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
+      .define(UnofficialClientSoftwareNamesProp, LIST, Defaults.UnofficialClientSoftwareNames, LOW, UnofficialClientSoftwareNamesDoc)
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
@@ -1487,6 +1491,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)
   def unofficialClientCacheTtl = getLong(KafkaConfig.UnofficialClientCacheTtlProp)
+  def unofficialClientSoftwareNames = getList(KafkaConfig.UnofficialClientSoftwareNamesProp)
 
   def getNumReplicaAlterLogDirsThreads: Int = {
     val numThreads: Integer = Option(getInt(KafkaConfig.NumReplicaAlterLogDirsThreadsProp)).getOrElse(logDirs.size)

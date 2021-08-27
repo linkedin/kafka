@@ -1696,10 +1696,8 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     if (config.unofficialClientLoggingEnable) {
       val softwareName = apiVersionRequest.data.clientSoftwareName()
-      val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
-      val isUnofficial = softwareName.equals("linkedin-kafka-java") || softwareName.equals("apache-kafka-java") || softwareName.equals("li-oss-producer-java") || softwareName.equals("li-oss-consumer-java")
-
-      if (isUnofficial) {
+      if (config.unofficialClientSoftwareNames.contains(softwareName)) {
+        val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
         unofficialClientsCache.get(clientIdentity)
         warn(s"received ApiVersionsRequest from user with unofficial client type. clientId clientAddress principal = $clientIdentity")
       }

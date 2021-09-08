@@ -81,6 +81,7 @@ object Defaults {
   val MetadataSnapshotMaxNewRecordBytes = 20 * 1024 * 1024
 
   val ProducerBatchDecompressionEnable = true
+  val MissingPerTopicConfig = "-1"
 
   /** KRaft mode configs */
   val EmptyNodeId: Int = -1

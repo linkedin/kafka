@@ -89,7 +89,10 @@ class TopicConfigHandler(private val logManager: LogManager, kafkaConfig: KafkaC
       kafkaController.enableTopicUncleanLeaderElection(topic)
     }
 
-    Try(topicConfig.getProperty(KafkaConfig.MinInSyncReplicasProp).toInt) match {
+    // If the new topic config does not have min.insync.replicas configured, i.e. the topic shall use the default value,
+    // ensure that the controller knows about it.
+    val missingMinISRPropertyValue = "-1"
+    Try(topicConfig.getProperty(KafkaConfig.MinInSyncReplicasProp, missingMinISRPropertyValue).toInt) match {
       case Success(minInSyncReplicas) => kafkaController.setMinInSyncReplicas(topic, minInSyncReplicas)
       case _ =>
     }

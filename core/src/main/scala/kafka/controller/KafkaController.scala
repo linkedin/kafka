@@ -1282,7 +1282,7 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def processTopicMinInSyncReplicasConfigChange(topic: String, minInSyncReplicas: Int): Unit = {
-    if (minInSyncReplicas > 0) {
+    if (minInSyncReplicas != Defaults.MissingPerTopicConfig.toInt) {
       // Add the explicitly configured value of min.insync.replicas config for the corresponding topic.
       controllerContext.topicMinIsrConfig += topic -> minInSyncReplicas
     } else {

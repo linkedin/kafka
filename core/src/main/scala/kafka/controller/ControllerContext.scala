@@ -427,10 +427,10 @@ class ControllerContext {
 }
 
 /**
-  * The ControllerContextSnapshot is an immutable snapshot of the ControllorContext.
-  * The motivation for this class is that we don't need to calculate certain fields
-  * repeatedly, including liveBrokerIds and liveOrShuttingDownBrokerIds.
-  */
+ * The ControllerContextSnapshot is an immutable snapshot of the ControllorContext.
+ * The motivation for this class is that we don't need to calculate certain fields
+ * repeatedly, including liveBrokerIds and liveOrShuttingDownBrokerIds.
+ */
 case class ControllerContextSnapshot(controllerContext: ControllerContext) {
   val liveBrokerIds = controllerContext.liveBrokerIds
   val liveOrShuttingDownBrokerIds = controllerContext.liveOrShuttingDownBrokerIds

@@ -37,7 +37,7 @@ import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
 import scala.annotation.nowarn
 import scala.jdk.CollectionConverters._
 import scala.collection.Seq
-import scala.collection.mutable.Buffer
+import scala.collection.mutable.{Buffer, ListBuffer}
 import scala.concurrent.ExecutionException
 
 class TransactionsTest extends KafkaServerTestHarness {
@@ -105,8 +105,7 @@ class TransactionsTest extends KafkaServerTestHarness {
     producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic2, 0, "3", "3", willBeCommitted = true))
     producer.commitTransaction()
 
-    maybeWaitForSegmentUpload(new TopicPartition(topic2, 0), 3)
-    maybeWaitForSegmentUpload(new TopicPartition(topic1, 0), 3)
+    maybeWaitForAtLeastOneSegmentUpload(new TopicPartition(topic1, 0), new TopicPartition(topic2, 0))
 
     consumer.subscribe(List(topic1, topic2).asJava)
     unCommittedConsumer.subscribe(List(topic1, topic2).asJava)
@@ -213,6 +212,8 @@ class TransactionsTest extends KafkaServerTestHarness {
     producer1.abortTransaction()
     producer2.commitTransaction()
 
+    maybeWaitForAtLeastOneSegmentUpload(new TopicPartition(topic1, 0))
+
     // ensure that the consumer's fetch will sit in purgatory
     val consumerProps = new Properties()
     consumerProps.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "100000")
@@ -301,6 +302,12 @@ class TransactionsTest extends KafkaServerTestHarness {
     } finally {
       consumer.close()
     }
+
+    val partitions = ListBuffer.empty[TopicPartition]
+    for (partition <- 0 until numPartitions) {
+      partitions += new TopicPartition(topic2, partition)
+    }
+    maybeWaitForAtLeastOneSegmentUpload(partitions.toSeq: _*)
 
     // In spite of random aborts, we should still have exactly 1000 messages in topic2. I.e. we should not
     // re-copy or miss any messages from topic1, since the consumed offsets were committed transactionally.
@@ -754,7 +761,7 @@ class TransactionsTest extends KafkaServerTestHarness {
     serverProps
   }
 
-  def maybeWaitForSegmentUpload(topicPartition: TopicPartition, earliestLocalOffset: Long): Unit = {
+  def maybeWaitForAtLeastOneSegmentUpload(topicPartitions: TopicPartition*): Unit = {
   }
 
   private def createReadCommittedConsumer(group: String = "group",

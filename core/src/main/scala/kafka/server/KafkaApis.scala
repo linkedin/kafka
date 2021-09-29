@@ -3150,8 +3150,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val moveControllerRequest = request.body[LiMoveControllerRequest]
 
     val moveControllerResponse = try {
-      val expectedControllerEpochZkVersion = controller.controllerContext.epochZkVersion
-      zkClient.deleteController(expectedControllerEpochZkVersion)
+      zkClient.deleteControllerRaw()
       LiMoveControllerResponse.prepareResponse(Errors.NONE)
     } catch {
       case throwable: Throwable  =>

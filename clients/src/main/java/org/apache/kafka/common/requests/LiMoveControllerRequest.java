@@ -27,7 +27,7 @@ public class LiMoveControllerRequest extends AbstractRequest {
         private final LiMoveControllerRequestData data;
 
         public Builder(LiMoveControllerRequestData data, short allowedVersion) {
-            super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, allowedVersion);
+            super(ApiKeys.LI_MOVE_CONTROLLER, allowedVersion);
             this.data = data;
         }
 
@@ -45,12 +45,12 @@ public class LiMoveControllerRequest extends AbstractRequest {
     private final LiMoveControllerRequestData data;
 
     public LiMoveControllerRequest(LiMoveControllerRequestData data, short version) {
-        super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, version);
+        super(ApiKeys.LI_MOVE_CONTROLLER, version);
         this.data = data;
     }
 
     public LiMoveControllerRequest(Struct struct, short version) {
-        super(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, version);
+        super(ApiKeys.LI_MOVE_CONTROLLER, version);
         this.data = new LiMoveControllerRequestData(struct, version);
     }
 

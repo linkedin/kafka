@@ -24,12 +24,6 @@ import java.util.Collections;
 import java.util.Map;
 
 public class LiMoveControllerResponse extends AbstractResponse {
-    /**
-     * Possible error codes:
-     * <p>
-     * UNKNOWN(-1) (this is because IllegalStateException may be thrown in `KafkaController.shutdownBroker`, it would be good to improve this)
-     * STALE_CONTROLLER_EPOCH(11)
-     */
     private final LiMoveControllerResponseData data;
 
     public LiMoveControllerResponse(LiMoveControllerResponseData data) {

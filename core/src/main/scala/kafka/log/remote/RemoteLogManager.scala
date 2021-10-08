@@ -229,7 +229,7 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
   }
 
   def storageManager(): RemoteStorageManager = {
-    remoteLogStorageManager.delegate()
+    remoteLogStorageManager
   }
 
   /**

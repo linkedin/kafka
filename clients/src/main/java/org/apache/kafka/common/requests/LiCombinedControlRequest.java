@@ -138,7 +138,7 @@ public class LiCombinedControlRequest extends AbstractControlRequest {
 
             bld.append("updateMetadataLiveBrokers=\n");
             /**
-             * Now that the LiCombinedControl request has been enabled in production for several months and proven
+             * Now that the LiCombinedControl request has been enabled in production and proven
              * to be a stable feature, we can skip the logging of live brokers in the UpdateMetadata request to
              * make the log file sizes smaller.
             for (LiCombinedControlRequestData.UpdateMetadataBroker broker: updateMetadataLiveBrokers) {

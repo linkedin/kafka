@@ -23,6 +23,7 @@ on:
     # Using wildcard (e.g. '**') to build on all branches will cause PRs to run duplicate checks like `test (pull_request)` with `test (push)`.
     branches:
       - 3.0-li
+      - 3.0-li-dev**
 
 jobs:
   test:

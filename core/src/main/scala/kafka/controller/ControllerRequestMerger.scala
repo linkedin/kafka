@@ -237,11 +237,13 @@ class ControllerRequestMerger extends Logging {
     val LiDecomposedControlResponse(leaderAndIsrResponse, _, stopReplicaResponse) =
       LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
     if (leaderAndIsrCallback != null
-      && (!leaderAndIsrResponse.partitions().isEmpty() || leaderAndIsrResponse.error() != Errors.NONE)) {
+      && (!leaderAndIsrResponse.partitions().isEmpty || leaderAndIsrResponse.error() != Errors.NONE)) {
+      // fire callback only if leaderAndIsrResponse is non-empty or contains errors
       leaderAndIsrCallback(leaderAndIsrResponse)
     }
     if (stopReplicaCallback != null
-      && (!stopReplicaResponse.partitionErrors().isEmpty()) || stopReplicaResponse.error() != Errors.NONE) {
+      && (!stopReplicaResponse.partitionErrors().isEmpty || stopReplicaResponse.error() != Errors.NONE)) {
+      // fire callback only if stopReplicaResponse is non-empty or contains errors
       stopReplicaCallback(stopReplicaResponse)
     }
   }

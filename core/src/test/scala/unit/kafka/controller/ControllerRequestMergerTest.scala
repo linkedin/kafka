@@ -277,7 +277,7 @@ class ControllerRequestMergerTest {
   }
 
   @Test
-  def testNotTriggerCallbackForUpdateMetadataReqeust(): Unit = {
+  def testNotTriggerCallbackForUpdateMetadataRequest(): Unit = {
     var leaderAndISRCallbackInvocationCount = 0
     var stopReplicaCallbackInvocationCount = 0
     controllerRequestMerger.leaderAndIsrCallback = (response: AbstractResponse) => {
@@ -300,7 +300,7 @@ class ControllerRequestMergerTest {
 
     // LeaderAndISR response with some errors
     val responseLeaderAndISRData1 =
-      new LiCombinedControlResponseData().setLeaderAndIsrErrorCode(Errors.UNKNOWN_SERVER_ERROR.code());
+      new LiCombinedControlResponseData().setLeaderAndIsrErrorCode(Errors.UNKNOWN_SERVER_ERROR.code())
     val responseLeaderAndISR1 = new LiCombinedControlResponse(responseLeaderAndISRData1)
 
     // LeaderAndISR response with non-empty partitions
@@ -329,7 +329,7 @@ class ControllerRequestMergerTest {
     val stopReplicaPartitionsError = createStopReplicaResponsePartitions("foo",
       Seq(Errors.NONE, Errors.CLUSTER_AUTHORIZATION_FAILED))
     val responseStopReplicaData2 =
-      new LiCombinedControlResponseData().setStopReplicaPartitionErrors(stopReplicaPartitionsError);
+      new LiCombinedControlResponseData().setStopReplicaPartitionErrors(stopReplicaPartitionsError)
     val responseStopReplica2 = new LiCombinedControlResponse(responseStopReplicaData2)
 
     // stopReplicaCallbackInvocationCount increased with error StopReplica response
@@ -349,7 +349,8 @@ class ControllerRequestMergerTest {
     var partitionIndex = 0
     for (error <- errors) {
       partitions.add(new LiCombinedControlResponseData.LeaderAndIsrPartitionError().setTopicName(topicName).setPartitionIndex({
-        partitionIndex += 1; partitionIndex - 1
+        partitionIndex += 1
+        partitionIndex - 1
       }).setErrorCode(error.code))
     }
     partitions
@@ -360,7 +361,8 @@ class ControllerRequestMergerTest {
     var partitionIndex = 0
     for (error <- errors) {
       partitions.add(new LiCombinedControlResponseData.StopReplicaPartitionError().setTopicName(topicName).setPartitionIndex({
-        partitionIndex += 1; partitionIndex - 1
+        partitionIndex += 1
+        partitionIndex - 1
       }).setErrorCode(error.code))
     }
     partitions

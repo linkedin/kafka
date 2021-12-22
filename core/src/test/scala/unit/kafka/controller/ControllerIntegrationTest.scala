@@ -667,15 +667,25 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
 
     TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment = expectedReplicaAssignment, servers = servers)
 
+    def waitUntilPartitionInfoAvailableInBrokers(topic: String, partition: Int, servers: Seq[KafkaServer], msg: String): Unit = {
+      TestUtils.waitUntilTrue(
+        () => servers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic, partition).isDefined),
+        msg
+      )
+    }
+
     // Attempt to shut down and then restart broker1
     val broker1 = servers.filter(s => s.config.brokerId == 1).head
     broker1.shutdown()
     var activeServers = servers.filter(s => s.config.brokerId != 1)
+    waitUntilPartitionInfoAvailableInBrokers(topic, partition, activeServers, "Topic test not created or metadata not propagated after timeout")
+
     TestUtils.waitUntilTrue(() =>
       activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 2),
       "Topic test not created after timeout")
 
     broker1.startup()
+    waitUntilPartitionInfoAvailableInBrokers(topic, partition, servers, "Topic test not created or metadata not propagated after timeout")
     TestUtils.waitUntilTrue(() =>
       servers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic, partition).get.isr.size == 2),
       "The ISR does not include the full set after the offline broker is restarted")

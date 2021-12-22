@@ -1391,7 +1391,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
       isFuture = EasyMock.eq(false))).andReturn(mockLog).anyTimes
     if (expectTruncation) {
       EasyMock.expect(mockLogMgr.truncateTo(Map(topicPartitionObj -> offsetFromLeader),
-        isFuture = false)).once
+        isFuture = false)).atLeastOnce()
     }
     EasyMock.expect(mockLogMgr.initializingLog(topicPartitionObj)).anyTimes
     EasyMock.expect(mockLogMgr.getLog(topicPartitionObj, isFuture = true)).andReturn(None)
@@ -1481,7 +1481,16 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
 
             val initialOffset = OffsetAndEpoch(offset = 0L, leaderEpoch = leaderEpochInLeaderAndIsr)
 
-            fetcherEventManager.addPartitions(Map(new TopicPartition(topic, topicPartition) -> initialOffset))
+            val partitionModifications = new PartitionModifications
+            partitionModifications.partitionsToMakeFollowerWithOffsetAndEpoch ++= Map(new TopicPartition(topic, topicPartition) ->
+              FollowerPartitionStateInFetcher(BrokerIdAndFetcherId(sourceBroker.id, fetcherId), initialOffset))
+            fetcherEventManager.modifyPartitionsAndGetCount(partitionModifications)
+            // call doWork to add the partitions
+            fetcherEventManager.thread.doWork()
+            // trigger one round of TruncateAndFetch
+            fetcherEventManager.fetcherEventBus.put(TruncateAndFetch)
+            fetcherEventManager.thread.doWork()
+
             countDownLatch.countDown()
             fetcherEventManager
           }

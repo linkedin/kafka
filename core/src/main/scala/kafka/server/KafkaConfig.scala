@@ -858,7 +858,7 @@ object KafkaConfig {
   val ReplicaSocketTimeoutMsDoc = "The socket timeout for network requests. Its value should be at least replica.fetch.wait.max.ms"
   val ReplicaRequestTimeoutMsDoc = "The configuration controls the maximum amount of time a follower will wait " +
     "for the response of a fetch request from the leader. If the response is not received before the timeout " +
-    "elapses the follower will backoff and retry fetching for the affected partitions"
+    "elapses the follower will back off and retry fetching for the affected partitions"
   val ReplicaSocketReceiveBufferBytesDoc = "The socket receive buffer for network requests"
   val ReplicaFetchMaxBytesDoc = "The number of bytes of messages to attempt to fetch for each partition. This is not an absolute maximum, " +
     "if the first record batch in the first non-empty partition of the fetch is larger than this value, the record batch will still be returned " +

@@ -1405,7 +1405,6 @@ class ReplicaManager(val config: KafkaConfig,
     val partitionsToMakeLeaders = mutable.Set[Partition]()
 
     try {
-      // First stop fetchers for all the partitions
       partitionModifications.partitionsToRemove ++= partitionStates.keySet.map(_.topicPartition)
       // Update the partition information to be the leader
       partitionStates.foreach { case (partition, partitionState) =>

@@ -854,7 +854,7 @@ class ReplicaManagerTest(liAsyncFetcherEnabled: Boolean) {
         new Node(leaderBrokerId, "host2", 1)).asJava).build()
     replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest0,
       (_, followers) => assertEquals(followerBrokerId, followers.head.partitionId))
-    assertTrue(countDownLatch.await(1000L, TimeUnit.MILLISECONDS))
+    assertTrue(countDownLatch.await(5000L, TimeUnit.MILLISECONDS))
 
     // Truncation should have happened once
     EasyMock.verify(mockLogMgr)

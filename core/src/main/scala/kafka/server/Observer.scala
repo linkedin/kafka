@@ -72,7 +72,7 @@ object Observer extends Logging {
   /**
    * Create a new observer from the given Kafka config.
    * @param config the Kafka configuration defining observer properties.
-   * @return
+   * @return A configured instance of Observer.
    */
   def apply(config: KafkaConfig): Observer = {
     val observer = try {

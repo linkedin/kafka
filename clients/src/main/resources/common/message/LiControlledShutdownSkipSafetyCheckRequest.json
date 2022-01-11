@@ -16,6 +16,7 @@
 {
   "apiKey": 1000,
   "type": "request",
+  "listeners": ["controller"],
   "name": "LiControlledShutdownSkipSafetyCheckRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",

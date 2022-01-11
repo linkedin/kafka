@@ -22,7 +22,6 @@ import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRespon
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
-import org.apache.kafka.common.protocol.types.Struct;
 
 public class LiControlledShutdownSkipSafetyCheckRequest extends AbstractRequest {
     public static class Builder extends AbstractRequest.Builder<LiControlledShutdownSkipSafetyCheckRequest> {

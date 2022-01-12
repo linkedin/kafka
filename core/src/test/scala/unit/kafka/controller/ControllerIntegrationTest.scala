@@ -602,14 +602,17 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     TestUtils.waitUntilTrue(() => controller.controllerContext.topicMinIsrConfig.getOrElse(topic, -1) == 2, "Controller never saw min.insync.replicas config change for topic.")
 
     // Attempt to shut down one broker, which should be allowed with the ISR at 3 and the min ISR of 2
+    val server2 = servers.find(s => s.config.brokerId == 2).get
     val controlledShutdownCallback = (controlledShutdownResult: Try[collection.Set[TopicPartition]]) => resultQueue.put(controlledShutdownResult)
-    controller.controlledShutdown(2, servers.find(_.config.brokerId == 2).get.kafkaController.brokerEpoch, controlledShutdownCallback)
+    controller.controlledShutdown(2, server2.kafkaController.brokerEpoch, controlledShutdownCallback)
+    server2.shutdown()
+
     var partitionsRemaining = resultQueue.take().get
-    var activeServers = servers.filter(s => s.config.brokerId != 2)
+    var activeServers = servers.filterNot(_ == server2)
     // wait for the update metadata request to trickle to the brokers
     TestUtils.waitUntilTrue(() =>
       activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 4),
-      "Topic test not created after timeout")
+      "ISR did not get updated on all brokers after timeout")
     assertEquals(0, partitionsRemaining.size)
     var partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
     var leaderAfterShutdown = partitionStateInfo.leader
@@ -662,13 +665,16 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     TestUtils.waitUntilTrue(() => skipSafetyCheckSucceeded, "Failed to skip shutdown safety check")
 
     // Now shutting down broker id 1 should succeed.
-    newController.controlledShutdown(1, servers.find(_.config.brokerId == 1).get.kafkaController.brokerEpoch, controlledShutdownCallback)
+    val server1 = servers.find(s => s.config.brokerId == 1).get
+    newController.controlledShutdown(1, server1.kafkaController.brokerEpoch, controlledShutdownCallback)
+    server1.shutdown()
+
     partitionsRemaining = resultQueue.take().get
-    activeServers = servers.filter(s => s.config.brokerId != 1)
+    activeServers = activeServers.filterNot(server => server == server1)
     // wait for the update metadata request to trickle to the brokers
     TestUtils.waitUntilTrue(() =>
       activeServers.forall(_.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get.isr.size != 3),
-      "Topic test not created after timeout")
+      "ISR did not get updated on all brokers after timeout")
     assertEquals(0, partitionsRemaining.size)
     partitionStateInfo = activeServers.head.dataPlaneRequestProcessor.metadataCache.getPartitionInfo(topic,partition).get
     leaderAfterShutdown = partitionStateInfo.leader

@@ -67,6 +67,8 @@ public class RemoteLogInputStreamTest {
             List<Arguments> values = new ArrayList<>();
             for (byte magic : asList(MAGIC_VALUE_V0, MAGIC_VALUE_V1, MAGIC_VALUE_V2)) {
                 for (CompressionType type : CompressionType.values()) {
+                    if (type == CompressionType.PASSTHROUGH)
+                        continue;
                     values.add(Arguments.of(new Args(magic, type)));
                 }
             }

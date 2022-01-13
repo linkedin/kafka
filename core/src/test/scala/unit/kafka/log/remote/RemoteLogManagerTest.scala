@@ -147,7 +147,7 @@ class RemoteLogManagerTest {
     assertEquals(rsmConfig.size,
       rsmConfig.count { case (k, v) =>
         val keyWithoutPrefix = k.split(rsmConfigPrefix)(1)
-        MockRemoteStorageManager.configs.get(keyWithoutPrefix) == v
+        MockRemoteStorageManager.configs.get(keyWithoutPrefix) == v.toString
       })
   }
 

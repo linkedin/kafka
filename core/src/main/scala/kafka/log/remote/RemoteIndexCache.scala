@@ -26,7 +26,7 @@ import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.errors.CorruptRecordException
 import org.apache.kafka.common.utils.{KafkaThread, Utils}
 import org.apache.kafka.server.log.remote.storage.RemoteStorageManager.IndexType
-import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentId, RemoteLogSegmentMetadata, RemoteStorageManager}
+import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentId, RemoteLogSegmentMetadata, RemoteResourceNotFoundException, RemoteStorageManager}
 
 object RemoteIndexCache {
   val DirName = "remote-log-index-cache"
@@ -120,28 +120,33 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
 
   def getIndexEntry(remoteLogSegmentMetadata: RemoteLogSegmentMetadata): Entry = {
     def loadIndexFile[T <: CleanableIndex](fileName: String,
-                                           suffix: String,
-                                           fetchRemoteIndex: RemoteLogSegmentMetadata => InputStream,
-                                           readIndex: File => T): T = {
+      suffix: String,
+      fetchRemoteIndex: RemoteLogSegmentMetadata => Option[InputStream],
+      readIndex: File => T): T = {
       val indexFile = new File(cacheDir, fileName + suffix)
+      var inputStreamIsEmpty: Boolean = false
 
       def fetchAndCreateIndex(): T = {
         val inputStream = fetchRemoteIndex(remoteLogSegmentMetadata)
-        val tmpIndexFile = new File(cacheDir, fileName + suffix + RemoteIndexCache.TmpFileSuffix)
+        inputStreamIsEmpty = inputStream.isEmpty
+        inputStream.foreach(inputStream => {
+          val tmpIndexFile = new File(cacheDir, fileName + suffix + RemoteIndexCache.TmpFileSuffix)
 
-        // Below FileChannel#transferFrom call may be efficient as it goes through a fast path of transferring directly
-        // from the source channel into the filesystem cache. But if it goes through non-fast path then it expects the
-        // inputStream to always have available bytes. This is an unnecessary restriction on RemoteStorageManager to
-        // always return InputStream to have available bytes till the end.
-        // FileChannel.open(tmpIndexFile.toPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-        // .transferFrom(sourceChannel, 0, Int.MaxValue)
-        Files.copy(inputStream, tmpIndexFile.toPath)
+          // Below FileChannel#transferFrom call may be efficient as it goes through a fast path of transferring directly
+          // from the source channel into the filesystem cache. But if it goes through non-fast path then it expects the
+          // inputStream to always have available bytes. This is an unnecessary restriction on RemoteStorageManager to
+          // always return InputStream to have available bytes till the end.
+          // FileChannel.open(tmpIndexFile.toPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+          // .transferFrom(sourceChannel, 0, Int.MaxValue)
+          Files.copy(inputStream, tmpIndexFile.toPath)
 
-        Utils.atomicMoveWithFallback(tmpIndexFile.toPath, indexFile.toPath)
+          Utils.atomicMoveWithFallback(tmpIndexFile.toPath, indexFile.toPath)
+        })
+
         readIndex(indexFile)
       }
 
-      if (indexFile.exists()) {
+      if (inputStreamIsEmpty || indexFile.exists()) {
         try {
           readIndex(indexFile)
         } catch {
@@ -160,7 +165,7 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
         val startOffset = remoteLogSegmentMetadata.startOffset()
 
         val offsetIndex: OffsetIndex = loadIndexFile(fileName, RemoteIndexCache.OffsetIndexFileSuffix,
-          rlsMetadata => remoteStorageManager.fetchIndex(rlsMetadata, IndexType.OFFSET),
+          rlsMetadata => Option(remoteStorageManager.fetchIndex(rlsMetadata, IndexType.OFFSET)),
           file => {
             val index = new OffsetIndex(file, startOffset, Int.MaxValue, writable = false)
             index.sanityCheck()
@@ -168,15 +173,23 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
           })
 
         val timeIndex: TimeIndex = loadIndexFile(fileName, RemoteIndexCache.TimeIndexFileSuffix,
-          rlsMetadata => remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TIMESTAMP),
+          rlsMetadata => Option(remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TIMESTAMP)),
           file => {
             val index = new TimeIndex(file, startOffset, Int.MaxValue, writable = false)
             index.sanityCheck()
             index
           })
 
+        def fetchTransactionIndex(rlsMetadata: RemoteLogSegmentMetadata): Option[InputStream] = {
+          try {
+            Option(remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TRANSACTION))
+          } catch {
+            case _: RemoteResourceNotFoundException => None
+          }
+        }
+
         val txnIndex: TransactionIndex = loadIndexFile(fileName, RemoteIndexCache.TxnIndexFileSuffix,
-          rlsMetadata => remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TRANSACTION),
+          fetchTransactionIndex,
           file => {
             val index = new TransactionIndex(startOffset, file)
             index.sanityCheck()
@@ -197,8 +210,8 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
   }
 
   def collectAbortedTransaction(remoteLogSegmentMetadata: RemoteLogSegmentMetadata,
-                                startOffset: Long,
-                                fetchSize: Int): TxnIndexSearchResult = {
+    startOffset: Long,
+    fetchSize: Int): TxnIndexSearchResult = {
     val entry = getIndexEntry(remoteLogSegmentMetadata)
     val maxOffset = entry.offsetIndex.fetchUpperBoundOffset(entry.offsetIndex.lookup(startOffset), fetchSize)
       .map(_.offset)

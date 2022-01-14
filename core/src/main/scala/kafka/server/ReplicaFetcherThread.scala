@@ -418,7 +418,7 @@ class ReplicaFetcherThread(name: String,
           val snapshotFile = Log.producerSnapshotFile(log.dir, offset)
           Files.copy(rlm.storageManager().fetchIndex(rlsMetadata, IndexType.PRODUCER_SNAPSHOT), snapshotFile.toPath)
           log.producerStateManager.reloadSegments()
-          log.loadProducerState(offset, reloadFromCleanShutdown = false)
+          log.loadProducerState(offset)
           info(s"Built the leader epoch cache and producer snapshots from remote tier for $partition. " +
             s"Active producers: ${log.producerStateManager.activeProducers.size}, LeaderLogStartOffset: $leaderLogStartOffset")
         })

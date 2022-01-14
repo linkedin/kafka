@@ -586,8 +586,8 @@ class Log(@volatile private var _dir: File,
   /** The name of this log */
   def name  = dir.getName()
 
-  def loadProducerState(lastOffset: Long, reloadFromCleanShutdown: Boolean): Unit = lock synchronized {
-    rebuildProducerState(lastOffset, producerStateManager, reloadFromCleanShutdown)
+  def loadProducerState(lastOffset: Long): Unit = lock synchronized {
+    rebuildProducerState(lastOffset, producerStateManager)
     maybeIncrementFirstUnstableOffset()
   }
 
@@ -667,11 +667,10 @@ class Log(@volatile private var _dir: File,
   // Rebuild producer state until lastOffset. This method may be called from the recovery code path, and thus must be
   // free of all side-effects, i.e. it must not update any log-specific state.
   private def rebuildProducerState(lastOffset: Long,
-                                   producerStateManager: ProducerStateManager,
-                                   reloadFromCleanShutdown: Boolean = false): Unit = lock synchronized {
+                                   producerStateManager: ProducerStateManager): Unit = lock synchronized {
     checkIfMemoryMappedBufferClosed()
     Log.rebuildProducerState(producerStateManager, segments, logStartOffset, lastOffset, recordVersion, time,
-      reloadFromCleanShutdown, logIdent)
+      reloadFromCleanShutdown = false, logIdent)
   }
 
   def activeProducers: Seq[DescribeProducersResponseData.ProducerState] = {

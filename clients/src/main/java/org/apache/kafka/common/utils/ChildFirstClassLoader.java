@@ -24,6 +24,8 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Locale;
 import java.util.NoSuchElementException;
+import org.apache.kafka.common.KafkaException;
+
 
 /**
  * A class loader that looks for classes and resources in a specified class path first, before delegating to its parent
@@ -50,8 +52,8 @@ public class ChildFirstClassLoader extends URLClassLoader {
                 continue;
             File f = new File(path);
 
-            if (path.endsWith("/*")) {
-                try {
+            try {
+                if (path.endsWith("/*")) {
                     File parent = new File(new File(f.getCanonicalPath()).getParent());
                     if (parent.isDirectory()) {
                         File[] files = parent.listFiles((dir, name) -> {
@@ -64,13 +66,11 @@ public class ChildFirstClassLoader extends URLClassLoader {
                             }
                         }
                     }
-                } catch (IOException e) {
-                }
-            } else if (f.exists()) {
-                try {
+                } else if (f.exists()) {
                     urls.add(f.getCanonicalFile().toURI().toURL());
-                } catch (IOException e) {
                 }
+            } catch (IOException e) {
+                throw new KafkaException(e);
             }
         }
         return urls.toArray(new URL[0]);

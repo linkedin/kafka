@@ -364,7 +364,7 @@ public enum Errors {
     INCONSISTENT_TOPIC_ID(103, "The log's topic ID did not match the topic ID in the request", InconsistentTopicIdException::new),
     INCONSISTENT_CLUSTER_ID(104, "The clusterId in the request does not match that found on the server", InconsistentClusterIdException::new),
     TRANSACTIONAL_ID_NOT_FOUND(105, "The transactionalId could not be found", TransactionalIdNotFoundException::new),
-    OFFSET_MOVED_TO_TIERED_STORAGE(106, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new);
+    OFFSET_MOVED_TO_TIERED_STORAGE(107, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

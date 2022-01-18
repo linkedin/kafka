@@ -813,7 +813,7 @@ class ControllerChannelManagerTest {
           .setPartitionIndex(topicPartition.partition)
           .setDeletePartition(deletePartition)
 
-        if (version >= 3) {
+        if (version >= 4) {
           partitionState.setLeaderEpoch(if (topicsQueuedForDeletion.contains(topicPartition.topic))
             LeaderAndIsr.EpochDuringDelete
           else

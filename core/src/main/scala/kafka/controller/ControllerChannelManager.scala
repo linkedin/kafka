@@ -617,7 +617,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
           }
 
         val brokerEpoch = controllerContext.liveBrokerIdAndEpochs(brokerId)
-        if (stopReplicaRequestVersion >= 3) {
+        if (stopReplicaRequestVersion >= 4) {
           val stopReplicaTopicState = mutable.Map.empty[String, StopReplicaTopicState]
           partitionStates.forKeyValue { (topicPartition, partitionState) =>
             val topicState = stopReplicaTopicState.getOrElseUpdate(topicPartition.topic,

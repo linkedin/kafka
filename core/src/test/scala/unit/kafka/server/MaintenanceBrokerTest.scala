@@ -19,6 +19,7 @@ package kafka.server
 
 import java.util.{Optional, Properties}
 
+import integration.kafka.tools.MaintenanceBrokerTestUtils
 import kafka.server.KafkaConfig.fromProps
 import kafka.utils.CoreUtils._
 import kafka.utils.TestUtils
@@ -201,15 +202,6 @@ class MaintenanceBrokerTest extends ZooKeeperTestHarness {
   }
 
   def setMaintenanceBrokers(brokerIds: Seq[Int]): Unit = {
-    var propstring = brokerIds.mkString(",")
-    adminZkClient.changeBrokerConfig(None,
-      propsWith((DynamicConfig.Broker.MaintenanceBrokerListProp, propstring)))
-
-    val controllerId = TestUtils.waitUntilControllerElected(zkClient)
-
-    TestUtils.waitUntilTrue(() => brokers(controllerId).config.getMaintenanceBrokerList == brokerIds,
-      s"wait until broker $propstring is masked as maintenance broker not taking new partitions", 5000)
-
+    MaintenanceBrokerTestUtils.setMaintenanceBrokers(adminZkClient, zkClient, brokers, brokerIds)
   }
-
 }

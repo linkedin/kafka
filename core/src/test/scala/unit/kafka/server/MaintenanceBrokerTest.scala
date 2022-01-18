@@ -17,22 +17,20 @@
 
 package kafka.server
 
-import java.util.{Optional, Properties}
+import java.util.Properties
 
 import integration.kafka.tools.MaintenanceBrokerTestUtils
 import kafka.server.KafkaConfig.fromProps
-import kafka.utils.CoreUtils._
 import kafka.utils.TestUtils
 import kafka.utils.TestUtils._
 import kafka.zk.ZooKeeperTestHarness
 import org.apache.kafka.clients.admin._
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
-
-import scala.collection.JavaConverters._
 import org.junit.Assert._
 import org.junit.{After, Test}
 
+import scala.collection.JavaConverters._
 import scala.collection.Map
 
 /**
@@ -204,4 +202,5 @@ class MaintenanceBrokerTest extends ZooKeeperTestHarness {
   def setMaintenanceBrokers(brokerIds: Seq[Int]): Unit = {
     MaintenanceBrokerTestUtils.setMaintenanceBrokers(adminZkClient, zkClient, brokers, brokerIds)
   }
+
 }

@@ -164,6 +164,7 @@ public class UpdateMetadataRequestTest {
             assertEquals(1, request.controllerId());
             assertEquals(2, request.controllerEpoch());
             assertEquals(3, request.brokerEpoch());
+            assertEquals(3, request.maxBrokerEpoch());
 
             ByteBuffer byteBuffer = request.serialize();
             UpdateMetadataRequest deserializedRequest = new UpdateMetadataRequest(new UpdateMetadataRequestData(
@@ -196,10 +197,15 @@ public class UpdateMetadataRequestTest {
             assertEquals(1, deserializedRequest.controllerId());
             assertEquals(2, deserializedRequest.controllerEpoch());
             // Broker epoch is only supported from version 5
-            if (version >= 5)
+            if (version == 5)
                 assertEquals(3, deserializedRequest.brokerEpoch());
             else
                 assertEquals(-1, deserializedRequest.brokerEpoch());
+
+            if (version >= 6)
+                assertEquals(3, deserializedRequest.maxBrokerEpoch());
+            else
+                assertEquals(-1, deserializedRequest.maxBrokerEpoch());
 
             long topicIdCount = deserializedRequest.data().topicStates().stream()
                     .map(UpdateMetadataRequestData.UpdateMetadataTopicState::topicId)

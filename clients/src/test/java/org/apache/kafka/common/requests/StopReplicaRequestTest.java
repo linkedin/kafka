@@ -118,7 +118,7 @@ public class StopReplicaRequestTest {
                 Map<TopicPartition, StopReplicaPartitionState> partitionStates =
                     StopReplicaRequestTest.partitionStates(data.topicStates());
                 assertEquals(expectedPartitionStates, partitionStates);
-                // Always false from V3 on
+                // Always false from V4 on
                 assertFalse(data.deletePartitions());
             }
         }
@@ -183,7 +183,7 @@ public class StopReplicaRequestTest {
                     assertEquals(expectedPartitionState.partitionIndex(), partitionState.partitionIndex());
                     assertTrue(partitionState.deletePartition());
 
-                    if (version >= 3) {
+                    if (version >= 4) {
                         assertEquals(expectedPartitionState.leaderEpoch(), partitionState.leaderEpoch());
                     } else {
                         assertEquals(-1, partitionState.leaderEpoch());

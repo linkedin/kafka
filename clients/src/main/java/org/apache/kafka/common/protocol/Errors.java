@@ -364,7 +364,14 @@ public enum Errors {
     INCONSISTENT_TOPIC_ID(103, "The log's topic ID did not match the topic ID in the request", InconsistentTopicIdException::new),
     INCONSISTENT_CLUSTER_ID(104, "The clusterId in the request does not match that found on the server", InconsistentClusterIdException::new),
     TRANSACTIONAL_ID_NOT_FOUND(105, "The transactionalId could not be found", TransactionalIdNotFoundException::new),
-    OFFSET_MOVED_TO_TIERED_STORAGE(107, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new);
+    /*
+    We want OffsetMovedToTieredStorageException to map to LI_OFFSET_MOVED_TO_TIERED_STORAGE with the error code 1107,
+    until Kafka trunk gets an error code for OFFSET_MOVED_TO_TIERED_STORAGE. At that point, we will change the map so
+    that OffsetMovedToTieredStorageException maps to it instead. On the processing side, we will still process both
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE and OFFSET_MOVED_TO_TIERED_STORAGE in the same way for a while, and then remove
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE and fully move to using OFFSET_MOVED_TO_TIERED_STORAGE.
+     */
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE(1107, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

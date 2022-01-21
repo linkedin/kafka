@@ -1260,7 +1260,7 @@ class AbstractFetcherThreadTest {
           (epochCheckError.get, MemoryRecords.EMPTY)
         } else if (fetchData.fetchOffset > leaderState.logEndOffset || fetchData.fetchOffset < leaderState.localLogStartOffset) {
           if (leaderState.rlmEnabled && fetchData.fetchOffset < leaderState.localLogStartOffset) {
-            (Errors.OFFSET_MOVED_TO_TIERED_STORAGE, MemoryRecords.EMPTY)
+            (Errors.LI_OFFSET_MOVED_TO_TIERED_STORAGE, MemoryRecords.EMPTY)
           } else {
             (Errors.OFFSET_OUT_OF_RANGE, MemoryRecords.EMPTY)
           }

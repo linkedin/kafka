@@ -162,7 +162,13 @@ class LeaderEpochFileCache(topicPartition: TopicPartition,
 
   def findPreviousEpoch(epoch: Int): Option[Int] = {
     inReadLock(lock) {
-      Option(epochs.lowerEntry(epoch)).map(_.getKey)
+      Option(epochs.lowerKey(epoch))
+    }
+  }
+
+  def findNextEpoch(epoch: Int): Option[Int] = {
+    inReadLock(lock) {
+      Option(epochs.higherKey(epoch))
     }
   }
 

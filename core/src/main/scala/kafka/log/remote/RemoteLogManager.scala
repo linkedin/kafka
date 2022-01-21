@@ -24,12 +24,11 @@ import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Collections, Optional}
 import java.lang
-
 import kafka.cluster.Partition
 import kafka.log.Log
 import kafka.metrics.KafkaMetricsGroup
 import kafka.server.checkpoints.LeaderEpochCheckpointFile
-import kafka.server.epoch.EpochEntry
+import kafka.server.epoch.{EpochEntry, LeaderEpochFileCache}
 import kafka.server.{BrokerTopicStats, FetchDataInfo, FetchTxnCommitted, KafkaConfig, LogOffsetMetadata, RemoteStorageFetchInfo}
 import kafka.utils.Logging
 import org.apache.kafka.clients.CommonClientConfigs
@@ -275,8 +274,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
    */
   def stopPartitions(topicPartition: TopicPartition, delete: Boolean): Unit = {
     // unassign topic partitions from RLM leader/follower
-    val topicIdPartition =
-      topicIds.remove(topicPartition.topic()) match {
+    val topicIdPartition = topicIds.remove(topicPartition.topic())
+       match {
         case Some(uuid) => Some(new TopicIdPartition(uuid, topicPartition))
         case None => None
       }
@@ -790,23 +789,31 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
    * @param startingOffset The starting offset to search.
    * @return the timestamp and offset of the first message that meets the requirements. None will be returned if there is no such message.
    */
-  def findOffsetByTimestamp(tp: TopicPartition, timestamp: Long, startingOffset: Long): Option[TimestampAndOffset] = {
-    //todo-tier Here also, we do not need to go through all the remote log segments to find the segments
-    // containing the timestamp. We should find the  epoch for the startingOffset and then  traverse  through those
-    // offsets and subsequent leader epochs to find the target timestamp/offset.
-    topicIds.get(tp.topic()) match {
-      case Some(uuid) =>
-        val topicIdPartition = new TopicIdPartition(uuid, tp)
-        remoteLogMetadataManager.listRemoteLogSegments(topicIdPartition).asScala.foreach(rlsMetadata =>
+  def findOffsetByTimestamp(tp: TopicPartition,
+                            timestamp: Long,
+                            startingOffset: Long,
+                            leaderEpochCache: LeaderEpochFileCache): Option[TimestampAndOffset] = {
+    val topicId = topicIds.get(tp.topic())
+    if (topicId.isEmpty) {
+      throw new KafkaException("Topic id does not exist for topic partition: " + tp)
+    }
+    // Get the respective epoch in which the starting offset exists.
+    var maybeEpoch = leaderEpochCache.epochForOffset(startingOffset);
+    while (maybeEpoch.nonEmpty) {
+      remoteLogMetadataManager.listRemoteLogSegments(new TopicIdPartition(topicId.get, tp), maybeEpoch.get).asScala
+        .foreach(rlsMetadata =>
           if (rlsMetadata.maxTimestampMs() >= timestamp && rlsMetadata.endOffset() >= startingOffset) {
             val timestampOffset = lookupTimestamp(rlsMetadata, timestamp, startingOffset)
-            if (timestampOffset.isDefined)
+            if (timestampOffset.isDefined) {
               return timestampOffset
+            }
           }
         )
-        None
-      case None => None
+
+      // Move to the next epoch if not found with the current epoch.
+      maybeEpoch = leaderEpochCache.findNextEpoch(maybeEpoch.get)
     }
+    None
   }
 
   /**

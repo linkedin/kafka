@@ -315,7 +315,7 @@ class Log(@volatile private var _dir: File,
 
   @volatile var partitionMetadataFile : PartitionMetadataFile = null
 
-  @volatile private var localLogStartOffset: Long = logStartOffset
+  @volatile var localLogStartOffset: Long = logStartOffset
 
   @volatile private var highestOffsetWithRemoteIndex: Long = -1L
 
@@ -1706,12 +1706,11 @@ class Log(@volatile private var _dir: File,
     }
   }
 
+  def localRetentionMs(): Long = {
+    if(config.remoteStorageEnable) config.localRetentionMs else config.retentionMs
+  }
+
   private def deleteRetentionMsBreachedSegments(): Int = {
-
-    def localRetentionMs(): Long = {
-      if(config.remoteStorageEnable) config.localRetentionMs else config.retentionMs
-    }
-
     val retentionMs = localRetentionMs()
     if (retentionMs < 0) return 0
     val startMs = time.milliseconds
@@ -1723,13 +1722,12 @@ class Log(@volatile private var _dir: File,
     deleteOldSegments(shouldDelete, RetentionMsBreach)
   }
 
+  def localRetentionSize(): Long = {
+    if(config.remoteStorageEnable) config.localRetentionBytes else config.retentionSize
+  }
+
   private def deleteRetentionSizeBreachedSegments(): Int = {
-
-    def localRetentionSize(): Long = {
-      if(config.remoteStorageEnable) config.localRetentionBytes else config.retentionSize
-    }
-
-    val retentionSize:Long = localRetentionSize()
+    val retentionSize: Long = localRetentionSize()
     if (retentionSize < 0 || size < retentionSize) return 0
     var diff = size - retentionSize
     def shouldDelete(segment: LogSegment, nextSegmentOpt: Option[LogSegment]): Boolean = {
@@ -2902,7 +2900,7 @@ sealed trait SegmentDeletionReason {
 
 case object RetentionMsBreach extends SegmentDeletionReason {
   override def logReason(log: Log, toDelete: List[LogSegment]): Unit = {
-    val retentionMs = log.config.retentionMs
+    val retentionMs = log.localRetentionMs()
     toDelete.foreach { segment =>
       segment.largestRecordTimestamp match {
         case Some(_) =>
@@ -2921,7 +2919,7 @@ case object RetentionSizeBreach extends SegmentDeletionReason {
     var size = log.size
     toDelete.foreach { segment =>
       size -= segment.size
-      log.info(s"Deleting segment $segment due to retention size ${log.config.retentionSize} breach. Log size " +
+      log.info(s"Deleting segment $segment due to retention size ${log.localRetentionSize()} breach. Log size " +
         s"after deletion will be $size.")
     }
   }
@@ -2929,7 +2927,7 @@ case object RetentionSizeBreach extends SegmentDeletionReason {
 
 case object StartOffsetBreach extends SegmentDeletionReason {
   override def logReason(log: Log, toDelete: List[LogSegment]): Unit = {
-    log.info(s"Deleting segments due to log start offset ${log.logStartOffset} breach: ${toDelete.mkString(",")}")
+    log.info(s"Deleting segments due to log start offset ${log.localLogStartOffset} breach: ${toDelete.mkString(",")}")
   }
 }
 

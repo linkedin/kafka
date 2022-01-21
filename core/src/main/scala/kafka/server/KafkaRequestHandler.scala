@@ -23,7 +23,7 @@ import kafka.metrics.KafkaMetricsGroup
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
-import com.yammer.metrics.core.Meter
+import com.yammer.metrics.core.{Counter, Meter}
 import org.apache.kafka.common.internals.FatalExitError
 import org.apache.kafka.common.utils.{KafkaThread, Time}
 
@@ -186,6 +186,35 @@ class BrokerTopicMetrics(name: Option[String]) extends KafkaMetricsGroup {
       meter()
   }
 
+  case class CounterWrapper(metricType: String) {
+    @volatile private var lazyCounter: Counter = _
+    private val counterLock = new Object
+
+    def counter(): Counter = {
+      var counter = lazyCounter
+      if (counter == null) {
+        counterLock synchronized {
+          counter = lazyCounter
+          if (counter == null) {
+            counter = newCounter(metricType, tags)
+            lazyCounter = counter
+          }
+        }
+      }
+      counter
+    }
+
+    def close(): Unit = counterLock synchronized {
+      if (lazyCounter != null) {
+        removeMetric(metricType, tags)
+        lazyCounter = null
+      }
+    }
+
+    if (tags.isEmpty) // greedily initialize the general topic metrics
+    counter()
+  }
+
   // an internal map for "lazy initialization" of certain metrics
   private val metricTypeMap = new Pool[String, MeterWrapper]()
   metricTypeMap.putAll(Map(
@@ -199,6 +228,11 @@ class BrokerTopicMetrics(name: Option[String]) extends KafkaMetricsGroup {
     BrokerTopicStats.TotalFetchRequestsPerSec -> MeterWrapper(BrokerTopicStats.TotalFetchRequestsPerSec, "requests"),
     BrokerTopicStats.FetchMessageConversionsPerSec -> MeterWrapper(BrokerTopicStats.FetchMessageConversionsPerSec, "requests"),
     BrokerTopicStats.ProduceMessageConversionsPerSec -> MeterWrapper(BrokerTopicStats.ProduceMessageConversionsPerSec, "requests"),
+    BrokerTopicStats.RemoteBytesOutPerSec -> MeterWrapper(BrokerTopicStats.RemoteBytesOutPerSec, "bytes"),
+    BrokerTopicStats.RemoteBytesInPerSec -> MeterWrapper(BrokerTopicStats.RemoteBytesInPerSec, "bytes"),
+    BrokerTopicStats.RemoteReadRequestsPerSec -> MeterWrapper(BrokerTopicStats.RemoteReadRequestsPerSec, "requests"),
+    BrokerTopicStats.FailedRemoteReadRequestsSec -> MeterWrapper(BrokerTopicStats.FailedRemoteReadRequestsSec, "requests"),
+    BrokerTopicStats.FailedRemoteWriteRequestsSec -> MeterWrapper(BrokerTopicStats.FailedRemoteWriteRequestsSec, "requests"),
     BrokerTopicStats.NoKeyCompactedTopicRecordsPerSec -> MeterWrapper(BrokerTopicStats.NoKeyCompactedTopicRecordsPerSec, "requests"),
     BrokerTopicStats.InvalidMagicNumberRecordsPerSec -> MeterWrapper(BrokerTopicStats.InvalidMagicNumberRecordsPerSec, "requests"),
     BrokerTopicStats.InvalidMessageCrcRecordsPerSec -> MeterWrapper(BrokerTopicStats.InvalidMessageCrcRecordsPerSec, "requests"),
@@ -211,12 +245,24 @@ class BrokerTopicMetrics(name: Option[String]) extends KafkaMetricsGroup {
     metricTypeMap.put(BrokerTopicStats.ReassignmentBytesOutPerSec, MeterWrapper(BrokerTopicStats.ReassignmentBytesOutPerSec, "bytes"))
   }
 
+  private val counterMetricTypeMap = new Pool[String, CounterWrapper]()
+  counterMetricTypeMap.putAll(Map(
+    BrokerTopicStats.MessagesInTotal -> CounterWrapper(BrokerTopicStats.MessagesInTotal),
+    BrokerTopicStats.BytesInTotal -> CounterWrapper(BrokerTopicStats.BytesInTotal)
+  ).asJava)
+
   // used for testing only
   def metricMap: Map[String, MeterWrapper] = metricTypeMap.toMap
 
+  def counterMetricMap: Map[String, CounterWrapper] = counterMetricTypeMap.toMap
+
   def messagesInRate: Meter = metricTypeMap.get(BrokerTopicStats.MessagesInPerSec).meter()
 
+  def messagesInTotal: Counter = counterMetricTypeMap.get(BrokerTopicStats.MessagesInTotal).counter()
+
   def bytesInRate: Meter = metricTypeMap.get(BrokerTopicStats.BytesInPerSec).meter()
+
+  def bytesInTotal: Counter = counterMetricTypeMap.get(BrokerTopicStats.BytesInTotal).counter()
 
   def bytesOutRate: Meter = metricTypeMap.get(BrokerTopicStats.BytesOutPerSec).meter()
 
@@ -258,18 +304,34 @@ class BrokerTopicMetrics(name: Option[String]) extends KafkaMetricsGroup {
 
   def invalidOffsetOrSequenceRecordsPerSec: Meter = metricTypeMap.get(BrokerTopicStats.InvalidOffsetOrSequenceRecordsPerSec).meter()
 
+  def remoteBytesOutRate: Meter = metricTypeMap.get(BrokerTopicStats.RemoteBytesOutPerSec).meter()
+
+  def remoteBytesInRate: Meter = metricTypeMap.get(BrokerTopicStats.RemoteBytesInPerSec).meter()
+
+  def remoteReadRequestRate: Meter = metricTypeMap.get(BrokerTopicStats.RemoteReadRequestsPerSec).meter()
+
+  def failedRemoteReadRequestRate: Meter = metricTypeMap.get(BrokerTopicStats.FailedRemoteReadRequestsSec).meter()
+
+  def failedRemoteWriteRequestRate: Meter = metricTypeMap.get(BrokerTopicStats.FailedRemoteWriteRequestsSec).meter()
+
+
   def closeMetric(metricType: String): Unit = {
     val meter = metricTypeMap.get(metricType)
     if (meter != null)
       meter.close()
   }
 
-  def close(): Unit = metricTypeMap.values.foreach(_.close())
+  def close(): Unit = {
+    metricTypeMap.values.foreach(_.close())
+    counterMetricTypeMap.values.foreach(_.close())
+  }
 }
 
 object BrokerTopicStats {
   val MessagesInPerSec = "MessagesInPerSec"
+  val MessagesInTotal = "MessagesInTotal"
   val BytesInPerSec = "BytesInPerSec"
+  val BytesInTotal = "BytesInTotal"
   val BytesOutPerSec = "BytesOutPerSec"
   val BytesRejectedPerSec = "BytesRejectedPerSec"
   val ReplicationBytesInPerSec = "ReplicationBytesInPerSec"
@@ -282,6 +344,11 @@ object BrokerTopicStats {
   val ProduceMessageConversionsPerSec = "ProduceMessageConversionsPerSec"
   val ReassignmentBytesInPerSec = "ReassignmentBytesInPerSec"
   val ReassignmentBytesOutPerSec = "ReassignmentBytesOutPerSec"
+  val RemoteBytesOutPerSec = "RemoteBytesOutPerSec"
+  val RemoteBytesInPerSec = "RemoteBytesInPerSec"
+  val RemoteReadRequestsPerSec = "RemoteReadRequestsPerSec"
+  val FailedRemoteReadRequestsSec = "RemoteReadErrorsSec"
+  val FailedRemoteWriteRequestsSec = "RemoteWriteErrorsSec"
 
   // These following topics are for LogValidator for better debugging on failed records
   val NoKeyCompactedTopicRecordsPerSec = "NoKeyCompactedTopicRecordsPerSec"
@@ -335,6 +402,8 @@ class BrokerTopicStats extends Logging {
       topicMetrics.closeMetric(BrokerTopicStats.FailedProduceRequestsPerSec)
       topicMetrics.closeMetric(BrokerTopicStats.TotalProduceRequestsPerSec)
       topicMetrics.closeMetric(BrokerTopicStats.ProduceMessageConversionsPerSec)
+      topicMetrics.closeMetric(BrokerTopicStats.RemoteBytesOutPerSec)
+      topicMetrics.closeMetric(BrokerTopicStats.FailedRemoteWriteRequestsSec)
       topicMetrics.closeMetric(BrokerTopicStats.ReplicationBytesOutPerSec)
       topicMetrics.closeMetric(BrokerTopicStats.ReassignmentBytesOutPerSec)
     }

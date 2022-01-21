@@ -48,6 +48,15 @@ public class ProducerMetadata extends Metadata {
     // 1) add metadata.topic.expiry.ms config to KafkaProducer
     // 2) Make client-side auto.topic.creation configurable and default to be false
     public ProducerMetadata(long refreshBackoffMs,
+        long metadataExpireMs,
+        long metadataIdleMs,
+        LogContext logContext,
+        ClusterResourceListeners clusterResourceListeners,
+        Time time) {
+        this(refreshBackoffMs, metadataExpireMs, metadataIdleMs, logContext, clusterResourceListeners, time, true);
+    }
+
+    public ProducerMetadata(long refreshBackoffMs,
                             long metadataExpireMs,
                             long metadataIdleMs,
                             LogContext logContext,
@@ -68,7 +77,7 @@ public class ProducerMetadata extends Metadata {
 
     @Override
     public synchronized MetadataRequest.Builder newMetadataRequestBuilderForNewTopics() {
-        return new MetadataRequest.Builder(new ArrayList<>(newTopics), true);
+        return new MetadataRequest.Builder(new ArrayList<>(newTopics), allowAutoTopicCreation);
     }
 
     public synchronized void add(String topic, long nowMs) {

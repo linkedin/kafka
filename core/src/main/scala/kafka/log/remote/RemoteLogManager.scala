@@ -194,15 +194,19 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
 
   private def doHandleLeaderOrFollowerPartitions(topicPartition: TopicIdPartition,
                                                  convertToLeaderOrFollower: RLMTask => Unit): Unit = {
+    var conversionRequired = true
     val rlmTaskWithFuture = leaderOrFollowerTasks.computeIfAbsent(topicPartition, (tp: TopicIdPartition) => {
       val task = new RLMTask(tp)
       // set this upfront when it is getting initialized instead of doing it after scheduling.
       convertToLeaderOrFollower(task)
+      conversionRequired = false
       info(s"Created a new task: $task and getting scheduled")
       val future = rlmScheduledThreadPool.scheduleWithFixedDelay(task, 0, delayInMs, TimeUnit.MILLISECONDS)
       RLMTaskWithFuture(task, future)
     })
-    convertToLeaderOrFollower(rlmTaskWithFuture.rlmTask)
+    if (conversionRequired) {
+      convertToLeaderOrFollower(rlmTaskWithFuture.rlmTask)
+    }
   }
 
   def onEndpointCreated(serverEndPoint: Endpoint): Unit = {

@@ -1482,10 +1482,6 @@ class Log(@volatile private var _dir: File,
           s"for partition $topicPartition is ${config.messageFormatVersion} which is earlier than the minimum " +
           s"required version $KAFKA_0_10_0_IV0")
 
-      // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
-      // constant time access while being safe to use with concurrent collections unlike `toArray`.
-      val segmentsCopy = logSegments.toBuffer
-
       // For the earliest and latest, we do not need to return the timestamp.
       if (targetTimestamp == ListOffsetsRequest.EARLIEST_TIMESTAMP ||
         (!remoteLogEnabled() && targetTimestamp == ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP)) {
@@ -1509,6 +1505,7 @@ class Log(@volatile private var _dir: File,
         val epochOptional = Optional.ofNullable(latestEpochOpt.orNull)
         Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, logEndOffset, epochOptional))
       } else if (targetTimestamp == ListOffsetsRequest.MAX_TIMESTAMP) {
+        // TODO @tchatter : Make this work for tiered storage.
         // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
         // constant time access while being safe to use with concurrent collections unlike `toArray`.
         val segmentsCopy = logSegments.toBuffer
@@ -1520,6 +1517,9 @@ class Log(@volatile private var _dir: File,
           latestTimestampAndOffset.offset,
           epochOptional))
       } else {
+        // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
+        // constant time access while being safe to use with concurrent collections unlike `toArray`.
+        val segmentsCopy = logSegments.toBuffer
         var isFirstSegment = false
         val targetSeg: Option[LogSegment] = {
           // Get all the segments whose largest timestamp is smaller than target timestamp
@@ -1534,6 +1534,7 @@ class Log(@volatile private var _dir: File,
         }
 
         if (isFirstSegment && remoteLogManager.isDefined) {
+          // FIXME @tchatter : This does not work for unclean leader election combined with tiered storage.
           val localOffset = targetSeg.get.findOffsetByTimestamp(targetTimestamp, localLogStartOffset)
           val remoteOffset = remoteLogManager.get.findOffsetByTimestamp(topicPartition, targetTimestamp, logStartOffset)
 
@@ -1994,10 +1995,6 @@ class Log(@volatile private var _dir: File,
             val deletable = logSegments.filter(segment => segment.baseOffset > targetOffset)
             removeAndDeleteSegments(deletable, asyncDelete = true, LogTruncation)
             activeSegment.truncateTo(targetOffset)
-
-            // TODO: @kamalcph check the logic again
-            this.localLogStartOffset = math.min(targetOffset, this.localLogStartOffset)
-            updateLogStartOffset(math.min(this.localLogStartOffset, this.logStartOffset))
 
             leaderEpochCache.foreach(_.truncateFromEnd(targetOffset))
 

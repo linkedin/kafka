@@ -56,4 +56,4 @@ jobs:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
-          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:uploadArchives :core:uploadArchives :metadata:uploadArchives :raft:uploadArchives :server-common:uploadArchives :storage:uploadArchives :storage:api:uploadArchives --no-daemon
+          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:publish :core:publish :metadata:publish :raft:publish :server-common:publish :storage:publish :storage:api:publish --no-daemon

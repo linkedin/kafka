@@ -34,16 +34,16 @@ jobs:
     strategy:
       fail-fast: false  # We still want to see all jobs' build result to the end
       matrix:
-        module:
-          - generator
-          - core
+        module: # Maintain lexicographical order
           - clients
+          - core
+          - generator
           - metadata
           - raft
           - server-common
+          - shell
           - storage
           - storage:api
-          - shell
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code

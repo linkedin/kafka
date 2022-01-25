@@ -50,10 +50,10 @@ jobs:
       - name: Build with Gradle and run all tests
         # exclude the streams test and connect test
         # Set maxTestRetries for flaky tests.  This is the setup in upstream Jenkinsfile
-        run: ./gradlew -PmaxTestRetries=3 cleanTest rat checkstyleMain checkstyleTest spotbugsMain spotbugsTest :clients:test :core:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
+        run: ./gradlew -PmaxTestRetries=3 cleanTest rat checkstyleMain checkstyleTest spotbugsMain spotbugsTest :generator:test :clients:test :core:test :metadata:test :raft:test :server-common:test :storage:test :storage:api:test :shell:test --no-daemon -PxmlFindBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed
       - name: Upload archive
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
-          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:uploadArchives :core:uploadArchives --no-daemon
+          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:uploadArchives :core:uploadArchives :metadata:uploadArchives :raft:uploadArchives :server-common:uploadArchives :storage:uploadArchives :storage:api:uploadArchives --no-daemon

@@ -234,9 +234,7 @@ class RemoteLogManagerTest {
     val remoteLogManager = new RemoteLogManager(logFetcher, (_, _) => {}, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
 
     val idPartition = new TopicIdPartition(Uuid.randomUuid(), topicPartition)
-    val highestRemoteOffset = remoteLogManager.findHighestRemoteOffset(idPartition)
-    assertTrue(highestRemoteOffset.isPresent)
-    assertEquals(-1L, highestRemoteOffset.get())
+    assertEquals(-1L, remoteLogManager.findHighestRemoteOffset(idPartition))
   }
 }
 

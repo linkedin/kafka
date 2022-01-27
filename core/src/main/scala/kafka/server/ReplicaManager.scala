@@ -1574,7 +1574,7 @@ class ReplicaManager(val config: KafkaConfig,
           onLeadershipChange(partitionsBecomeLeader, partitionsBecomeFollower)
 
           val data = new LeaderAndIsrResponseData().setErrorCode(Errors.NONE.code)
-          if (leaderAndIsrRequest.version < 5) {
+          if (leaderAndIsrRequest.version < 6) {
             responseMap.forKeyValue { (tp, error) =>
               data.partitionErrors.add(new LeaderAndIsrPartitionError()
                 .setTopicName(tp.topic)

@@ -398,7 +398,7 @@ class ReplicaFetcherThread(name: String,
                                                 leaderLocalLogStartOffset: Long,
                                                 leaderLogStartOffset: Long): Unit = {
     replicaMgr.localLog(partition).foreach(log =>
-      if (log.rlmEnabled && log.config.remoteStorageEnable) {
+      if (log.remoteLogEnabled()) {
         replicaMgr.remoteLogManager.foreach(rlm => {
           var rlsMetadata: Optional[RemoteLogSegmentMetadata] = Optional.empty()
           val epoch = log.leaderEpochCache.flatMap(cache => cache.epochForOffset(leaderLocalLogStartOffset))

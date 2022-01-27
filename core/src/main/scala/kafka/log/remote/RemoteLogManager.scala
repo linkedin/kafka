@@ -238,8 +238,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
     // Compact topics and internal topics are filtered here as they are not supported with tiered storage.
     def filterPartitions(partitions: Set[Partition]): Set[Partition] = {
       partitions.filterNot(partition => Topic.isInternal(partition.topic) ||
-        partition.log.exists(log => log.config.compact || !log.config.remoteStorageEnable) ||
-        partition.topicPartition.topic().equals(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME)
+        partition.topic.equals(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME) ||
+        partition.log.exists(log => !log.remoteLogEnabled())
       )
     }
 
@@ -325,10 +325,6 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
 
     private def isLeader(): Boolean = leaderEpoch >= 0
 
-    // This is found by traversing from the latest leader epoch from leader epoch history and find the highest offset
-    // of a segment with that epoch copied into remote storage. If it can not find an entry then it checks for the
-    // previous leader epoch till it finds an entry, If there are no entries till the earliest leader epoch in leader
-    // epoch cache then it starts copying the segments from the earliest epoch entry’s offset.
     private var readOffset: Long = -1
 
     //todo-updating log with remote index highest offset -- should this be required?
@@ -341,7 +337,7 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
       if (this.leaderEpoch != leaderEpochVal) {
         leaderEpoch = leaderEpochVal
         info(s"Find the highest remote offset for partition: $tp after becoming leader, leaderEpoch: $leaderEpoch")
-        readOffset = findHighestRemoteOffset(tp).get()
+        readOffset = findHighestRemoteOffset(tp)
       }
     }
 
@@ -490,85 +486,83 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
       }
 
       try {
-        if (isLeader()) {
-          // cleanup remote log segments and update the log start offset if applicable.
-          val remoteLogSegmentMetadatas = remoteLogMetadataManager.listRemoteLogSegments(tp)
-          if (!remoteLogSegmentMetadatas.hasNext)
-            None
-          else {
-            var maxStartOffset: Option[Long] = None
+        // cleanup remote log segments and update the log start offset if applicable.
+        val remoteLogSegmentMetadatas = remoteLogMetadataManager.listRemoteLogSegments(tp)
+        if (!remoteLogSegmentMetadatas.hasNext)
+          None
+        else {
+          var maxStartOffset: Option[Long] = None
 
-            fetchLog(tp.topicPartition()).foreach(log => {
-              val retentionMs = log.config.retentionMs
-              var (checkTimeStampRetention, cleanupTs) =
-                if (retentionMs < 0) (false, time.milliseconds())
-                else (true, time.milliseconds() - retentionMs)
+          fetchLog(tp.topicPartition()).foreach(log => {
+            val retentionMs = log.config.retentionMs
+            var (checkTimeStampRetention, cleanupTs) =
+              if (retentionMs < 0) (false, time.milliseconds())
+              else (true, time.milliseconds() - retentionMs)
 
-              // Compute total size, this can be pushed to RLMM by introducing a new method instead of going through
-              // the collection every time.
-              var totalSize = log.size
-              remoteLogMetadataManager.listRemoteLogSegments(tp)
-                .forEachRemaining(metadata => totalSize += metadata.segmentSizeInBytes())
+            // Compute total size, this can be pushed to RLMM by introducing a new method instead of going through
+            // the collection every time.
+            var totalSize = log.size
+            remoteLogMetadataManager.listRemoteLogSegments(tp)
+              .forEachRemaining(metadata => totalSize += metadata.segmentSizeInBytes())
 
-              var remainingSize = totalSize - log.config.retentionSize
-              var checkSizeRetention = log.config.retentionSize > -1
+            var remainingSize = totalSize - log.config.retentionSize
+            var checkSizeRetention = log.config.retentionSize > -1
 
-              def deleteRetentionTimeBreachedSegments(segmentMetadata: RemoteLogSegmentMetadata): Boolean = {
-                deleteRemoteLogSegment(segmentMetadata, segmentMetadata => segmentMetadata.maxTimestampMs() <= cleanupTs)
-              }
+            def deleteRetentionTimeBreachedSegments(segmentMetadata: RemoteLogSegmentMetadata): Boolean = {
+              deleteRemoteLogSegment(segmentMetadata, segmentMetadata => segmentMetadata.maxTimestampMs() <= cleanupTs)
+            }
 
-              def deleteRetentionSizeBreachedSegments(segmentMetadata: RemoteLogSegmentMetadata): Boolean = {
-                deleteRemoteLogSegment(segmentMetadata,
-                  segmentMetadata => {
-                    // Assumption that segments contain size > 0
-                    if(remainingSize > 0) {
-                      remainingSize = remainingSize - segmentMetadata.segmentSizeInBytes()
-                      remainingSize >= 0
-                    } else false
-                  })
-              }
+            def deleteRetentionSizeBreachedSegments(segmentMetadata: RemoteLogSegmentMetadata): Boolean = {
+              deleteRemoteLogSegment(segmentMetadata,
+                segmentMetadata => {
+                  // Assumption that segments contain size > 0
+                  if(remainingSize > 0) {
+                    remainingSize = remainingSize - segmentMetadata.segmentSizeInBytes()
+                    remainingSize >= 0
+                  } else false
+                })
+            }
 
-              // Get earliest leader epoch and start deleting the segments.
-              log.leaderEpochCache.foreach(cache => {
-                cache.epochEntries.find(epoch => {
-                  val segmentsIterator = remoteLogMetadataManager.listRemoteLogSegments(tp, epoch.epoch)
-                  // Continue checking for one of the time or size retentions are valid for next segment if available.
-                  while ((checkTimeStampRetention || checkSizeRetention) && segmentsIterator.hasNext) {
-                    val segmentMetadata = segmentsIterator.next()
-                    // Set the max start offset, `segmentsIterator` is already returns them in ascending order.
-                    // FIXME(@kamalcph): If all the remote log segments are eligible for deletion, then the maxStartOffset should be set to None.
-                    maxStartOffset = Some(segmentMetadata.startOffset())
+            // Get earliest leader epoch and start deleting the segments.
+            log.leaderEpochCache.foreach(cache => {
+              cache.epochEntries.find(epoch => {
+                val segmentsIterator = remoteLogMetadataManager.listRemoteLogSegments(tp, epoch.epoch)
+                // Continue checking for one of the time or size retentions are valid for next segment if available.
+                while ((checkTimeStampRetention || checkSizeRetention) && segmentsIterator.hasNext) {
+                  val segmentMetadata = segmentsIterator.next()
+                  // Set the max start offset, `segmentsIterator` is already returns them in ascending order.
+                  // FIXME(@kamalcph): If all the remote log segments are eligible for deletion, then the maxStartOffset should be set to None.
+                  maxStartOffset = Some(segmentMetadata.startOffset())
 
-                    var segmentDeletedWithRetentionTime = false
+                  var segmentDeletedWithRetentionTime = false
 
-                    if(checkTimeStampRetention) {
-                      if(deleteRetentionTimeBreachedSegments(segmentMetadata)) {
-                        info(s"Deleted remote log segment based on retention time: ${segmentMetadata.remoteLogSegmentId()}")
-                        segmentDeletedWithRetentionTime = true
-                      } else {
-                        // If we have any segment that is having the timestamp not eligible for deletion then
-                        // we will skip all the subsequent segments for the time retention checks.
-                        checkTimeStampRetention = false
-                      }
-                    } else if(checkSizeRetention && !segmentDeletedWithRetentionTime) {
-                      if(deleteRetentionSizeBreachedSegments(segmentMetadata)) {
-                        info(s"Deleted remote log segment based on retention size: ${segmentMetadata.remoteLogSegmentId()}")
-                      } else {
-                        // If we have exhausted of segments eligible for retention size, we will skip the subsequent
-                        // segments.
-                        checkSizeRetention = false
-                      }
+                  if(checkTimeStampRetention) {
+                    if(deleteRetentionTimeBreachedSegments(segmentMetadata)) {
+                      info(s"Deleted remote log segment based on retention time: ${segmentMetadata.remoteLogSegmentId()}")
+                      segmentDeletedWithRetentionTime = true
+                    } else {
+                      // If we have any segment that is having the timestamp not eligible for deletion then
+                      // we will skip all the subsequent segments for the time retention checks.
+                      checkTimeStampRetention = false
+                    }
+                  } else if(checkSizeRetention && !segmentDeletedWithRetentionTime) {
+                    if(deleteRetentionSizeBreachedSegments(segmentMetadata)) {
+                      info(s"Deleted remote log segment based on retention size: ${segmentMetadata.remoteLogSegmentId()}")
+                    } else {
+                      // If we have exhausted of segments eligible for retention size, we will skip the subsequent
+                      // segments.
+                      checkSizeRetention = false
                     }
                   }
+                }
 
-                  // Return only when both the retention checks are exhausted.
-                  checkTimeStampRetention && checkSizeRetention
-                })
+                // Return only when both the retention checks are exhausted.
+                checkTimeStampRetention && checkSizeRetention
               })
-
-              maxStartOffset.foreach(x => handleLogStartOffsetUpdate(tp.topicPartition(), x))
             })
-          }
+
+            maxStartOffset.foreach(x => handleLogStartOffsetUpdate(tp.topicPartition(), x))
+          })
         }
       } catch {
         case ex: Exception => error(s"Error while cleaning up log segments for partition: $tp", ex)
@@ -578,21 +572,17 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
     override def run(): Unit = {
       try {
         if (!isCancelled()) {
-          //a. copy log segments to remote store
           if (isLeader()) {
+            //a. copy log segments to remote store
             copyLogSegmentsToRemote()
+            // b. cleanup/delete expired remote segments
+            handleExpiredRemoteLogSegments()
           } else {
-            val offset = findHighestRemoteOffset(tp)
             fetchLog(tp.topicPartition()).foreach { log =>
-              if (offset.isPresent) {
-                // todo-tier update remote index highest offset.
-                log.updateRemoteIndexHighestOffset(offset.get())
-              }
+              val offset = findHighestRemoteOffset(tp)
+              log.updateRemoteIndexHighestOffset(offset)
             }
           }
-
-          // b. cleanup/delete expired remote segments
-          handleExpiredRemoteLogSegments()
         }
       } catch {
         case ex: InterruptedException =>
@@ -608,7 +598,11 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
     }
   }
 
-  def findHighestRemoteOffset(topicIdPartition: TopicIdPartition): Optional[lang.Long] = {
+  // This is found by traversing from the latest leader epoch from leader epoch history and find the highest offset
+  // of a segment with that epoch copied into remote storage. If it can not find an entry then it checks for the
+  // previous leader epoch till it finds an entry, If there are no entries till the earliest leader epoch in leader
+  // epoch cache then it returns -1.
+  def findHighestRemoteOffset(topicIdPartition: TopicIdPartition): Long = {
     var offset: Optional[lang.Long] = Optional.empty()
     fetchLog(topicIdPartition.topicPartition()).foreach { log =>
       log.leaderEpochCache.foreach(cache => {
@@ -619,10 +613,7 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[Log],
         }
       })
     }
-    if (!offset.isPresent) {
-      offset = Optional.of(-1L)
-    }
-    offset
+    offset.orElse(-1L)
   }
 
   def lookupPositionForOffset(remoteLogSegmentMetadata: RemoteLogSegmentMetadata, offset: Long): Int = {

@@ -319,10 +319,11 @@ class Log(@volatile private var _dir: File,
 
   @volatile private var highestOffsetWithRemoteIndex: Long = -1L
 
-  private def remoteLogEnabled(): Boolean = {
+  def remoteLogEnabled(): Boolean = {
     // remote logging is enabled only for non-compact and non-internal topics
     rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic())) && config.remoteStorageEnable
   }
+
   locally {
     val startMs = time.milliseconds
     initializePartitionMetadata()
@@ -435,9 +436,12 @@ class Log(@volatile private var _dir: File,
   }
 
   def updateRemoteIndexHighestOffset(offset: Long): Unit = {
-    if (!remoteLogEnabled())
+    if (!remoteLogEnabled()) {
       warn(s"Received update for highest offset with remote index as: $offset, the existing value: $highestOffsetWithRemoteIndex")
-    else if (offset > highestOffsetWithRemoteIndex) highestOffsetWithRemoteIndex = offset
+      /* TODO: check if this `if` condition should be here. What if highestOffsetWithRemoteIndex has reduced because
+      unclean leader election invalidated some remote log segments because they were not part of the unclean leader's epoch history?
+       */
+    } else if (offset > highestOffsetWithRemoteIndex) highestOffsetWithRemoteIndex = offset
   }
 
   /**

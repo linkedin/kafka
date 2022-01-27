@@ -46,7 +46,6 @@ For security issues with this branch please review
 Guidelines](https://www.linkedin.com/help/linkedin/answer/62924/security-vulnerabilities?lang=en).
 General Kafka issues should be communicated via the Kafka community.
 
-
 Apache Kafka
 =================
 See our [web site](https://kafka.apache.org) for details on the project.

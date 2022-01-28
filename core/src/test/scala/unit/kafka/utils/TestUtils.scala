@@ -193,6 +193,7 @@ object TestUtils extends Logging {
   def createBrokerConfigs(numConfigs: Int,
     zkConnect: String,
     enableControlledShutdown: Boolean = true,
+    enableControlledShutdownSafetyCheck: Boolean = false,
     enableDeleteTopic: Boolean = true,
     interBrokerSecurityProtocol: Option[SecurityProtocol] = None,
     trustStoreFile: Option[File] = None,
@@ -208,7 +209,7 @@ object TestUtils extends Logging {
     defaultReplicationFactor: Short = 1,
     startingIdNumber: Int = 0): Seq[Properties] = {
     (startingIdNumber until numConfigs).map { node =>
-      createBrokerConfig(node, zkConnect, enableControlledShutdown, enableDeleteTopic, RandomPort,
+      createBrokerConfig(node, zkConnect, enableControlledShutdown, enableControlledShutdownSafetyCheck, enableDeleteTopic, RandomPort,
         interBrokerSecurityProtocol, trustStoreFile, saslProperties, enablePlaintext = enablePlaintext, enableSsl = enableSsl,
         enableSaslPlaintext = enableSaslPlaintext, enableSaslSsl = enableSaslSsl, rack = rackInfo.get(node), logDirCount = logDirCount, enableToken = enableToken,
         numPartitions = numPartitions, defaultReplicationFactor = defaultReplicationFactor)
@@ -253,6 +254,7 @@ object TestUtils extends Logging {
   def createBrokerConfig(nodeId: Int,
                          zkConnect: String,
                          enableControlledShutdown: Boolean = true,
+                         enableControlledShutdownSafetyCheck: Boolean = false,
                          enableDeleteTopic: Boolean = true,
                          port: Int = RandomPort,
                          interBrokerSecurityProtocol: Option[SecurityProtocol] = None,
@@ -304,6 +306,7 @@ object TestUtils extends Logging {
     props.put(KafkaConfig.ReplicaSocketTimeoutMsProp, "1500")
     props.put(KafkaConfig.ControllerSocketTimeoutMsProp, "1500")
     props.put(KafkaConfig.ControlledShutdownEnableProp, enableControlledShutdown.toString)
+    props.put(KafkaConfig.ControlledShutdownSafetyCheckEnableProp, enableControlledShutdownSafetyCheck.toString)
     props.put(KafkaConfig.DeleteTopicEnableProp, enableDeleteTopic.toString)
     props.put(KafkaConfig.LogDeleteDelayMsProp, "1000")
     props.put(KafkaConfig.ControlledShutdownRetryBackoffMsProp, "100")
@@ -622,6 +625,7 @@ object TestUtils extends Logging {
     producerProps.put(ProducerConfig.BATCH_SIZE_CONFIG, batchSize.toString)
     producerProps.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, compressionType)
     producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, enableIdempotence.toString)
+    producerProps.put(ProducerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, boolean2Boolean(true))
     producerProps ++= producerSecurityConfigs(securityProtocol, trustStoreFile, saslProperties)
     new KafkaProducer[K, V](producerProps, keySerializer, valueSerializer)
   }
@@ -663,6 +667,7 @@ object TestUtils extends Logging {
     consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit.toString)
     consumerProps.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords.toString)
     consumerProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, if (readCommitted) "read_committed" else "read_uncommitted")
+    consumerProps.put(ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, boolean2Boolean(true))
     consumerProps ++= consumerSecurityConfigs(securityProtocol, trustStoreFile, saslProperties)
     new KafkaConsumer[K, V](consumerProps, keyDeserializer, valueDeserializer)
   }

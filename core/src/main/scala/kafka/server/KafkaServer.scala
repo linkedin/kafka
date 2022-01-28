@@ -90,7 +90,8 @@ class KafkaServer(
   val config: KafkaConfig,
   time: Time = Time.SYSTEM,
   threadNamePrefix: Option[String] = None,
-  enableForwarding: Boolean = false
+  enableForwarding: Boolean = false,
+  actions: KafkaActions = NoOpKafkaActions
 ) extends KafkaBroker with Server {
 
   private val startupComplete = new AtomicBoolean(false)
@@ -167,6 +168,8 @@ class KafkaServer(
 
   override def brokerState: BrokerState = _brokerState
   private var healthCheckScheduler: KafkaScheduler = null
+
+  private val kafkaActions: KafkaActions = actions
 
   private def haltIfNotHealthy(): Unit = {
     // This relies on io-thread to receive request from RequestChannel with 300 ms timeout, so that lastDequeueTimeMs
@@ -599,13 +602,14 @@ class KafkaServer(
       var shutdownSucceeded: Boolean = false
 
       try {
-
         var remainingRetries = retries
         var prevController: Node = null
         var ioException = false
+        var shutdownResponse: ControlledShutdownResponse = null
 
         while (!shutdownSucceeded && remainingRetries > 0) {
           remainingRetries = remainingRetries - 1
+          shutdownResponse = null
 
           // 1. Find the controller and establish a connection to it.
           // If the controller id or the broker registration are missing, we sleep and retry (if there are remaining retries)
@@ -646,23 +650,30 @@ class KafkaServer(
                 else if (config.interBrokerProtocolVersion < KAFKA_2_4_IV1) 2
                 else 3
 
+              // Keep track of our brokerEpoch at the time we send the request. If it has changed by the time we
+              // get a response we'll start over.
+              val brokerEpochAtRequestTime = kafkaController.brokerEpoch
               val controlledShutdownRequest = new ControlledShutdownRequest.Builder(
                   new ControlledShutdownRequestData()
                     .setBrokerId(config.brokerId)
-                    .setBrokerEpoch(kafkaController.brokerEpoch),
+                    .setBrokerEpoch(brokerEpochAtRequestTime),
                     controlledShutdownApiVersion)
               val request = networkClient.newClientRequest(prevController.idString, controlledShutdownRequest,
                 time.milliseconds(), true)
               val clientResponse = NetworkClientUtils.sendAndReceive(networkClient, request, time)
 
-              val shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
-              if (shutdownResponse.error == Errors.NONE && shutdownResponse.data.remainingPartitions.isEmpty) {
-                shutdownSucceeded = true
-                info("Controlled shutdown succeeded")
-              }
-              else {
-                info(s"Remaining partitions to move: ${shutdownResponse.data.remainingPartitions}")
-                info(s"Error from controller: ${shutdownResponse.error}")
+              if (brokerEpochAtRequestTime == kafkaController.brokerEpoch) {
+              shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
+                if (shutdownResponse.error == Errors.NONE && shutdownResponse.data.remainingPartitions.isEmpty) {
+                  shutdownSucceeded = true
+                  info("Controlled shutdown succeeded")
+                }
+                else {
+                  info(s"Remaining partitions to move: ${shutdownResponse.data.remainingPartitions}")
+                  info(s"Error from controller: ${shutdownResponse.error}")
+                }
+              } else {
+                info(s"Local brokerEpoch changed from $brokerEpochAtRequestTime to ${kafkaController.brokerEpoch} while waiting for ControlledShutdownResponse. Ignoring response and trying again.")
               }
             }
             catch {
@@ -677,6 +688,9 @@ class KafkaServer(
             Thread.sleep(config.controlledShutdownRetryBackoffMs)
             warn("Retrying controlled shutdown after the previous attempt failed...")
           }
+          /** In case {@link KafkaController} reported that it's not safe to shutdown,
+           * the delegate KafkaAction will invoke Cruise-Control to demote this broker in Azure environment only. */
+          kafkaActions.notifyControlledShutdownStatus(shutdownSucceeded, shutdownResponse, remainingRetries)
         }
       }
       finally

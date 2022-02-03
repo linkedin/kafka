@@ -25,10 +25,13 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.clients.CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.common.config.ConfigDef.Importance.LOW;
@@ -47,11 +50,13 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
     public static final String REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP = "remote.log.metadata.topic.num.partitions";
     public static final String REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP = "remote.log.metadata.topic.retention.ms";
     public static final String REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP = "remote.log.metadata.publish.wait.ms";
+    public static final String REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP = "remote.log.metadata.secondary.consumer.subscription.interval.ms";
 
     public static final int DEFAULT_REMOTE_LOG_METADATA_TOPIC_PARTITIONS = 50;
     public static final long DEFAULT_REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS = -1L;
     public static final short DEFAULT_REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR = 3;
     public static final long DEFAULT_REMOTE_LOG_METADATA_CONSUME_WAIT_MS = 120 * 1000L;
+    public static final long DEFAULT_REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS = 30 * 1000L;
 
     public static final String REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_DOC = "Replication factor of remote log metadata Topic.";
     public static final String REMOTE_LOG_METADATA_TOPIC_PARTITIONS_DOC = "The number of partitions for remote log metadata Topic.";
@@ -61,26 +66,51 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
             "tiered storage in the cluster.";
     public static final String REMOTE_LOG_METADATA_CONSUME_WAIT_MS_DOC = "The amount of time in milli seconds to wait for the local consumer to " +
             "receive the published event.";
+    public static final String REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_DOC = "The interval amount of time in milli seconds " +
+            "to subscribe with the updated subscriptions by the secondary consumer.";
 
     public static final String REMOTE_LOG_METADATA_COMMON_CLIENT_PREFIX = "remote.log.metadata.common.client.";
     public static final String REMOTE_LOG_METADATA_PRODUCER_PREFIX = "remote.log.metadata.producer.";
     public static final String REMOTE_LOG_METADATA_CONSUMER_PREFIX = "remote.log.metadata.consumer.";
     public static final String BROKER_ID = "broker.id";
     public static final String LOG_DIR = "log.dir";
+    public static final String LOG_DIRS = "log.dirs";
 
     public static final String REMOTE_LOG_METADATA_TOPIC_NAME = "__remote_log_metadata";
     public static final String REMOTE_LOG_METADATA_CLIENT_PREFIX = "__remote_log_metadata_client";
 
     private static final ConfigDef CONFIG = new ConfigDef();
+
     static {
-        CONFIG.define(REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP, SHORT, DEFAULT_REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR, atLeast(1), LOW,
+        CONFIG.define(REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP,
+                      SHORT,
+                      DEFAULT_REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR,
+                      atLeast(1),
+                      LOW,
                       REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_DOC)
-              .define(REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP, INT, DEFAULT_REMOTE_LOG_METADATA_TOPIC_PARTITIONS, atLeast(1), LOW,
-                      REMOTE_LOG_METADATA_TOPIC_PARTITIONS_DOC)
-              .define(REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP, LONG, DEFAULT_REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS, LOW,
-                      REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_DOC)
-              .define(REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP, LONG, DEFAULT_REMOTE_LOG_METADATA_CONSUME_WAIT_MS, atLeast(0), LOW,
-                      REMOTE_LOG_METADATA_CONSUME_WAIT_MS_DOC);
+                .define(REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP,
+                        INT,
+                        DEFAULT_REMOTE_LOG_METADATA_TOPIC_PARTITIONS,
+                        atLeast(1),
+                        LOW,
+                        REMOTE_LOG_METADATA_TOPIC_PARTITIONS_DOC)
+                .define(REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP,
+                        LONG,
+                        DEFAULT_REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS,
+                        LOW,
+                        REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_DOC)
+                .define(REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP,
+                        LONG,
+                        DEFAULT_REMOTE_LOG_METADATA_CONSUME_WAIT_MS,
+                        atLeast(0),
+                        LOW,
+                        REMOTE_LOG_METADATA_CONSUME_WAIT_MS_DOC)
+                .define(REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP,
+                        LONG,
+                        DEFAULT_REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS,
+                        atLeast(1),
+                        LOW,
+                        REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_DOC);
     }
 
     private final String clientIdPrefix;
@@ -90,6 +120,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
     private final long consumeWaitMs;
     private final long metadataTopicRetentionMs;
     private final short metadataTopicReplicationFactor;
+    private final long secondaryConsumerSubscriptionIntervalMs;
 
     private Map<String, Object> consumerProps;
     private Map<String, Object> producerProps;
@@ -105,13 +136,10 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
             throw new IllegalArgumentException(BOOTSTRAP_SERVERS_CONFIG + " config must not be null or empty.");
         }
 
-
-        logDir = (String) props.get(LOG_DIR);
-        if (logDir == null || logDir.isEmpty()) {
-            throw new IllegalArgumentException(LOG_DIR + " config must not be null or empty.");
-        }
+        logDir = getLogDirectory(props);
 
         consumeWaitMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP);
+        secondaryConsumerSubscriptionIntervalMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP);
         metadataTopicPartitionsCount = (int) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP);
         metadataTopicReplicationFactor = (short) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP);
         metadataTopicRetentionMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP);
@@ -175,6 +203,10 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
         return logDir;
     }
 
+    public long secondaryConsumerSubscriptionIntervalMs() {
+        return secondaryConsumerSubscriptionIntervalMs;
+    }
+
     public Map<String, Object> consumerProperties() {
         return consumerProps;
     }
@@ -214,9 +246,30 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
                 ", metadataTopicPartitionsCount=" + metadataTopicPartitionsCount +
                 ", bootstrapServers='" + bootstrapServers + '\'' +
                 ", consumeWaitMs=" + consumeWaitMs +
+                ", secondaryConsumerSubscriptionIntervalMs=" + secondaryConsumerSubscriptionIntervalMs +
                 ", metadataTopicRetentionMillis=" + metadataTopicRetentionMs +
                 ", consumerProps=" + consumerProps +
                 ", producerProps=" + producerProps +
                 '}';
+    }
+
+    static String getLogDirectory(Map<String, ?> props) {
+        String logDirs = (String) props.get(LOG_DIRS);
+        if (logDirs == null || logDirs.isEmpty()) {
+            logDirs = (String) props.get(LOG_DIR);
+        }
+        if (logDirs == null || logDirs.isEmpty()) {
+            throw new IllegalArgumentException("At least one log directory must be defined via log.dirs or log.dir.");
+        }
+        final List<String> dirs = Arrays.stream(logDirs.split("\\s*,\\s*"))
+                .filter(v -> !v.trim().isEmpty())
+                .collect(Collectors.toList());
+        if (dirs.isEmpty()) {
+            throw new IllegalArgumentException("At least one log directory must be defined via log.dirs or log.dir.");
+        }
+        if (dirs.size() > 1) {
+            throw new IllegalArgumentException("Multiple log directories are not supported when remote log storage is enabled");
+        }
+        return dirs.get(0);
     }
 }

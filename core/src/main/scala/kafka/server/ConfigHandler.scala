@@ -22,7 +22,7 @@ import java.util.Properties
 import DynamicConfig.Broker._
 import kafka.controller.KafkaController
 import kafka.log.LogConfig.MessageFormatVersion
-import kafka.log.{LogConfig, LogManager}
+import kafka.log.{Log, LogConfig}
 import kafka.network.ConnectionQuotas
 import kafka.security.CredentialProvider
 import kafka.server.Constants._
@@ -52,12 +52,13 @@ trait ConfigHandler {
   * The TopicConfigHandler will process topic config changes from ZooKeeper or the metadata log.
   * The callback provides the topic name and the full properties set.
   */
-class TopicConfigHandler(private val logManager: LogManager, kafkaConfig: KafkaConfig,
+class TopicConfigHandler(private val replicaManager: ReplicaManager, kafkaConfig: KafkaConfig,
                          val quotas: QuotaManagers, kafkaController: Option[KafkaController]) extends ConfigHandler with Logging  {
 
   private def updateLogConfig(topic: String,
                               topicConfig: Properties,
                               configNamesToExclude: Set[String]): Unit = {
+    val logManager = replicaManager.logManager
     logManager.topicConfigUpdated(topic)
     val logs = logManager.logsByTopic(topic)
     if (logs.nonEmpty) {
@@ -67,7 +68,39 @@ class TopicConfigHandler(private val logManager: LogManager, kafkaConfig: KafkaC
         if (!configNamesToExclude.contains(key)) props.put(key, value)
       }
       val logConfig = LogConfig.fromProps(logManager.currentDefaultConfig.originals, props)
+      val wasRemoteLogEnabledBeforeUpdate = logs.head.remoteLogEnabled()
       logs.foreach(_.updateConfig(logConfig))
+      maybeBootstrapRemoteLogComponents(topic, logs, wasRemoteLogEnabledBeforeUpdate)
+    }
+  }
+
+  private[server] def maybeBootstrapRemoteLogComponents(topic: String,
+                                                        logs: Seq[Log],
+                                                        wasRemoteLogEnabledBeforeUpdate: Boolean): Unit = {
+    val isRemoteLogEnabled = logs.head.remoteLogEnabled()
+    // Topic configs gets updated incrementally. This check is added to prevent redundant updates.
+    if (!wasRemoteLogEnabledBeforeUpdate && isRemoteLogEnabled) {
+      val topicId = logs.head.topicId
+      if (topicId.isEmpty) {
+        warn(s"Could not enable remote log storage for topic $topic because we did not know the corresponding topicId.")
+        return
+      }
+      val topicIds = Map(topic -> topicId.get).asJava
+      val (leaderPartitions, followerPartitions) =
+        logs.flatMap(log => replicaManager.onlinePartition(log.topicPartition)).partition(_.isLeader)
+      replicaManager.remoteLogManager.foreach(rlm =>
+        rlm.onLeadershipChange(leaderPartitions.toSet, followerPartitions.toSet, topicIds))
+    } else if (wasRemoteLogEnabledBeforeUpdate && !isRemoteLogEnabled) {
+      logs.map(log => {
+        log.maybeIncrementLogStartOffsetAsRemoteLogStorageDisabled()
+        log.topicPartition
+      })
+        .groupBy(tp => replicaManager.onlinePartition(tp).exists(_.isLeader))
+        .foreach {
+          case (isLeader, partitions) =>
+            replicaManager.remoteLogManager.foreach(rlm => rlm.stopPartitions(partitions.toSet, isLeader,
+              (tp, ex) => error(s"Error while stopping the partition: $tp, ex: $ex")))
+        }
     }
   }
 

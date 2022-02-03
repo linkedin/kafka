@@ -212,6 +212,9 @@ case object SegmentDeletion extends LogStartOffsetIncrementReason {
 case object SnapshotGenerated extends LogStartOffsetIncrementReason {
   override def toString: String = "snapshot generated"
 }
+case object RemoteLogStorageDisabled extends LogStartOffsetIncrementReason {
+  override def toString: String = "remote log storage disabled"
+}
 
 /**
  * An append-only log for storing messages.
@@ -319,7 +322,7 @@ class Log(@volatile private var _dir: File,
 
   @volatile private var highestOffsetWithRemoteIndex: Long = -1L
 
-  def remoteLogEnabled(): Boolean = {
+  private[kafka] def remoteLogEnabled(): Boolean = {
     // remote logging is enabled only for non-compact and non-internal topics
     rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic())) && config.remoteStorageEnable
   }
@@ -328,7 +331,8 @@ class Log(@volatile private var _dir: File,
     val startMs = time.milliseconds
     initializePartitionMetadata()
     updateLocalLogStartOffset(logStartOffset)
-    if (!remoteLogEnabled()) logStartOffset = localLogStartOffset
+    if (!remoteLogEnabled())
+      logStartOffset = localLogStartOffset
     maybeIncrementFirstUnstableOffset()
     initializeTopicId()
   }
@@ -370,8 +374,10 @@ class Log(@volatile private var _dir: File,
   }
 
   def updateLogStartOffsetFromRemoteTier(remoteLogStartOffset: Long): Unit = {
-    if (remoteLogEnabled()) logStartOffset = if (remoteLogStartOffset < 0) localLogStartOffset else remoteLogStartOffset
-    else warn(s"updateLogStartOffsetFromRemoteTier call is ignored as remoteLogEnabled is determined to be false.")
+    if (!remoteLogEnabled()) {
+      warn("Ignoring the call as the remote log storage is disabled")
+    }
+    maybeIncrementLogStartOffset(remoteLogStartOffset, SegmentDeletion)
   }
 
   def topicId: Option[Uuid] = _topicId
@@ -1128,6 +1134,10 @@ class Log(@volatile private var _dir: File,
 
   private def maybeIncrementLocalLogStartOffset(newLogStartOffset: Long, reason: LogStartOffsetIncrementReason): Unit = {
     maybeIncrementLogStartOffset(newLogStartOffset, reason, onlyLocalLogStartOffsetUpdate = true)
+  }
+
+  def maybeIncrementLogStartOffsetAsRemoteLogStorageDisabled(): Boolean = {
+    maybeIncrementLogStartOffset(localLogStartOffset, RemoteLogStorageDisabled)
   }
 
   /**
@@ -2010,6 +2020,7 @@ class Log(@volatile private var _dir: File,
 
             completeTruncation(
               startOffset = math.min(targetOffset, logStartOffset),
+              localLogStartOffset = math.min(targetOffset, localLogStartOffset),
               endOffset = targetOffset
             )
           }
@@ -2041,6 +2052,7 @@ class Log(@volatile private var _dir: File,
 
         completeTruncation(
           startOffset = newOffset,
+          localLogStartOffset = newOffset,
           endOffset = newOffset
         )
       }
@@ -2049,14 +2061,11 @@ class Log(@volatile private var _dir: File,
 
   private def completeTruncation(
     startOffset: Long,
+    localLogStartOffset: Long,
     endOffset: Long
   ): Unit = {
-    // TODO: @kamalcph check the logic again.
-    if (remoteLogEnabled()) {
-      updateLocalLogStartOffset(startOffset)
-    } else {
-      updateLogStartOffset(startOffset)
-    }
+    updateLogStartOffset(startOffset)
+    updateLocalLogStartOffset(localLogStartOffset)
     // logStartOffset = startOffset
     nextOffsetMetadata = LogOffsetMetadata(endOffset, activeSegment.baseOffset, activeSegment.size)
     recoveryPoint = math.min(recoveryPoint, endOffset)

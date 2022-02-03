@@ -83,7 +83,7 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
     private RemotePartitionMetadataStore remotePartitionMetadataStore;
     private volatile TopicBasedRemoteLogMetadataManagerConfig rlmmConfig;
     private volatile RemoteLogMetadataTopicPartitioner rlmmTopicPartitioner;
-    private volatile Set<TopicIdPartition> pendingAssignPartitions  = Collections.synchronizedSet(new HashSet<>());
+    private final Set<TopicIdPartition> pendingAssignPartitions  = Collections.synchronizedSet(new HashSet<>());
 
     public TopicBasedRemoteLogMetadataManager() {
         this(true);
@@ -244,7 +244,7 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
     }
 
     // Visible For Testing
-    public Optional<Long> receivedOffsetForPartition(int metadataPartition) {
+    Optional<Long> receivedOffsetForPartition(int metadataPartition) {
         return consumerManager.receivedOffsetForPartition(metadataPartition);
     }
 
@@ -320,7 +320,9 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
             log.info("Started initializing with configs: {}", configs);
 
             rlmmConfig = new TopicBasedRemoteLogMetadataManagerConfig(configs);
-            rlmmTopicPartitioner = new RemoteLogMetadataTopicPartitioner(rlmmConfig.metadataTopicPartitionsCount());
+            if (rlmmTopicPartitioner == null) {
+                rlmmTopicPartitioner = new RemoteLogMetadataTopicPartitioner(rlmmConfig.metadataTopicPartitionsCount());
+            }
             remotePartitionMetadataStore = new RemotePartitionMetadataStore(new File(rlmmConfig.logDir()).toPath());
             configured = true;
             log.info("Successfully initialized with rlmmConfig: {}", rlmmConfig);
@@ -441,28 +443,31 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
         }
     }
 
+    // Visible for testing.
+    void setRlmmTopicPartitioner(RemoteLogMetadataTopicPartitioner rlmmTopicPartitioner) {
+        this.rlmmTopicPartitioner = Objects.requireNonNull(rlmmTopicPartitioner);
+    }
+
+    boolean isUserPartitionAssignedToPrimary(TopicIdPartition partition) {
+        return consumerManager.isUserPartitionAssignedToPrimary(partition);
+    }
+
     @Override
     public void close() throws IOException {
         // Close all the resources.
         log.info("Closing the resources.");
         if (closing.compareAndSet(false, true)) {
-            lock.writeLock().lock();
-            try {
-                if (initializationThread != null) {
-                    try {
-                        initializationThread.join();
-                    } catch (InterruptedException e) {
-                        log.error("Initialization thread was interrupted while waiting to join on close.", e);
-                    }
+            if (initializationThread != null) {
+                try {
+                    initializationThread.join();
+                } catch (InterruptedException e) {
+                    log.error("Initialization thread was interrupted while waiting to join on close.", e);
                 }
-
-                Utils.closeQuietly(producerManager, "ProducerTask");
-                Utils.closeQuietly(consumerManager, "RLMMConsumerManager");
-                Utils.closeQuietly(remotePartitionMetadataStore, "RemotePartitionMetadataStore");
-            } finally {
-                lock.writeLock().unlock();
-                log.info("Closed the resources.");
             }
+            Utils.closeQuietly(producerManager, "ProducerTask");
+            Utils.closeQuietly(consumerManager, "RLMMConsumerManager");
+            Utils.closeQuietly(remotePartitionMetadataStore, "RemotePartitionMetadataStore");
+            log.info("Closed the resources.");
         }
     }
 }

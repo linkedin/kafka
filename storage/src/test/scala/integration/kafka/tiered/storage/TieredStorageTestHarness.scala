@@ -19,7 +19,9 @@ package kafka.tiered.storage
 
 import java.util.Properties
 import kafka.api.IntegrationTestHarness
+import kafka.log.remote.ClassLoaderAwareRemoteStorageManager
 import kafka.server.{KafkaConfig, KafkaServer}
+import kafka.utils.BrokerLocalStorage
 import kafka.utils.TestUtils
 import kafka.utils.TestUtils.createBrokerConfigs
 import org.apache.kafka.server.log.remote.storage.{LocalTieredStorage, RemoteLogManagerConfig}
@@ -28,7 +30,6 @@ import org.apache.kafka.common.replica.ReplicaSelector
 import org.apache.kafka.server.log.remote.metadata.storage.{TopicBasedRemoteLogMetadataManager, TopicBasedRemoteLogMetadataManagerConfig}
 import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig.{REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX_PROP, REMOTE_STORAGE_MANAGER_CONFIG_PREFIX_PROP}
 import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
-import unit.kafka.utils.BrokerLocalStorage
 
 import scala.collection.Seq
 import scala.util.{Failure, Success, Try}
@@ -38,13 +39,7 @@ import scala.util.{Failure, Success, Try}
   */
 abstract class TieredStorageTestHarness extends IntegrationTestHarness {
 
-  def storageConfigPrefix(key: String = ""): String = {
-    LocalTieredStorage.STORAGE_CONFIG_PREFIX + key
-  }
-
-  def metadataConfigPrefix(key: String = ""): String = {
-    "rlmm.config." + key
-  }
+  protected def numMetadataPartitions: Int = 5
 
   override def generateConfigs: Seq[KafkaConfig] = {
     val overridingProps = new Properties()
@@ -68,9 +63,11 @@ abstract class TieredStorageTestHarness extends IntegrationTestHarness {
     overridingProps.setProperty(REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX_PROP, metadataConfigPrefix())
 
     overridingProps.setProperty(
-      metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP), 5.toString)
+      metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP), numMetadataPartitions.toString)
     overridingProps.setProperty(
       metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP), brokerCount.toString)
+    overridingProps.setProperty(
+      metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP), 2000.toString)
 
     //
     // This configuration ensures inactive log segments are deleted fast enough so that
@@ -99,6 +96,8 @@ abstract class TieredStorageTestHarness extends IntegrationTestHarness {
     // This configuration will remove all the remote files when close is called in remote storage manager.
     // Storage manager close is being called while the server is actively processing the socket requests,
     // so enabling this config can break the existing tests.
+    //
+    // NOTE: When using TestUtils#tempDir(), the folder gets deleted when VM terminates.
     overridingProps.setProperty(storageConfigPrefix(DELETE_ON_CLOSE_PROP), false.toString)
 
     createBrokerConfigs(numConfigs = brokerCount, zkConnect).map(KafkaConfig.fromProps(_, overridingProps))
@@ -136,6 +135,10 @@ abstract class TieredStorageTestHarness extends IntegrationTestHarness {
     super.tearDown()
     contextOpt.foreach(_.printReport(Console.out))
   }
+
+  private def storageConfigPrefix(key: String = "") = LocalTieredStorage.STORAGE_CONFIG_PREFIX + key
+
+  private def metadataConfigPrefix(key: String = "") = "rlmm.config." + key
 }
 
 object TieredStorageTestHarness {
@@ -147,7 +150,8 @@ object TieredStorageTestHarness {
   private val storageWaitTimeoutSec = 35
 
   def getTieredStorages(brokers: Seq[KafkaServer]): Seq[LocalTieredStorage] = {
-    brokers.map(_.remoteLogManager.storageManager().asInstanceOf[LocalTieredStorage])
+    brokers.map(_.remoteLogManager.storageManager().asInstanceOf[ClassLoaderAwareRemoteStorageManager])
+      .map(_.delegate().asInstanceOf[LocalTieredStorage])
   }
 
   def getLocalStorages(brokers: Seq[KafkaServer]): Seq[BrokerLocalStorage] = {

@@ -17,25 +17,29 @@
 package kafka.server
 
 import kafka.api.KAFKA_3_0_IV1
+import kafka.cluster.Partition
 
 import java.net.InetAddress
 import java.nio.charset.StandardCharsets
 import java.util.Properties
 import java.util.concurrent.ExecutionException
 import kafka.integration.KafkaServerTestHarness
+import kafka.log.Log
 import kafka.log.LogConfig._
+import kafka.log.remote.RemoteLogManager
 import kafka.utils._
 import kafka.server.Constants._
 import kafka.zk.ConfigEntityChangeNotificationZNode
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.admin.{Admin, AlterConfigOp, ConfigEntry}
-import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.{TopicPartition, Uuid}
 import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.common.config.internals.QuotaConfigs
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException
+import org.apache.kafka.common.errors.{InvalidRequestException, UnknownTopicOrPartitionException}
 import org.apache.kafka.common.metrics.Quota
 import org.apache.kafka.common.record.{CompressionType, RecordVersion}
 import org.easymock.EasyMock
+import org.easymock.EasyMock._
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 
@@ -314,6 +318,38 @@ class DynamicConfigChangeTest extends KafkaServerTestHarness {
   }
 
   @Test
+  def testInvalidConfigChangeOnTopicWithAdminClient(): Unit = {
+    assertTrue(this.servers.head.dynamicConfigHandlers.contains(ConfigType.Topic),
+      "Should contain a ConfigHandler for topics")
+    val tp = new TopicPartition("test", 0)
+    val logProps = new Properties()
+    logProps.put(RetentionMsProp, "5000")
+    logProps.put(RetentionBytesProp, "5000")
+    createTopic(tp.topic, 1, 1, logProps)
+    TestUtils.retry(10000) {
+      val logOpt = this.servers.head.logManager.getLog(tp)
+      assertTrue(logOpt.isDefined)
+    }
+
+    def alterTopicConfig(op: AlterConfigOp): Unit = {
+      val admin = createAdminClient()
+      val resource = new ConfigResource(ConfigResource.Type.TOPIC, tp.topic())
+      try {
+        admin.incrementalAlterConfigs(Map(resource -> List(op).asJavaCollection).asJava).all.get
+        fail("Should fail with Invalid request exception")
+      } catch {
+        case e: ExecutionException =>
+          assertTrue(e.getCause.isInstanceOf[InvalidRequestException])
+      } finally {
+        admin.close()
+      }
+    }
+
+    alterTopicConfig(new AlterConfigOp(new ConfigEntry(LocalLogRetentionMsProp, "10000"), AlterConfigOp.OpType.SET))
+    alterTopicConfig(new AlterConfigOp(new ConfigEntry(LocalLogRetentionBytesProp, "10000"), AlterConfigOp.OpType.SET))
+  }
+
+  @Test
   def testProcessNotification(): Unit = {
     val props = new Properties()
     props.put("a.b", "10")
@@ -403,6 +439,74 @@ class DynamicConfigChangeTest extends KafkaServerTestHarness {
     assertEquals(Seq(6), parse(configHandler, "6:102"))
     assertEquals(Seq(6), parse(configHandler, "6:102 "))
     assertEquals(Seq(6), parse(configHandler, " 6:102"))
+  }
+
+  @Test
+  def testEnableRemoteLogStorageOnTopic(): Unit = {
+    val topic = "test-topic"
+    val tp = new TopicPartition(topic, 0)
+    val partition: Partition = mock(classOf[Partition])
+    expect(partition.isLeader).andReturn(true).once()
+    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
+    val leaderPartitionsArg = newCapture[Set[Partition]]()
+    val followerPartitionsArg = newCapture[Set[Partition]]()
+    expect(rlm.onLeadershipChange(capture(leaderPartitionsArg), capture(followerPartitionsArg), anyObject())).once()
+    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
+    expect(replicaManager.remoteLogManager).andReturn(Some(rlm)).once()
+    expect(replicaManager.onlinePartition(tp)).andReturn(Some(partition)).once()
+    val log: Log = mock(classOf[Log])
+    expect(log.remoteLogEnabled()).andReturn(true).once()
+    expect(log.topicId).andReturn(Option(Uuid.randomUuid())).once()
+    expect(log.topicPartition).andReturn(tp).once()
+    replay(partition, rlm, replicaManager, log)
+    val isRemoteLogEnabledBeforeUpdate = false
+    val configHandler: TopicConfigHandler = new TopicConfigHandler(replicaManager, null, null, None)
+    configHandler.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    assertTrue(followerPartitionsArg.getValue.isEmpty)
+    assertEquals(Set(partition), leaderPartitionsArg.getValue)
+    verify(partition, rlm, replicaManager, log)
+  }
+
+  @Test
+  def testDisableRemoteLogStorageOnTopic(): Unit = {
+    val topic = "test-topic"
+    val tp = new TopicPartition(topic, 0)
+    val partition: Partition = mock(classOf[Partition])
+    expect(partition.isLeader).andReturn(true).once()
+    expect(partition.isLeader).andReturn(false).once()
+    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
+    expect(rlm.stopPartitions(EasyMock.eq(Set(tp)), EasyMock.eq(true), anyObject())).once()
+    expect(rlm.stopPartitions(EasyMock.eq(Set(tp)), EasyMock.eq( false), anyObject())).once()
+    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
+    expect(replicaManager.remoteLogManager).andReturn(Some(rlm)).times(2)
+    expect(replicaManager.onlinePartition(tp)).andReturn(Some(partition)).times(2)
+    val log: Log = mock(classOf[Log])
+    expect(log.remoteLogEnabled()).andReturn(false).times(2)
+    expect(log.maybeIncrementLogStartOffsetAsRemoteLogStorageDisabled()).andReturn(true).times(2)
+    expect(log.topicPartition).andReturn(tp).times(2)
+    replay(partition, rlm, replicaManager, log)
+    val isRemoteLogEnabledBeforeUpdate = true
+    val configHandler: TopicConfigHandler = new TopicConfigHandler(replicaManager, null, null, null)
+    configHandler.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    configHandler.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    verify(partition, rlm, replicaManager, log)
+  }
+
+  @Test
+  def testDoesNotEnableRemoteLogStorageWhenNoTopicIdPresent(): Unit = {
+    val topic = "test-remote-log-storage-config-update"
+    val tp = new TopicPartition(topic, 0)
+    val partition: Partition = mock(classOf[Partition])
+    val log: Log = mock(classOf[Log])
+    expect(log.remoteLogEnabled()).andReturn(true).once()
+    // TopicId not found for corresponding topic
+    expect(log.topicId).andReturn(None).once()
+    replay(partition, log)
+    val isRemoteLogEnabledBeforeUpdate = false
+    // Expect no calls to be made to ReplicaManager or RLM, so passing null
+    val configHandler: TopicConfigHandler = new TopicConfigHandler(null, null, null, None)
+    configHandler.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    verify(partition, log)
   }
 
   def parse(configHandler: TopicConfigHandler, value: String): Seq[Int] = {

@@ -24,21 +24,23 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 import kafka.admin.AdminUtils.assignReplicasToBrokers
 import kafka.admin.BrokerMetadata
+import kafka.log.Log
 import kafka.server.KafkaServer
+import kafka.utils.BrokerLocalStorage
 import kafka.utils.TestUtils
 import kafka.zk.KafkaZkClient
 import org.apache.kafka.clients.CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG
-import org.apache.kafka.clients.admin.{Admin, AdminClient}
+import org.apache.kafka.clients.admin.{Admin, AdminClient, AlterConfigOp, AlterConfigsOptions, ConfigEntry}
 import org.apache.kafka.clients.consumer.{ConsumerRecord, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.clients.producer.ProducerConfig.LINGER_MS_CONFIG
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.server.log.remote.storage.{LocalTieredStorage, LocalTieredStorageHistory, LocalTieredStorageSnapshot}
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.metadata.BrokerState
-import unit.kafka.utils.BrokerLocalStorage
 
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
@@ -94,6 +96,22 @@ final class TieredStorageTestContext(private val zookeeperClient: KafkaZkClient,
 
     TestUtils.createTopic(zookeeperClient, spec.topicName, assignments, brokers, spec.properties)
     topicSpecs.synchronized { topicSpecs += spec.topicName -> spec }
+  }
+
+  def updateTopicConfig(topic: String, configsToBeAdded: Map[String, String], configsToBeDeleted: Seq[String]): Unit = {
+    val configResource = new ConfigResource(ConfigResource.Type.TOPIC, topic)
+    val alterOptions = new AlterConfigsOptions().timeoutMs(30000)
+    val alterEntries = (
+       configsToBeDeleted.map(k => new AlterConfigOp(new ConfigEntry(k, ""), AlterConfigOp.OpType.DELETE))
+      ++ configsToBeAdded.map {case (k, v) => new AlterConfigOp(new ConfigEntry(k, v), AlterConfigOp.OpType.SET)}
+      )
+      .asJavaCollection
+    adminClient.incrementalAlterConfigs(Map(configResource -> alterEntries).asJava, alterOptions)
+      .all().get(60, TimeUnit.SECONDS)
+  }
+
+  def deleteTopic(topic: String): Unit = {
+    adminClient.deleteTopics(List(topic).asJavaCollection).all().get(60, TimeUnit.SECONDS)
   }
 
   def produce(records: Iterable[ProducerRecord[String, String]], batchSize: Int) = {
@@ -200,6 +218,10 @@ final class TieredStorageTestContext(private val zookeeperClient: KafkaZkClient,
   def isAssignedReplica(topicPartition: TopicPartition, replicaId: Int): Boolean = {
     val assignments = zookeeperClient.getPartitionAssignmentForTopics(Set(topicPartition.topic()))
     assignments(topicPartition.topic())(topicPartition.partition()).replicas.contains(replicaId)
+  }
+
+  def log(brokerId: Int, topicPartition: TopicPartition): Option[Log] = {
+    brokers(brokerId).logManager.getLog(topicPartition)
   }
 
   def succeed(action: TieredStorageTestAction): Unit = {

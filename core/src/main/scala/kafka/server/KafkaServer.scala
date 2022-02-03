@@ -437,7 +437,7 @@ class KafkaServer(
         config.dynamicConfig.addReconfigurables(this)
 
         /* start dynamic config manager */
-        dynamicConfigHandlers = Map[String, ConfigHandler](ConfigType.Topic -> new TopicConfigHandler(logManager, config, quotaManagers, Some(kafkaController)),
+        dynamicConfigHandlers = Map[String, ConfigHandler](ConfigType.Topic -> new TopicConfigHandler(replicaManager, config, quotaManagers, Some(kafkaController)),
                                                            ConfigType.Client -> new ClientIdConfigHandler(quotaManagers),
                                                            ConfigType.User -> new UserConfigHandler(quotaManagers, credentialProvider),
                                                            ConfigType.Broker -> new BrokerConfigHandler(config, quotaManagers),
@@ -450,18 +450,17 @@ class KafkaServer(
         // better to start RLM (RSM and RLMM) before processing any requests so that we may avoid missing any
         //leader/isr requests.
 
-        val serverEndpoint = Option.apply(remoteLogManagerConfig.remoteLogMetadataManagerListenerName())
-          .map(ListenerName.normalised)
-          .flatMap(normalisedName =>
-              brokerInfo.broker.endPoints
-                .find(x => x.listenerName.equals(normalisedName))
-          )
-          // if no listener is configured, then return the first endpoint.
-          .orElse(Some(brokerInfo.broker.endPoints.head))
-          .map(x => new Endpoint(x.listenerName.value(), x.securityProtocol, x.host, x.port))
-          .get
-
         if (remoteLogManager != null) {
+          val serverEndpoint = Option.apply(remoteLogManagerConfig.remoteLogMetadataManagerListenerName())
+            .map(ListenerName.normalised)
+            .flatMap(normalisedName =>
+                brokerInfo.broker.endPoints
+                  .find(x => x.listenerName.equals(normalisedName))
+            )
+            // if no listener is configured, then return the first endpoint.
+            .orElse(Some(brokerInfo.broker.endPoints.head))
+            .map(x => new Endpoint(x.listenerName.value(), x.securityProtocol, x.host, x.port))
+            .get
           remoteLogManager.onEndpointCreated(serverEndpoint)
         }
 

@@ -120,9 +120,9 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
 
   def getIndexEntry(remoteLogSegmentMetadata: RemoteLogSegmentMetadata): Entry = {
     def loadIndexFile[T <: CleanableIndex](fileName: String,
-      suffix: String,
-      fetchRemoteIndex: RemoteLogSegmentMetadata => Option[InputStream],
-      readIndex: File => T): T = {
+                                           suffix: String,
+                                           fetchRemoteIndex: RemoteLogSegmentMetadata => Option[InputStream],
+                                           readIndex: File => T): T = {
       val indexFile = new File(cacheDir, fileName + suffix)
       var inputStreamIsEmpty: Boolean = false
 
@@ -210,8 +210,8 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
   }
 
   def collectAbortedTransaction(remoteLogSegmentMetadata: RemoteLogSegmentMetadata,
-    startOffset: Long,
-    fetchSize: Int): TxnIndexSearchResult = {
+                                startOffset: Long,
+                                fetchSize: Int): TxnIndexSearchResult = {
     val entry = getIndexEntry(remoteLogSegmentMetadata)
     val maxOffset = entry.offsetIndex.fetchUpperBoundOffset(entry.offsetIndex.lookup(startOffset), fetchSize)
       .map(_.offset)

@@ -608,6 +608,11 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                         // 2. The CompletedFetch could be an object containing an error code from broker such as
                         //    NOT_LEADER_FOR_PARTITION. In that case, we don't need to retrieve the records and ref count
                         //    is decremented after initializeCompletedFetch() method.
+                        //
+                        // Additionally, the topic partition related to completed fetch might have been paused and
+                        // nextInLineRecords would be null. However, the completedFetch could still contain valid data,
+                        // hence, parseCompletedFetch increments ref count to prevent returning the underlying buffer
+                        // to memory pool.
                         CompletedFetch completedFetch = completedFetches.peek();
                         if (completedFetch == null) break;
 
@@ -1062,6 +1067,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                     } else {
                         pausedCompletedFetches.add(completedFetch);
                     }
+                    completedFetch.response.incRefCount();
                     paused = true;
                 }
             } else if (error == Errors.NONE) {

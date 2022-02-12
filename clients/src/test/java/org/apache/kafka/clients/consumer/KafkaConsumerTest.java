@@ -755,7 +755,7 @@ public class KafkaConsumerTest {
 
         // Case 1: Default behavior. Metadata cache updated requested upon every topic assignment change.
         KafkaConsumer<String, String> consumer = newConsumer(time, client, subscription, mockConsumerMetadata, assignor,
-                true, groupId, groupInstanceId, Optional.of(new StringDeserializer()),false,
+                true, groupId, groupInstanceId, Optional.of(new StringDeserializer()), false,
                  skipMetadataCacheUpdateUponUnassignment);
         consumer.assign(Arrays.asList(tp0, tp1));
         verify(mockConsumerMetadata, times(1)).requestUpdateForNewTopics();

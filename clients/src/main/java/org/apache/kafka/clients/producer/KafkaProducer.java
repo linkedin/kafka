@@ -366,9 +366,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 "The average latency between record queuing and get acknowledged in ms",
                 Collections.singletonMap("client-id", clientId)), new Avg());
             msgSendLatencySensor.add(metrics.metricName("message-produce-latency-max",
-              PRODUCER_METRIC_GROUP_NAME,
-              "The max latency between record queuing and get acknowledged in ms",
-              Collections.singletonMap("client-id", clientId)), new Max());
+                PRODUCER_METRIC_GROUP_NAME,
+                "The max latency between record queuing and get acknowledged in ms",
+                Collections.singletonMap("client-id", clientId)), new Max());
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,

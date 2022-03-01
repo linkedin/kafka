@@ -70,6 +70,10 @@ public class ProducerConfig extends AbstractConfig {
             "Controls how long the producer will cache metadata for a topic that's idle. If the elapsed " +
             "time since a topic was last produced to exceeds the metadata idle duration, then the topic's " +
             "metadata is forgotten and the next access to it will force a metadata fetch request.";
+    static final long DEFAULT_METADATA_MAX_IDLE = 5 * 60 * 1000;
+
+    /** <code>metadata.topic.expiry.ms</code> */
+    public static final String METADATA_TOPIC_EXPIRY_MS_CONFIG = "metadata.topic.expiry.ms";
 
     /** <code>batch.size</code> */
     public static final String BATCH_SIZE_CONFIG = "batch.size";
@@ -339,7 +343,13 @@ public class ProducerConfig extends AbstractConfig {
                                 .define(METADATA_MAX_AGE_CONFIG, Type.LONG, 5 * 60 * 1000, atLeast(0), Importance.LOW, METADATA_MAX_AGE_DOC)
                                 .define(METADATA_MAX_IDLE_CONFIG,
                                         Type.LONG,
-                                        5 * 60 * 1000,
+                                        DEFAULT_METADATA_MAX_IDLE,
+                                        atLeast(5000),
+                                        Importance.LOW,
+                                        METADATA_MAX_IDLE_DOC)
+                                .define(METADATA_TOPIC_EXPIRY_MS_CONFIG,
+                                        Type.LONG,
+                                        DEFAULT_METADATA_MAX_IDLE,
                                         atLeast(5000),
                                         Importance.LOW,
                                         METADATA_MAX_IDLE_DOC)

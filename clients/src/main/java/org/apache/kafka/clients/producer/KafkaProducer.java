@@ -432,7 +432,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             } else {
                 this.metadata = new ProducerMetadata(retryBackoffMs,
                         config.getLong(ProducerConfig.METADATA_MAX_AGE_CONFIG),
-                        config.getLong(ProducerConfig.METADATA_MAX_IDLE_CONFIG),
+                        metadataMaxIdleMs(config),
                         logContext,
                         clusterResourceListeners,
                         Time.SYSTEM,
@@ -501,6 +501,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 producerConfig.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG),
                 this.transactionManager,
                 apiVersions);
+    }
+
+    private static long metadataMaxIdleMs(ProducerConfig config) {
+        long metadataMaxIdleMs = config.getLong(ProducerConfig.METADATA_MAX_IDLE_CONFIG);
+        if (metadataMaxIdleMs != ProducerConfig.DEFAULT_METADATA_MAX_IDLE) {
+            return metadataMaxIdleMs;
+        }
+        return config.getLong(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG);
     }
 
     private static int lingerMs(ProducerConfig config) {

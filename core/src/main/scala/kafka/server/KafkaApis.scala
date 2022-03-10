@@ -3117,19 +3117,19 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     val responseData = new LiCombinedControlResponseData()
 
+    decomposedRequest.updateMetadataRequest match {
+      case Some(updateMetadataRequest) => {
+        val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
+        responseData.setUpdateMetadataErrorCode(updateMetadataResponse.errorCode())
+      }
+      case _ => // do nothing
+    }
+
     decomposedRequest.leaderAndIsrRequest match {
       case Some(leaderAndIsrRequest) => {
         val leaderAndIsrResponse = doHandleLeaderAndIsrRequest(request, correlationId, leaderAndIsrRequest)
         responseData.setLeaderAndIsrErrorCode(leaderAndIsrResponse.errorCode())
           .setLeaderAndIsrPartitionErrors(LiCombinedControlTransformer.transformLeaderAndIsrPartitionErrors(leaderAndIsrResponse.partitions()))
-      }
-      case _ => // do nothing
-    }
-
-    decomposedRequest.updateMetadataRequest match {
-      case Some(updateMetadataRequest) => {
-        val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)
-        responseData.setUpdateMetadataErrorCode(updateMetadataResponse.errorCode())
       }
       case _ => // do nothing
     }

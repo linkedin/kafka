@@ -3117,6 +3117,9 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     val responseData = new LiCombinedControlResponseData()
 
+    // The LeaderAndIsr section depends on the UpdateMetadata section, which implies that
+    // the UpdateMetadataRequest section should be processed before the LeaderAndIsr section.
+    // If the order is reversed, a broker will fail to become the follower
     decomposedRequest.updateMetadataRequest match {
       case Some(updateMetadataRequest) => {
         val updateMetadataResponse = doHandleUpdateMetadataRequest(request, correlationId, updateMetadataRequest)

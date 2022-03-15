@@ -1489,10 +1489,12 @@ class ReplicaManager(val config: KafkaConfig,
           controllerEpoch = leaderAndIsrRequest.controllerEpoch
 
           val partitionStates = new mutable.HashMap[Partition, LeaderAndIsrPartitionState]()
-
+          val allRequestPartitions = new mutable.HashSet[TopicPartition]()
           // First create the partition if it doesn't exist already
           requestPartitionStates.foreach { partitionState =>
             val topicPartition = new TopicPartition(partitionState.topicName, partitionState.partitionIndex)
+            allRequestPartitions.add(topicPartition)
+
             val partitionOpt = getPartition(topicPartition) match {
               case HostedPartition.Offline =>
                 stateChangeLogger.warn(s"Ignoring LeaderAndIsr request from " +
@@ -1519,11 +1521,13 @@ class ReplicaManager(val config: KafkaConfig,
               val logTopicId = partition.topicId
 
               if (!hasConsistentTopicId(requestTopicId, logTopicId)) {
-                stateChangeLogger.error(s"Topic ID in memory: ${logTopicId.get} does not" +
+                stateChangeLogger.warn(s"Topic ID in memory: ${logTopicId.get} does not" +
                   s" match the topic ID for partition $topicPartition received: " +
-                  s"${requestTopicId.get}.")
-                responseMap.put(topicPartition, Errors.INCONSISTENT_TOPIC_ID)
-              } else if (requestLeaderEpoch > currentLeaderEpoch) {
+                  s"${requestTopicId.get}. Deleting the current replica.")
+                deleteStrayReplicas(List(topicPartition))
+              }
+
+              if (requestLeaderEpoch > currentLeaderEpoch) {
                 // If the leader epoch is valid record the epoch of the controller that made the leadership decision.
                 // This is useful while updating the isr to maintain the decision maker controller's epoch in the zookeeper path
                 if (partitionState.replicas.contains(localBrokerId))
@@ -1562,6 +1566,11 @@ class ReplicaManager(val config: KafkaConfig,
                 responseMap.put(topicPartition, error)
               }
             }
+          }
+
+          if (leaderAndIsrRequest.`type`() == LeaderAndIsrRequestType.FULL) {
+            val partitionsToDelete = findStrayPartitions(allRequestPartitions, logManager.allLogs)
+            deleteStrayReplicas(partitionsToDelete)
           }
 
           val partitionsToBeLeader = partitionStates.filter { case (_, partitionState) =>
@@ -2409,6 +2418,21 @@ class ReplicaManager(val config: KafkaConfig,
     partitionsToMakeFollower.keySet.foreach(completeDelayedFetchOrProduceRequests)
 
     updateLeaderAndFollowerMetrics(newFollowerTopicSet)
+  }
+
+  // Return all the partitions that are not included in the full LeaderAndIsr request.
+  // The result will NOT include partitions with inconsistent topic IDs since that logic
+  // is handled inside {@link becomeLeaderOrFollower(Int, LeaderAndIsrRequest, (Iterable[Partition], Iterable[Partition]) => Unit)}
+  def findStrayPartitions(requestPartitions: Set[TopicPartition],
+                          logs: Iterable[Log]): Iterable[TopicPartition] = {
+    logs.flatMap{ log => {
+      val topicPartition = log.topicPartition
+      if (!requestPartitions.contains(topicPartition)) {
+        Some(topicPartition)
+      } else {
+        None
+      }
+    }}
   }
 
   def deleteStrayReplicas(topicPartitions: Iterable[TopicPartition]): Unit = {

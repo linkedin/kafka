@@ -81,7 +81,7 @@ public class LeaderAndIsrRequest extends AbstractControlRequest {
                 .setMaxBrokerEpoch(maxBrokerEpoch)
                 .setLiveLeaders(leaders);
 
-            if (version >= 5) {
+            if (version >= 6) {
                 data.setType(type.code());
             }
 

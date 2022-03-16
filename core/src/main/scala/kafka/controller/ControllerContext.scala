@@ -239,6 +239,7 @@ class ControllerContext {
   def liveBrokerIdAndEpochs: Map[Int, Long] = liveBrokerEpochs
   def maxBrokerEpoch: Long = liveBrokerEpochs.values.max
   def liveOrShuttingDownBroker(brokerId: Int): Option[Broker] = liveOrShuttingDownBrokers.find(_.id == brokerId)
+  // send full LeaderAndIsr request when it's the first LeaderAndIsr request
   def shouldSendFullLeaderAndIsr(brokerId: Int): Boolean = !leaderAndIsrRequestSent.get(brokerId).exists(_ == true)
 
   def getLivePreferredControllerIds : Set[Int] = livePreferredControllerIds

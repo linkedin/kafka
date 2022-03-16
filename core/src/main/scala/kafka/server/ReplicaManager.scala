@@ -1520,19 +1520,24 @@ class ReplicaManager(val config: KafkaConfig,
               val requestTopicId = topicIdFromRequest(topicPartition.topic)
               val logTopicId = partition.topicId
 
-              if (!hasConsistentTopicId(requestTopicId, logTopicId)) {
-                stateChangeLogger.warn(s"Topic ID in memory: ${logTopicId.get} does not" +
-                  s" match the topic ID for partition $topicPartition received: " +
-                  s"${requestTopicId.get}. Deleting the current replica.")
-                deleteStrayReplicas(List(topicPartition))
-              }
-
               if (requestLeaderEpoch > currentLeaderEpoch) {
+                var maybeRecreatedPartition = partition
+                if (!hasConsistentTopicId(requestTopicId, logTopicId)) {
+                  stateChangeLogger.warn(s"Topic ID in memory: ${logTopicId.get} does not" +
+                    s" match the topic ID for partition $topicPartition received: " +
+                    s"${requestTopicId.get}. Deleting the current replica.")
+                  deleteStrayReplicas(List(topicPartition))
+                  // recreate the partition
+                  maybeRecreatedPartition = Partition(topicPartition, time, this)
+                  allPartitions.put(topicPartition, HostedPartition.Online(maybeRecreatedPartition))
+                  // responseMap.put(topicPartition, Errors.INCONSISTENT_TOPIC_ID)
+                }
+
                 // If the leader epoch is valid record the epoch of the controller that made the leadership decision.
                 // This is useful while updating the isr to maintain the decision maker controller's epoch in the zookeeper path
-                if (partitionState.replicas.contains(localBrokerId))
-                  partitionStates.put(partition, partitionState)
-                else {
+                if (partitionState.replicas.contains(localBrokerId)) {
+                  partitionStates.put(maybeRecreatedPartition, partitionState)
+                } else {
                   stateChangeLogger.warn(s"Ignoring LeaderAndIsr request from controller $controllerId with " +
                     s"correlation id $correlationId epoch $controllerEpoch for partition $topicPartition as itself is not " +
                     s"in assigned replica list ${partitionState.replicas.asScala.mkString(",")}")

@@ -1530,7 +1530,6 @@ class ReplicaManager(val config: KafkaConfig,
                   // recreate the partition
                   maybeRecreatedPartition = Partition(topicPartition, time, this)
                   allPartitions.put(topicPartition, HostedPartition.Online(maybeRecreatedPartition))
-                  // responseMap.put(topicPartition, Errors.INCONSISTENT_TOPIC_ID)
                 }
 
                 // If the leader epoch is valid record the epoch of the controller that made the leadership decision.

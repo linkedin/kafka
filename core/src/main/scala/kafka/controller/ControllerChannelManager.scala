@@ -253,7 +253,7 @@ class RequestSendThread(val controllerId: Int,
 
   private var firstUpdateMetadataWithPartitionsSent = false
 
-  private var fullLeaderAndIsrSent = false
+  private var firstFullLeaderAndIsrSent = false
 
   @volatile private var latestRequestStatus = LatestRequestStatus(isInFlight = false, isInQueue = false, 0)
 
@@ -286,7 +286,7 @@ class RequestSendThread(val controllerId: Int,
       (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1 &&
         config.liCombinedControlRequestEnable &&
         firstUpdateMetadataWithPartitionsSent &&
-        fullLeaderAndIsrSent)) {
+        firstFullLeaderAndIsrSent)) {
       // Only start the merging logic after the first UpdateMetadata request with partitions,
       // since the first UpdateMetadata request with partitions may contain hundreds of thousands of partitions,
       // and thus needs to be cached and shared by all brokers in order to prevent OOM
@@ -379,7 +379,7 @@ class RequestSendThread(val controllerId: Int,
         }
         if (api == ApiKeys.LEADER_AND_ISR &&
           requestBuilder.asInstanceOf[LeaderAndIsrRequest.Builder].`type`() == LeaderAndIsrRequestType.FULL) {
-          fullLeaderAndIsrSent = true
+          firstFullLeaderAndIsrSent = true
         }
 
         val response = clientResponse.responseBody

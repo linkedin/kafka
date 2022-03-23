@@ -70,10 +70,18 @@ public class ProducerConfig extends AbstractConfig {
             "Controls how long the producer will cache metadata for a topic that's idle. If the elapsed " +
             "time since a topic was last produced to exceeds the metadata idle duration, then the topic's " +
             "metadata is forgotten and the next access to it will force a metadata fetch request.";
-    static final long DEFAULT_METADATA_MAX_IDLE = 5 * 60 * 1000;
 
     /** <code>metadata.topic.expiry.ms</code> */
     public static final String METADATA_TOPIC_EXPIRY_MS_CONFIG = "metadata.topic.expiry.ms";
+    private static final ConfigDef.LambdaValidator METADATA_TOPIC_EXPIRY_MS_VALIDATOR = ConfigDef.LambdaValidator.with(
+        (name, value) -> {
+            long longValue = (long) value;
+            if (longValue != -1 && longValue < 5000) {
+                throw new ConfigException(name, value, "Value must be either -1 or at least 5000.");
+            }
+        },
+        () -> "[5000,...], or -1"
+    );
 
     /** <code>batch.size</code> */
     public static final String BATCH_SIZE_CONFIG = "batch.size";
@@ -343,14 +351,14 @@ public class ProducerConfig extends AbstractConfig {
                                 .define(METADATA_MAX_AGE_CONFIG, Type.LONG, 5 * 60 * 1000, atLeast(0), Importance.LOW, METADATA_MAX_AGE_DOC)
                                 .define(METADATA_MAX_IDLE_CONFIG,
                                         Type.LONG,
-                                        DEFAULT_METADATA_MAX_IDLE,
+                                        5 * 60 * 1000,
                                         atLeast(5000),
                                         Importance.LOW,
                                         METADATA_MAX_IDLE_DOC)
                                 .define(METADATA_TOPIC_EXPIRY_MS_CONFIG,
                                         Type.LONG,
-                                        DEFAULT_METADATA_MAX_IDLE,
-                                        atLeast(5000),
+                                        -1,
+                                        METADATA_TOPIC_EXPIRY_MS_VALIDATOR,
                                         Importance.LOW,
                                         METADATA_MAX_IDLE_DOC)
                                 .define(METRICS_SAMPLE_WINDOW_MS_CONFIG,

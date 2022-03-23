@@ -263,27 +263,28 @@ public class KafkaProducerTest {
         baseProps.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
         Properties invalidProps1 = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "100");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "100");
+            }};
+
         assertThrows(
             ConfigException.class,
             () -> new ProducerConfig(invalidProps1),
             "metadata.topic.expiry.ms must be -1 or at least 5000");
 
         Properties invalidProps2 = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "100");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "100");
+            }};
         assertThrows(
             ConfigException.class,
             () -> new ProducerConfig(invalidProps2),
             "metadata.max.idle.ms must be at least 5000");
 
         Properties invalidProps3 = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "-1");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "-1");
+            }};
         assertThrows(
             ConfigException.class,
             () -> new ProducerConfig(invalidProps3),
@@ -294,47 +295,47 @@ public class KafkaProducerTest {
         assertEquals(DEFAULT_METADATA_IDLE_MS, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "10000");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "10000");
+            }};
         config = new ProducerConfig(props);
         assertEquals(10000, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "10000");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "10000");
+            }};
         config = new ProducerConfig(props);
         assertEquals(10000, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "-1");
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "10000");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "-1");
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "10000");
+            }};
         config = new ProducerConfig(props);
         assertEquals(10000, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "-1");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "-1");
+            }};
         config = new ProducerConfig(props);
         assertEquals(DEFAULT_METADATA_IDLE_MS, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "10000");
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "20000");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, "10000");
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "20000");
+            }};
         config = new ProducerConfig(props);
         assertEquals(10000, KafkaProducer.metadataMaxIdleMs(config));
 
         props = new Properties() {{
-            putAll(baseProps);
-            setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, Long.toString(DEFAULT_METADATA_IDLE_MS));
-            setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "20000");
-        }};
+                putAll(baseProps);
+                setProperty(ProducerConfig.METADATA_TOPIC_EXPIRY_MS_CONFIG, Long.toString(DEFAULT_METADATA_IDLE_MS));
+                setProperty(ProducerConfig.METADATA_MAX_IDLE_CONFIG, "20000");
+            }};
         config = new ProducerConfig(props);
         assertEquals(DEFAULT_METADATA_IDLE_MS, KafkaProducer.metadataMaxIdleMs(config));
     }

@@ -191,6 +191,9 @@ subprojects {
     println "java version:" + JavaVersion.current() + ",compatible:" + JavaVersion.current().isJava9Compatible()
     if (JavaVersion.current().isJava9Compatible())
       options.compilerArgs << "--release" << minJavaVersion
+    doFirst {
+     println "Args for for $name are $options.allCompilerArgs"
+    }
   }
 
   uploadArchives {

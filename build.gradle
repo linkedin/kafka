@@ -188,6 +188,7 @@ subprojects {
     // --release is the recommended way to select the target release, but it's only supported in Java 9 so we also
     // set --source and --target via `sourceCompatibility` and `targetCompatibility`. If/when Gradle supports `--release`
     // natively (https://github.com/gradle/gradle/issues/2510), we should switch to that.
+    println "java version:" + JavaVersion.current() + ",compatible:" + JavaVersion.current().isJava9Compatible()
     if (JavaVersion.current().isJava9Compatible())
       options.compilerArgs << "--release" << minJavaVersion
   }

@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License
 
-name: Test Java 11
+name: Code analysis
 
 on:
   pull_request:
@@ -28,6 +28,11 @@ jobs:
     name: all
     # Set the type of machine to run on
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scalaVersion:
+          - 2.11
+          - 2.12
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
@@ -40,12 +45,8 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: '11'
-      - name: Compile ByteBufferTest
-        run: javac -version && javac --release 8 ByteBufferTest.java
-      - name: Set up JDK 8
-        uses: actions/setup-java@v1
-        with:
-          java-version: '8'
-      - name: Run ByteBufferTest
-        run: java -version && java -cp . ByteBufferTest && javap -p -c -s -v -l -constants ByteBufferTest.class|grep position
-
+      - name: Run rat code analysis steps_${{ matrix.scalaVersion }}
+        env:
+          SCALA_VERSION: ${{ matrix.scalaVersion }}
+        run: ./gradlew -PscalaVersion="$SCALA_VERSION" jar -PtestLoggingEvents=started,passed,skipped,failed &&
+             CLASSFILE=$(find . -name 'AbstractIndex.class') && javap -p -c -s -v -l -constants $CLASSFILE|grep position

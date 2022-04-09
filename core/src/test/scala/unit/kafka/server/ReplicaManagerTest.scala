@@ -2287,7 +2287,7 @@ class ReplicaManagerTest {
 
   @Test
   def testStopReplicaWithDeletePartitionAndExistingPartitionAndNewerLeaderEpochAndIOException(): Unit = {
-    testStopReplicaWithExistingPartition(2, true, true, Errors.KAFKA_STORAGE_ERROR)
+    testStopReplicaWithExistingPartition(2, true, true, Errors.NONE)
   }
 
   @Test

@@ -741,7 +741,7 @@ class Log(@volatile private var _dir: File,
    *
    * @throws KafkaStorageException if rename fails
    */
-  def renameDir(name: String, reinitialize: Boolean): Unit = {
+  def renameDir(name: String, shouldReinitialize: Boolean): Unit = {
     lock synchronized {
       maybeHandleIOException(s"Error while renaming dir for $topicPartition in log dir ${dir.getParent}") {
         // Flush partitionMetadata file before initializing again
@@ -755,7 +755,7 @@ class Log(@volatile private var _dir: File,
           producerStateManager.updateParentDir(dir)
           // re-initialize leader epoch cache so that LeaderEpochCheckpointFile.checkpoint can correctly reference
           // the checkpoint file in renamed log directory
-          if (reinitialize) {
+          if (shouldReinitialize) {
             initializeLeaderEpochCache()
             initializePartitionMetadata()
           }

@@ -269,7 +269,7 @@ class TopicDeletionManager(config: KafkaConfig,
     // deregister partition change listener on the deleted topic. This is to prevent the partition change listener
     // firing before the new topic listener when a deleted topic gets auto created
     client.mutePartitionModifications(topic)
-    val replicasForDeletedTopic = controllerContext.replicasInState(topic, Set(ReplicaDeletionSuccessful, OfflineReplica))
+    val replicasForDeletedTopic = controllerContext.replicasInStates(topic, Set(ReplicaDeletionSuccessful, OfflineReplica))
     // controller will remove this replica from the state machine as well as its partition assignment cache
     replicaStateMachine.handleStateChanges(replicasForDeletedTopic.toSeq, NonExistentReplica)
     client.deleteTopic(topic, controllerContext.epochZkVersion)

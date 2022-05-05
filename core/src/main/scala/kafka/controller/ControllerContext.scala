@@ -374,7 +374,7 @@ class ControllerContext {
     topicsToBeDeleted
   }
 
-  def replicasInState(topic: String, expectedStates: Set[ReplicaState]): Set[PartitionAndReplica] = {
+  def replicasInStates(topic: String, expectedStates: Set[ReplicaState]): Set[PartitionAndReplica] = {
     replicasForTopic(topic).filter(replica => expectedStates.contains(replicaStates(replica))).toSet
   }
 

@@ -149,7 +149,7 @@ class TopicDeletionManagerTest {
     assertEquals(fooPartitions, controllerContext.partitionsInState("foo", NonExistentPartition))
     verify(deletionClient).sendMetadataUpdate(fooPartitions)
     assertEquals(onlineReplicas, controllerContext.replicasInState("foo", ReplicaDeletionStarted))
-    assertEquals(offlineReplicas, controllerContext.replicasInState("foo", ReplicaDeletionSuccessful))
+    assertEquals(offlineReplicas, controllerContext.replicasInState("foo", OfflineReplica))
 
     assertEquals(Set("foo"), controllerContext.topicsToBeDeleted)
     assertEquals(Set("foo"), controllerContext.topicsWithDeletionStarted)

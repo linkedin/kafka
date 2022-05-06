@@ -693,7 +693,7 @@ class KafkaController(val config: KafkaConfig,
     // trigger OnlinePartition state changes for offline or new partitions
     partitionStateMachine.triggerOnlinePartitionStateChange()
     // trigger OfflineReplica state change for those newly offline replicas
-    replicaStateMachine.handleStateChanges(newOfflineReplicasNotForDeletion.toSeq, OfflineReplica)
+    replicaStateMachine.handleStateChanges(newOfflineReplicas.toSeq, OfflineReplica)
 
     if (newOfflineReplicasForDeletion.nonEmpty) {
       info(s"Some replicas ${newOfflineReplicasForDeletion.mkString(",")} for topics scheduled for deletion " +

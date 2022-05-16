@@ -66,6 +66,7 @@ class ConsumerManagerTest {
     private Map<String, Object> getRLMMConfigProps(int numMetadataTopicPartitions) {
         final Map<String, Object> props = new HashMap<>();
         props.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
         props.put(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP, "10");
         props.put(TopicBasedRemoteLogMetadataManagerConfig.LOG_DIR, TestUtils.tempDirectory().getName());
         props.put(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP, numMetadataTopicPartitions);

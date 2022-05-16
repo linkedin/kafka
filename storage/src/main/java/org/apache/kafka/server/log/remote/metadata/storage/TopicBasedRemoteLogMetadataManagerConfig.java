@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.clients.CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG;
+import static org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
 import static org.apache.kafka.common.config.ConfigDef.Importance.LOW;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 import static org.apache.kafka.common.config.ConfigDef.Type.INT;
@@ -121,6 +122,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
     private final long metadataTopicRetentionMs;
     private final short metadataTopicReplicationFactor;
     private final long secondaryConsumerSubscriptionIntervalMs;
+    private final String securityProtocol;
 
     private Map<String, Object> consumerProps;
     private Map<String, Object> producerProps;
@@ -137,6 +139,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
         }
 
         logDir = getLogDirectory(props);
+        securityProtocol = (String) props.get(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG);
 
         consumeWaitMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP);
         secondaryConsumerSubscriptionIntervalMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP);
@@ -155,6 +158,9 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
     private void initializeProducerConsumerProperties(Map<String, ?> configs) {
         Map<String, Object> commonClientConfigs = new HashMap<>();
         commonClientConfigs.put(BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        if (securityProtocol != null && !securityProtocol.isEmpty()) {
+            commonClientConfigs.put(SECURITY_PROTOCOL_CONFIG, securityProtocol);
+        }
 
         Map<String, Object> producerOnlyConfigs = new HashMap<>();
         Map<String, Object> consumerOnlyConfigs = new HashMap<>();

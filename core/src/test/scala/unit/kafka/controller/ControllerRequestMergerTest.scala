@@ -32,6 +32,8 @@ import org.apache.kafka.common.utils.LiCombinedControlTransformer
 import org.apache.kafka.common.{Node, TopicPartition, Uuid}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -264,9 +266,13 @@ class ControllerRequestMergerTest {
     topicStates
   }
 
-  @Test
-  def testMergingDifferentStopReplicaPartitionStates(): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("testMergingDifferentStopReplicaPartitionStatesParams"))
+  def testMergingDifferentStopReplicaPartitionStates(
+    kafkaVersionString: String, isLeaderEpochExpectedInPartitionState: Boolean): Unit = {
+    val controllerRequestMerger = buildControllerRequestMerger(kafkaVersionString);
     val leaderEpoch = 1
+
     val partitions1 = List(new TopicPartition(topic, 0))
     val stopReplicaRequest1 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
       brokerEpoch, true, getStopReplicaTopicState(0, true, leaderEpoch))
@@ -279,50 +285,17 @@ class ControllerRequestMergerTest {
     controllerRequestMerger.addRequest(stopReplicaRequest1)
     controllerRequestMerger.addRequest(stopReplicaRequest2)
 
-    val expectedPartitions = (partitions1 ++ partitions2).map{partition => new StopReplicaPartitionState()
+    val expectedPartitions = (partitions1 ++ partitions2).map{partition =>
+      val expectedPartitionState = new StopReplicaPartitionState()
       .setTopicName(partition.topic())
       .setPartitionIndex(partition.partition())
       .setDeletePartitions(true)
       .setBrokerEpoch(brokerEpoch)
-      .setLeaderEpoch(leaderEpoch)
-    }
 
-    def toMap(partitionStates: util.List[LiCombinedControlRequestData.StopReplicaPartitionState]) = {
-      val partitionStateMap: mutable.Map[TopicPartition, LiCombinedControlRequestData.StopReplicaPartitionState] = mutable.Map.empty
-      partitionStates.forEach{state =>
-        partitionStateMap.put(new TopicPartition(state.topicName(), state.partitionIndex()), state)
+      if (isLeaderEpochExpectedInPartitionState) {
+        expectedPartitionState.setLeaderEpoch(leaderEpoch)
       }
-      partitionStateMap
-    }
-
-    val liCombinedControlRequest = controllerRequestMerger.pollLatestRequest()
-    assertEquals(controllerId, liCombinedControlRequest.controllerId())
-    assertEquals(controllerEpoch, liCombinedControlRequest.controllerEpoch())
-    assertEquals(toMap(expectedPartitions.asJava), toMap(liCombinedControlRequest.stopReplicaPartitionStates()))
-  }
-
-  @Test
-  def testMergingDifferentStopReplicaPartitionStatesV0Request(): Unit = {
-    val controllerRequestMerger = buildControllerRequestMerger("2.4");
-
-    val leaderEpoch = 1
-    val partitions1 = List(new TopicPartition(topic, 0))
-    val stopReplicaRequest1 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
-      brokerEpoch, true, getStopReplicaTopicState(0, true, leaderEpoch))
-
-
-    val partitions2 = List(new TopicPartition(topic, 1))
-    val stopReplicaRequest2 = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
-      brokerEpoch, true, getStopReplicaTopicState(1, true, leaderEpoch))
-
-    controllerRequestMerger.addRequest(stopReplicaRequest1)
-    controllerRequestMerger.addRequest(stopReplicaRequest2)
-
-    val expectedPartitions = (partitions1 ++ partitions2).map{partition => new StopReplicaPartitionState()
-      .setTopicName(partition.topic())
-      .setPartitionIndex(partition.partition())
-      .setDeletePartitions(true)
-      .setBrokerEpoch(brokerEpoch)
+      expectedPartitionState
     }
 
     def toMap(partitionStates: util.List[LiCombinedControlRequestData.StopReplicaPartitionState]) = {
@@ -469,5 +442,14 @@ class ControllerRequestMergerTest {
       }).setErrorCode(error.code))
     }
     partitions
+  }
+}
+
+object ControllerRequestMergerTest {
+  def testMergingDifferentStopReplicaPartitionStatesParams: java.util.stream.Stream[Arguments] = {
+    Seq(
+      Arguments.of("2.4".asInstanceOf[AnyRef], false.asInstanceOf[AnyRef]),
+      Arguments.of("3.0".asInstanceOf[AnyRef], true.asInstanceOf[AnyRef]),
+    ).asJava.stream()
   }
 }

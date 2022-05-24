@@ -732,7 +732,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       else 0
 
     /**
-     * For StopReplica request version below 4, we rely on the isPartitionDeleted function to check a partition's delete flag,
+     * For StopReplica request version < 4, we rely on the isPartitionDeleted function to check a partition's delete flag,
      * this may not be always correct considering a later request's callback may overwrite an earlier
      * request's callback inside the {@link ControllerRequestMerger#addStopReplicaRequest) method.
      * For StopReplica request version 4 and above, we rely on the delete field inside the StopReplica response to

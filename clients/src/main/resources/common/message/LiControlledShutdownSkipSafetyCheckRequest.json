@@ -16,7 +16,10 @@
 {
   "apiKey": 1000,
   "type": "request",
-  "listeners": ["controller"],
+  // The current implementation of this feature involves recording the shutting down broker's epoch on zk,
+  // so probably doesn't make sense for the listener type "broker" for now.
+  // In the future, if/when we adopt KIP-500 changes, this request can be augmented to include the "broker" listener.
+  "listeners": ["zkBroker"],
   "name": "LiControlledShutdownSkipSafetyCheckRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",

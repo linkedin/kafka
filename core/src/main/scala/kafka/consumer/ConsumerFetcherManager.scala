@@ -66,7 +66,7 @@ class ConsumerFetcherManager(private val consumerIdString: String,
 
   private def bootstrapNodes() : java.util.List[Node] = {
     val bootstrapServers = seqAsJavaList(ClientUtils.getSslBrokerEndPoints(zkUtils).map(_.connectionString))
-    val addresses = org.apache.kafka.clients.ClientUtils.parseAndValidateAddresses(bootstrapServers, ClientDnsLookup.DEFAULT)
+    val addresses = org.apache.kafka.clients.ClientUtils.parseAndValidateAddresses(bootstrapServers, ClientDnsLookup.USE_ALL_DNS_IPS)
     JCluster.bootstrap(addresses).nodes
   }
 

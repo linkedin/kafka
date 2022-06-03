@@ -78,7 +78,7 @@ class SSLNetworkClient(config: ConsumerConfig, metadataUpdater: ManualMetadataUp
       Selectable.USE_DEFAULT_BUFFER_SIZE,
       config.socketReceiveBufferBytes,
       socketTimeoutMs,
-      ClientDnsLookup.DEFAULT,
+      ClientDnsLookup.USE_ALL_DNS_IPS,
       time,
       true,
       new ApiVersions,

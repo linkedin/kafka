@@ -24,7 +24,7 @@ import java.nio.file.{Files, StandardOpenOption}
 import java.security.cert.X509Certificate
 import java.time.Duration
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
-import java.util.concurrent.{Callable, ExecutionException, Executors, TimeUnit}
+import java.util.concurrent.{Callable, ExecutionException, Executors, ScheduledExecutorService, TimeUnit}
 import java.util.{Arrays, Collections, Optional, Properties}
 import com.yammer.metrics.core.{Gauge, Histogram, Meter}
 
@@ -964,6 +964,49 @@ object TestUtils extends Logging {
       new TopicPartition(topic, i) -> servers.head.metadataCache.getPartitionInfo(topic, i).getOrElse(
           throw new IllegalStateException(s"Cannot get topic: $topic, partition: $i in server metadata cache"))
     }.toMap
+  }
+
+  def waitUntilTopicPresent(client: Admin, topic: String, maxAttempts: Int = 3): Unit = {
+    if (maxAttempts <= 0) {
+      throw new IllegalArgumentException("0 or negative maxAttempts")
+    }
+
+    var remaining = maxAttempts
+    while (remaining > 0) {
+      remaining -= 1
+      try {
+        client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
+      } catch {
+        case e: Throwable =>
+          if (remaining == 0) {
+            e.getCause match {
+              // On unknown topic, it's wrapped inside an ExecutionException's cause
+              case _: UnknownTopicOrPartitionException => fail(s"Specified topic not present after ($maxAttempts) attempts ")
+              case _ => fail(e)
+            }
+          }
+      }
+    }
+  }
+
+  def waitUntilTopicNotPresent(client: Admin, topic: String, maxAttempts: Int = 3): Unit = {
+    if (maxAttempts <= 0) {
+      throw new IllegalArgumentException("0 or negative maxAttempts")
+    }
+    assertThrows(
+      classOf[UnknownTopicOrPartitionException],
+      () => {
+        try {
+          (0 until maxAttempts).foreach {_ =>
+            client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
+          }
+        } catch {
+          case e: ExecutionException => throw e.getCause  // UnknownTopicOrPartitionException is wrapped inside
+          case e => throw e
+        }
+      },
+      () => s"Exceeded ${maxAttempts} attempts awaiting topic `${topic}` to not present"
+    )
   }
 
   /**

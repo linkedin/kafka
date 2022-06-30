@@ -536,6 +536,9 @@ class KafkaServer(
     //   would be problematic to ignore config...
     (0 until config.liNumControllerInitThreads).map { i =>
       debug(s"creating zkClient ${i+1} of ${config.liNumControllerInitThreads}")
+      // alas, this is called upstream of brokerId generation (which comes _from_ ZK via brokerMetadata), so we
+      // can't include the Kafka server's brokerId as part of the ZK client's name (which would be super-useful
+      // for tests with multiple brokers running and probably useful for multi-host log-grepping in prod)
       _zkClients += KafkaZkClient(config.zkConnect, secureAclsEnabled, config.zkSessionTimeoutMs,
         config.zkConnectionTimeoutMs, config.zkMaxInFlightRequests, time, name = s"zk${i} Kafka server",
         zkClientConfig = zkClientConfig, createChrootIfNecessary = true)
@@ -828,10 +831,14 @@ class KafkaServer(
         if (featureChangeListener != null)
           CoreUtils.swallow(featureChangeListener.close(), this)
 
-        (0 until config.liNumControllerInitThreads).map { i =>
-          debug(s"shutting down zkClient ${i+1} of ${config.liNumControllerInitThreads}")
-          if (_zkClients(i) != null)
-            CoreUtils.swallow(_zkClients(i).close(), this)
+        if (!_zkClients.isEmpty) {
+          (0 until config.liNumControllerInitThreads).map { i =>
+            debug(s"shutting down zkClient ${i+1} of ${config.liNumControllerInitThreads}: ${_zkClients(i)}")
+            if (_zkClients(i) != null) {
+              CoreUtils.swallow(_zkClients(i).close(), this)
+            }
+          }
+          _zkClients.clear // _zkClients(0) is special (backward-compatibility), and tests reuse same server instance
         }
 
         if (quotaManagers != null)

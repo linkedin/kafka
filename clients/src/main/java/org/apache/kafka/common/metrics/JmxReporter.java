@@ -269,6 +269,7 @@ public class JmxReporter implements MetricsReporter {
         }
 
         KafkaMetric removeAttribute(String name) {
+            log.info("removing attribute " + name + " from " + this.objectName);
             return this.metrics.remove(name);
         }
 

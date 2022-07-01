@@ -643,12 +643,16 @@ class KafkaApis(val requestChannel: RequestChannel,
         if (produceRequest.acks == 0) 0
         else quotas.request.maybeRecordAndGetThrottleTimeMs(request, timeMs)
       val maxThrottleTimeMs = Math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
-      if (maxThrottleTimeMs > 0) {
+      // LIKAFKA-45345, even if the throttleTimeMs is 0, we still record it so that
+      // the throttle-time sensor does not expire before the byte-rate sensor
+      if (true) {
         request.apiThrottleTimeMs = maxThrottleTimeMs
         if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
           requestHelper.throttle(quotas.produce, request, bandwidthThrottleTimeMs)
+          requestHelper.throttle(quotas.request, request, 0)
         } else {
           requestHelper.throttle(quotas.request, request, requestThrottleTimeMs)
+          requestHelper.throttle(quotas.produce, request, 0)
         }
       }
 

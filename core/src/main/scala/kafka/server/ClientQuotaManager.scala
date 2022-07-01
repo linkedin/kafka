@@ -74,7 +74,7 @@ object QuotaTypes {
 
 object ClientQuotaManager {
   // Do not expire quota sensors
-  val InactiveSensorExpirationTimeSeconds = Int.MaxValue
+  val InactiveSensorExpirationTimeSeconds = 120
 
   val DefaultClientIdQuotaEntity = KafkaQuotaEntity(None, Some(DefaultClientIdEntity))
   val DefaultUserQuotaEntity = KafkaQuotaEntity(Some(DefaultUserEntity), None)
@@ -374,9 +374,12 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     throttleCallback: ThrottleCallback,
     throttleTimeMs: Int
   ): Unit = {
+    // LIKAFKA-45345, even if the throttleTimeMs is 0, we still record it so that
+    // the throttle-time sensor does not expire before the byte-rate sensor
+    val clientSensors = getOrCreateQuotaSensors(request.session, request.headerForLoggingOrThrottling().clientId)
+    clientSensors.throttleTimeSensor.record(throttleTimeMs)
+    info("Channel throttled for sensor (%s). Delay time: (%d)".format(clientSensors.throttleTimeSensor.name(), throttleTimeMs))
     if (throttleTimeMs > 0) {
-      val clientSensors = getOrCreateQuotaSensors(request.session, request.headerForLoggingOrThrottling().clientId)
-      clientSensors.throttleTimeSensor.record(throttleTimeMs)
       val throttledChannel = new ThrottledChannel(time, throttleTimeMs, throttleCallback)
       delayQueue.add(throttledChannel)
       delayQueueSensor.record()

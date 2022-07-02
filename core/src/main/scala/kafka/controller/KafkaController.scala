@@ -17,7 +17,7 @@
 package kafka.controller
 
 import java.util
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent.{Callable, Executors, TimeUnit}
 
 import kafka.admin.AdminOperationException
 import kafka.api._
@@ -298,8 +298,17 @@ class KafkaController(val config: KafkaConfig,
 
   private def state: ControllerState = eventManager.state
 
+  /**
+   * Helper method to generate a simple timing string for log messages. A negative value for either
+   * argument disables the corresponding half of the timing string. Of course, calling this method
+   * with negative values for both arguments is nonsensical; don't do that.
+   *
+   * @param taskStartMs start-time (in milliseconds) of the sub-task within the main method that's being timed
+   * @param methodStartMs start-time (in milliseconds) of the overall method containing the sub-task
+   */
   private def timing(taskStartMs: Long, methodStartMs: Long): String = {
     val nowMs = time.milliseconds()
+    // technically the "init " part should also be supplied by the user to make this maximally generic:
     if (taskStartMs < 0) s"(elapsed init = ${nowMs - methodStartMs} ms)"
       else if (methodStartMs < 0) s"(took ${nowMs - taskStartMs} ms)"
       else s"(took ${nowMs - taskStartMs} ms; elapsed init = ${nowMs - methodStartMs} ms)"
@@ -1136,39 +1145,56 @@ class KafkaController(val config: KafkaConfig,
     if (partitions.isEmpty)
       return
 
-    val pool = Executors.newFixedThreadPool(config.liNumControllerInitThreads)
     val leaderIsrAndControllerEpochs: mutable.Map[TopicPartition, LeaderIsrAndControllerEpoch] = mutable.Map.empty
 
-    // (1) split up partitions set into liNumControllerInitThreads batches
-    //     [not yet tested:  optionally could set numBatches = 3 * liNumControllerInitThreads (for example)
-    //     in order to limit occasional (rare) damage by a slow executor:  other N-1 executors that complete
-    //     in normal time will pick up additional small batches, thereby covering for slow one]
+    // (1) split up partitions set into (at most) liNumControllerInitThreads batches
+    //     The formula below ensures that, if the partition count isn't an exact multiple of the thread count,
+    //     we simply end up with a "short stack" for one of the threads--and that only in the worst case, i.e.,
+    //     where the zip implementation is naive in its bin-packing--rather than more batches than threads,
+    //     which would require one thread to run two batches sequentially and roughly double the overall time.
+    //     (And yes, Scala's zip implementation IS one of the stupider ones:  the ideal split for 13 partitions
+    //     and 10 threads would be 2|2|2|1|1|1|1|1|1|1, but Scala's mindless binpacking gives 2|2|2|2|2|2|1|0|0|0.
+    //     It still works, but we're wasting cores and potentially time if per-item processing time varies.)
+    //       [not yet tested:  optionally could set numBatches = 3 * liNumControllerInitThreads (for example)
+    //       in order to limit occasional (rare) damage by a slow executor:  other N-1 executors that complete
+    //       in normal time will pick up additional small batches, thereby covering for the slow one]
     val numTopicPartitionsPerBatch = (partitions.size + config.liNumControllerInitThreads - 1) / config.liNumControllerInitThreads
-    val splitPartitions = partitions.grouped(numTopicPartitionsPerBatch)
+    val splitPartitions = partitions.grouped(numTopicPartitionsPerBatch).toSeq
 
     // (2) loop over numThreads Seqs, wrap each in a Runnable that calls updateLeaderAndIsrCache() on it, and
     //     submit Runnable to thread pool, storing all returned Futures in another Seq
-    val zkJobs = zkClients.zip(splitPartitions.toSeq).map { case (zkClientN, partitionsBatch) =>
-      val runnable: Runnable = () => {
-        val zkPartitionRecurseStartMs = time.milliseconds()
-        val leaderIsrAndControllerEpochsBatch = zkClientN.getTopicPartitionStates(partitionsBatch.toSeq)
-        info(s"partition-level init (parallel): finished recursing ${partitionsBatch.size} partitions in ZK ${timing(zkPartitionRecurseStartMs, -1)}")
-
-        // add our batch of partition-states to the merged map
-        leaderIsrAndControllerEpochs synchronized {
-          leaderIsrAndControllerEpochs ++= leaderIsrAndControllerEpochsBatch  // takes 0-2 ms for 1500 partitions
+    val zkJobs = zkClients.zip(splitPartitions).map { case (zkClientN, partitionsBatch) =>
+      val callable = new Callable[Map[TopicPartition, LeaderIsrAndControllerEpoch]] {
+        override def call(): Map[TopicPartition, LeaderIsrAndControllerEpoch] = {
+          val zkPartitionRecurseStartMs = time.milliseconds()
+          val leaderIsrAndControllerEpochsBatch = zkClientN.getTopicPartitionStates(partitionsBatch.toSeq)
+          info(s"partition-level init (parallel): finished recursing ${partitionsBatch.size} partitions in ZK ${timing(zkPartitionRecurseStartMs, -1)}")
+          leaderIsrAndControllerEpochsBatch
         }
       }
-      runnable
+      callable
     }
-    val zkFutures = zkJobs.map(pool.submit).toSeq
+    val pool = Executors.newFixedThreadPool(config.liNumControllerInitThreads)
+    val zkFutures = zkJobs.map(callable => pool.submit(callable)).toSeq
 
     // (3) wait for all Futures to complete (similar to LogManager.scala) and update the LAI cache
     try {
-      zkFutures.foreach(_.get)  // no swallowing of exceptions: if fails, we have a problem anyway
+      zkFutures.foreach(future => {
+        // add each batch of partition-states to the merged map
+        leaderIsrAndControllerEpochs ++= future.get  // takes 0-2 ms for 1500 partitions
+      })
 
-      // all futures succeeded: update the cache (identical to what single-threaded updateLeaderAndIsrCache() does)
-      debug(s"successfully read ZK replica info for ${leaderIsrAndControllerEpochs.size} partitions (expected ${partitions.size} partitions); updating LAI cache")
+      // all futures succeeded: do a quick sanity check, then update the cache (identical to what the
+      // single-threaded updateLeaderAndIsrCache() does)
+
+      if (leaderIsrAndControllerEpochs.size != partitions.size) {
+        // FIXME: should we throw, or should we log a warning and fall back to updateLeaderAndIsrCache()?
+        throw new IllegalStateException(s"Parallel controller startup failed: read ZK replica info for " +
+          s"${leaderIsrAndControllerEpochs.size} partitions but expected ${partitions.size} partitions")
+      } else {
+        debug(s"successfully read ZK replica info for ${leaderIsrAndControllerEpochs.size} partitions (expected number); updating LAI cache")
+      }
+
       leaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
         controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
       }

@@ -74,7 +74,7 @@ class ParallelControllerStartupTest extends AbstractConsumerTest {
     this.serverConfig.setProperty(KafkaConfig.AutoCreateTopicsEnableProp, "false")
     this.serverConfig.setProperty(KafkaConfig.LiNumControllerInitThreadsProp, "10") // parallel-startup mode
 
-    super.setUp()  // invokes modifyConfigs() shortly after starting ZK; eventually starts brokers, then elects controller
+    super.setUp() // starts ZK, then invokes modifyConfigs(); eventually starts brokers, then elects controller
     debug(s"done with setUp() override for ParallelControllerStartupTest")
   }
 
@@ -88,6 +88,7 @@ class ParallelControllerStartupTest extends AbstractConsumerTest {
     val maxTopics = 100    // 1500 works, but test duration is ~6 minutes:  enable only for manual testing
     //val maxTopics = 5000 // this blows up at 1613 topics due to gradle/JVM memory usage
     (0 until maxTopics).map { topicNum =>
+      // this calls TestUtils.waitForAllPartitionsMetadata() internally:
       createTopic(f"topic_${topicNum}%05d", numPartitions = 10, replicationFactor = 2)
       if ((topicNum + 1) % 100 == 0) {
         debug(s"created ${topicNum + 1} of ${maxTopics} topics in cluster 0")
@@ -95,9 +96,8 @@ class ParallelControllerStartupTest extends AbstractConsumerTest {
     }
 
     // Now "find" initial controller for cluster 0 and its epoch, then force it to restart by deleting
-    // the controller znode in ZK.  (Technically we should verify that all topics, or at least the last
-    // few, are online, but it's probably OK to let the restarted controller handle that.)
-    val initialController = servers/*ByCluster(0)*/.find(_.kafkaController.isActive).map(_.kafkaController).getOrElse {
+    // the controller znode in ZK.
+    val initialController = servers.find(_.kafkaController.isActive).map(_.kafkaController).getOrElse {
       fail("Could not find controller")
     }
     val initialEpoch = initialController.epoch
@@ -107,12 +107,14 @@ class ParallelControllerStartupTest extends AbstractConsumerTest {
     zkClient.deleteController(initialController.controllerContext.epochZkVersion)
     // ...and wait until a new controller has been elected
     TestUtils.waitUntilTrue(() => {
-      servers/*ByCluster(0)*/.exists { server =>
+      servers.exists { server =>
         server.kafkaController.isActive && server.kafkaController.epoch > initialEpoch
       }
     }, "Failed to find newly elected controller")
 
-    // ideally would measure startup time or something here, but for now inspection of logs after the fact is fine
+    // ideally we'd measure startup time or something here, but that would involve either adding test-specific
+    // hooks into the controller's init code or else inspecting it with reflection; for now inspection of logs
+    // after the fact is fine
 
     debug(s"done with testControllerParallelInit(), apparently successfully!")
   }

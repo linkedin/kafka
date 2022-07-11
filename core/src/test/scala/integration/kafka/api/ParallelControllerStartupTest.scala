@@ -15,8 +15,6 @@
 
 package kafka.api
 
-import scala.collection.JavaConverters._
-
 import java.util.Properties
 
 import org.junit.jupiter.api.{BeforeEach, Test}
@@ -24,7 +22,6 @@ import org.junit.jupiter.api.Assertions._
 
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
-import org.apache.kafka.clients.admin._
 
 /**
  * Scalability/performance test for sequential vs. parallel controller startup, at least when run
@@ -32,7 +29,7 @@ import org.apache.kafka.clients.admin._
  * of logs, however, so the test case doesn't explicitly <em>verify</em> parallel startup, though it
  * does configure it explicitly.
  */
-class ParallelControllerStartupTest extends AbstractConsumerTest {
+class ParallelControllerStartupTest extends IntegrationTestHarness {
   override def brokerCount: Int = 3
 
   // Given brokerCount = 3, set up brokers and controllers as follows:

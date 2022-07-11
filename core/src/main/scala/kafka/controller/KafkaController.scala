@@ -1070,8 +1070,11 @@ class KafkaController(val config: KafkaConfig,
     // Update the leader and isr cache for all existing partitions from Zookeeper. THIS IS THE SLOWEST PART
     // OF SEQUENTIAL CONTROLLER INIT (70% of overall time for 1500 topics, 15000 partitions in an integ test).
     // [In parallel mode with 10 threads, partition-level init drops below 40% for the same test case.]
+    // Note that caching allPartitions is fine even given that childChangeHandlers were registered with the
+    // zkClient above; the controller is single-threaded, so any ZK updates will be enqueued until controller
+    // init is complete.
     taskStartMs = time.milliseconds()
-    val allPartitions = controllerContext.allPartitions  // LUCAS: safe to cache this?  [given childChangeHandlers above, seems not entirely safe, yet allPartitions method itself makes a copy (toSet), so how does that work?]
+    val allPartitions = controllerContext.allPartitions
     if (config.liNumControllerInitThreads > 1) {
       // PARALLEL-STARTUP MODE
       updateLeaderAndIsrCacheParallel(allPartitions)
@@ -1150,9 +1153,9 @@ class KafkaController(val config: KafkaConfig,
     // (1) split up partitions set into (at most) liNumControllerInitThreads batches
     //     The formula below ensures that, if the partition count isn't an exact multiple of the thread count,
     //     we simply end up with a "short stack" for one of the threads--and that only in the worst case, i.e.,
-    //     where the zip implementation is naive in its bin-packing--rather than more batches than threads,
+    //     where the grouped() implementation is naive in its bin-packing--rather than more batches than threads,
     //     which would require one thread to run two batches sequentially and roughly double the overall time.
-    //     (And yes, Scala's zip implementation IS one of the stupider ones:  the ideal split for 13 partitions
+    //     (And yes, Scala's grouped implementation IS one of the stupider ones:  the ideal split for 13 partitions
     //     and 10 threads would be 2|2|2|1|1|1|1|1|1|1, but Scala's mindless binpacking gives 2|2|2|2|2|2|1|0|0|0.
     //     It still works, but we're wasting cores and potentially time if per-item processing time varies.)
     //       [not yet tested:  optionally could set numBatches = 3 * liNumControllerInitThreads (for example)

@@ -55,13 +55,17 @@ case class ClientQuotaManagerConfig(quotaDefault: Long =
                                     numQuotaSamples: Int =
                                         ClientQuotaManagerConfig.DefaultNumQuotaSamples,
                                     quotaWindowSizeSeconds: Int =
-                                        ClientQuotaManagerConfig.DefaultQuotaWindowSizeSeconds)
+                                        ClientQuotaManagerConfig.DefaultQuotaWindowSizeSeconds,
+                                    inactiveSensorExpirationTimeSeconds: Long =
+                                        ClientQuotaManagerConfig.DefaultInactiveSensorExpirationTimeSeconds)
 
 object ClientQuotaManagerConfig {
   val QuotaDefault = Long.MaxValue
   // Always have 10 whole windows + 1 current window
   val DefaultNumQuotaSamples = 11
   val DefaultQuotaWindowSizeSeconds = 1
+
+  val DefaultInactiveSensorExpirationTimeSeconds = 3600
 }
 
 object QuotaTypes {
@@ -73,9 +77,6 @@ object QuotaTypes {
 }
 
 object ClientQuotaManager {
-  // Do not expire quota sensors
-  val InactiveSensorExpirationTimeSeconds = 120
-
   val DefaultClientIdQuotaEntity = KafkaQuotaEntity(None, Some(DefaultClientIdEntity))
   val DefaultUserQuotaEntity = KafkaQuotaEntity(Some(DefaultUserEntity), None)
   val DefaultUserClientIdQuotaEntity = KafkaQuotaEntity(Some(DefaultUserEntity), Some(DefaultClientIdEntity))
@@ -437,12 +438,12 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
       metricTags,
       sensorAccessor.getOrCreate(
         getQuotaSensorName(metricTags),
-        ClientQuotaManager.InactiveSensorExpirationTimeSeconds,
+        config.inactiveSensorExpirationTimeSeconds,
         registerQuotaMetrics(metricTags)
       ),
       sensorAccessor.getOrCreate(
         getThrottleTimeSensorName(metricTags),
-        ClientQuotaManager.InactiveSensorExpirationTimeSeconds,
+        config.inactiveSensorExpirationTimeSeconds,
         sensor => sensor.add(throttleMetricName(metricTags), new Avg)
       )
     )
@@ -482,7 +483,7 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   protected def getOrCreateSensor(sensorName: String, metricName: MetricName): Sensor = {
     sensorAccessor.getOrCreate(
       sensorName,
-      ClientQuotaManager.InactiveSensorExpirationTimeSeconds,
+      config.inactiveSensorExpirationTimeSeconds,
       sensor => sensor.add(metricName, new Rate)
     )
   }

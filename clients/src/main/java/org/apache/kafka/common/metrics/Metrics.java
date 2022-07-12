@@ -76,6 +76,8 @@ public class Metrics implements Closeable {
     private final Time time;
     private final ScheduledThreadPoolExecutor metricsScheduler;
     private static final Logger log = LoggerFactory.getLogger(Metrics.class);
+    public static long METRICS_SCHEDULER_INITIAL_DELAY = 30;
+    public static long METRICS_SCHEDULER_PERIOD = 30;
 
     private volatile boolean replaceOnDuplicate = false;
 
@@ -174,7 +176,7 @@ public class Metrics implements Closeable {
             this.metricsScheduler = new ScheduledThreadPoolExecutor(1);
             // Creating a daemon thread to not block shutdown
             this.metricsScheduler.setThreadFactory(runnable -> KafkaThread.daemon("SensorExpiryThread", runnable));
-            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), 30, 30, TimeUnit.SECONDS);
+            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), METRICS_SCHEDULER_INITIAL_DELAY, METRICS_SCHEDULER_PERIOD, TimeUnit.SECONDS);
         } else {
             this.metricsScheduler = null;
         }

@@ -1379,7 +1379,7 @@ object KafkaConfig {
       .define(AlterLogDirsReplicationQuotaWindowSizeSecondsProp, INT, Defaults.AlterLogDirsReplicationQuotaWindowSizeSeconds, atLeast(1), LOW, AlterLogDirsReplicationQuotaWindowSizeSecondsDoc)
       .define(ControllerQuotaWindowSizeSecondsProp, INT, Defaults.ControllerQuotaWindowSizeSeconds, atLeast(1), LOW, ControllerQuotaWindowSizeSecondsDoc)
       .define(ClientQuotaCallbackClassProp, CLASS, null, LOW, ClientQuotaCallbackClassDoc)
-      .define(InactiveSensorExpirationTimeSecondsProp, LONG, Defaults.InactiveSensorExpirationTimeSeconds, LOW, InactiveSensorExpirationTimeSecondsDoc)
+      .define(InactiveSensorExpirationTimeSecondsProp, LONG, Defaults.InactiveSensorExpirationTimeSeconds, atLeast(1), LOW, InactiveSensorExpirationTimeSecondsDoc)
 
       /** ********* General Security Configuration ****************/
       .define(ConnectionsMaxReauthMsProp, LONG, Defaults.ConnectionsMaxReauthMsDefault, MEDIUM, ConnectionsMaxReauthMsDoc)

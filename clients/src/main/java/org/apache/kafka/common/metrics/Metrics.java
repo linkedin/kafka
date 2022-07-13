@@ -76,8 +76,10 @@ public class Metrics implements Closeable {
     private final Time time;
     private final ScheduledThreadPoolExecutor metricsScheduler;
     private static final Logger log = LoggerFactory.getLogger(Metrics.class);
-    public static long METRICS_SCHEDULER_INITIAL_DELAY = 30;
-    public static long METRICS_SCHEDULER_PERIOD = 30;
+    // Allowing the initial delay and period of the metrics scheduler to be changed
+    // so that metrics can be expired faster in tests
+    private static long metricsSchedulerInitialDelay = 30;
+    private static long metricsSchedulerPeriod = 30;
 
     private volatile boolean replaceOnDuplicate = false;
 
@@ -176,7 +178,8 @@ public class Metrics implements Closeable {
             this.metricsScheduler = new ScheduledThreadPoolExecutor(1);
             // Creating a daemon thread to not block shutdown
             this.metricsScheduler.setThreadFactory(runnable -> KafkaThread.daemon("SensorExpiryThread", runnable));
-            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), METRICS_SCHEDULER_INITIAL_DELAY, METRICS_SCHEDULER_PERIOD, TimeUnit.SECONDS);
+            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), metricsSchedulerInitialDelay,
+                metricsSchedulerPeriod, TimeUnit.SECONDS);
         } else {
             this.metricsScheduler = null;
         }
@@ -185,7 +188,15 @@ public class Metrics implements Closeable {
             (config, now) -> metrics.size());
     }
 
-    /**
+    public static void setMetricsSchedulerInitialDelay(long metricsSchedulerInitialDelay) {
+        Metrics.metricsSchedulerInitialDelay = metricsSchedulerInitialDelay;
+    }
+
+    public static void setMetricsSchedulerPeriod(long metricsSchedulerPeriod) {
+        Metrics.metricsSchedulerPeriod = metricsSchedulerPeriod;
+    }
+
+  /**
      * Create a MetricName with the given name, group, description and tags, plus default tags specified in the metric
      * configuration. Tag in tags takes precedence if the same tag key is specified in the default metric configuration.
      *

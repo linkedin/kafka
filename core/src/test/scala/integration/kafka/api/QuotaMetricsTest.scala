@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package integration.kafka.api
 
 import kafka.api.IntegrationTestHarness
@@ -31,11 +47,12 @@ class QuotaMetricsTest extends IntegrationTestHarness {
 
   @BeforeEach
   override def setUp(): Unit = {
-    Metrics.METRICS_SCHEDULER_INITIAL_DELAY = 0
-    Metrics.METRICS_SCHEDULER_PERIOD = 1
+    // change the frequency of the Metrics Scheduler so that expired metrics can be removed faster
+    Metrics.setMetricsSchedulerInitialDelay(0);
+    Metrics.setMetricsSchedulerPeriod(1);
     super.setUp()
 
-    // apply the dynamic request_percentage quota override
+    // [KIP-124] apply the dynamic request_percentage quota override on the client id level for all client ids
     val adminClient = createAdminClient()
     val alterEntityMap = new util.HashMap[String, String]()
     alterEntityMap.put(ClientQuotaEntity.CLIENT_ID, ConfigEntityName.Default)
@@ -45,7 +62,6 @@ class QuotaMetricsTest extends IntegrationTestHarness {
     adminClient.alterClientQuotas(entries).all().get(60, TimeUnit.SECONDS)
   }
 
-  // Verify that the throttle time metric shows up with a value of 0 when there is no quota violations
   @Test
   def testThrottleTime(): Unit = {
     val topic = "test"
@@ -53,7 +69,7 @@ class QuotaMetricsTest extends IntegrationTestHarness {
     createTopic(topic, numPartitions = 1, replicationFactor = 1, props)
     val tp = new TopicPartition(topic, 0)
 
-    // Produce and consume some records
+    // Produce some records
     val numRecords = 10
     val recordSize = 100000
 
@@ -62,17 +78,21 @@ class QuotaMetricsTest extends IntegrationTestHarness {
     val producer = createProducer(configOverrides = producerProps)
     sendRecords(producer, numRecords, recordSize, tp)
 
+    // Verify that the client id level throttle-time metrics show up even without producing quota violations
     verifyQuotaMetrics("throttle-time", "Produce", producerClientId, true, value => value == 0)
     verifyQuotaMetrics("byte-rate", "Produce", producerClientId, true, value => value > 0)
     verifyQuotaMetrics("throttle-time", "Request", producerClientId, true, value => value == 0)
     verifyQuotaMetrics("request-time", "Request", producerClientId, true, value => value > 0)
 
+    // Consume some records
     val consumerProps = new Properties()
     consumerProps.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerClientId)
     val consumer = createConsumer(configOverrides = consumerProps)
     consumer.assign(List(tp).asJava)
     consumer.seek(tp, 0)
     TestUtils.consumeRecords(consumer, numRecords)
+
+    // Verify that the client id level throttle-time metrics show up even without fetching quota violations
     verifyQuotaMetrics("throttle-time", "Fetch", consumerClientId, true, value => value == 0)
     verifyQuotaMetrics("byte-rate", "Fetch", consumerClientId, true, value => value > 0)
     verifyQuotaMetrics("throttle-time", "Request", consumerClientId, true, value => value == 0)

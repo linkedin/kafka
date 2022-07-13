@@ -643,9 +643,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         if (produceRequest.acks == 0) 0
         else quotas.request.maybeRecordAndGetThrottleTimeMs(request, timeMs)
       val maxThrottleTimeMs = Math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
-      // LIKAFKA-45345, even if the throttleTimeMs is 0, we still record it so that
-      // the throttle-time sensor does not expire before the byte-rate sensor.
-      // We are putting the value true as the condition below to minimize merging conflicts with upstream.
+      // [LIKAFKA-45345] even if the throttleTimeMs is 0, we still record it so that
+      // the throttle-time sensor does not expire before the byte-rate sensor in quotas.produce or
+      // the request-time sensor in quotas.request.
       val (effectiveBandWidthThrottleTime, effectiveRequestThrottleTime) = if (maxThrottleTimeMs > 0) {
         request.apiThrottleTimeMs = maxThrottleTimeMs
         if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
@@ -943,9 +943,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         val bandwidthThrottleTimeMs = quotas.fetch.maybeRecordAndGetThrottleTimeMs(request, responseSize, timeMs)
 
         val maxThrottleTimeMs = math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
-        // LIKAFKA-45345, even if the throttleTimeMs is 0, we still record it so that
-        // the throttle-time sensor does not expire before the byte-rate sensor.
-        // We are putting the value true as the condition below to minimize merging conflicts with upstream.
+        // [LIKAFKA-45345] even if the throttleTimeMs is 0, we still record it so that
+        // the throttle-time sensor does not expire before the byte-rate sensor in quotas.fetch
+        // or the request-time sensor in quotas.request.
         val (effectiveBandwidthThrottleTime, effectiveRequestThrottleTime) = if (maxThrottleTimeMs > 0) {
           request.apiThrottleTimeMs = maxThrottleTimeMs
           // Even if we need to throttle for request quota violation, we should "unrecord" the already recorded value

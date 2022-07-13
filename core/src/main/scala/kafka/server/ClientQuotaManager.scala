@@ -379,7 +379,6 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     // the throttle-time sensor does not expire before the byte-rate sensor
     val clientSensors = getOrCreateQuotaSensors(request.session, request.headerForLoggingOrThrottling().clientId)
     clientSensors.throttleTimeSensor.record(throttleTimeMs)
-    info("Channel throttled for sensor (%s). Delay time: (%d)".format(clientSensors.throttleTimeSensor.name(), throttleTimeMs))
     if (throttleTimeMs > 0) {
       val throttledChannel = new ThrottledChannel(time, throttleTimeMs, throttleCallback)
       delayQueue.add(throttledChannel)

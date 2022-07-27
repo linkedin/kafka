@@ -48,8 +48,8 @@ class QuotaMetricsTest extends IntegrationTestHarness {
   @BeforeEach
   override def setUp(): Unit = {
     // change the frequency of the Metrics Scheduler so that expired metrics can be removed faster
-    Metrics.setMetricsSchedulerInitialDelay(0);
-    Metrics.setMetricsSchedulerPeriod(1);
+    Metrics.setMetricsSchedulerInitialDelaySeconds(0);
+    Metrics.setMetricsSchedulerPeriodSeconds(1);
     super.setUp()
 
     // [KIP-124] apply the dynamic request_percentage quota override on the client id level for all client ids

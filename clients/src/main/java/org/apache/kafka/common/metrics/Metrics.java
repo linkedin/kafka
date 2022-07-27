@@ -78,8 +78,8 @@ public class Metrics implements Closeable {
     private static final Logger log = LoggerFactory.getLogger(Metrics.class);
     // Allowing the initial delay and period of the metrics scheduler to be changed
     // so that metrics can be expired faster in tests
-    private static long metricsSchedulerInitialDelay = 30;
-    private static long metricsSchedulerPeriod = 30;
+    private static long metricsSchedulerInitialDelaySeconds = 30;
+    private static long metricsSchedulerPeriodSeconds = 30;
 
     private volatile boolean replaceOnDuplicate = false;
 
@@ -178,8 +178,8 @@ public class Metrics implements Closeable {
             this.metricsScheduler = new ScheduledThreadPoolExecutor(1);
             // Creating a daemon thread to not block shutdown
             this.metricsScheduler.setThreadFactory(runnable -> KafkaThread.daemon("SensorExpiryThread", runnable));
-            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), metricsSchedulerInitialDelay,
-                metricsSchedulerPeriod, TimeUnit.SECONDS);
+            this.metricsScheduler.scheduleAtFixedRate(new ExpireSensorTask(), metricsSchedulerInitialDelaySeconds,
+                metricsSchedulerPeriodSeconds, TimeUnit.SECONDS);
         } else {
             this.metricsScheduler = null;
         }
@@ -188,12 +188,12 @@ public class Metrics implements Closeable {
             (config, now) -> metrics.size());
     }
 
-    public static void setMetricsSchedulerInitialDelay(long metricsSchedulerInitialDelay) {
-        Metrics.metricsSchedulerInitialDelay = metricsSchedulerInitialDelay;
+    public static void setMetricsSchedulerInitialDelaySeconds(long metricsSchedulerInitialDelaySeconds) {
+        Metrics.metricsSchedulerInitialDelaySeconds = metricsSchedulerInitialDelaySeconds;
     }
 
-    public static void setMetricsSchedulerPeriod(long metricsSchedulerPeriod) {
-        Metrics.metricsSchedulerPeriod = metricsSchedulerPeriod;
+    public static void setMetricsSchedulerPeriodSeconds(long metricsSchedulerPeriodSeconds) {
+        Metrics.metricsSchedulerPeriodSeconds = metricsSchedulerPeriodSeconds;
     }
 
   /**

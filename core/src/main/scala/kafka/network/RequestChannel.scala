@@ -539,7 +539,7 @@ class RequestMetrics(name: String) extends KafkaMetricsGroup {
 
   val tags = Map("request" -> name)
   val requestRateInternal = new Pool[Short, Meter]()
-  // Compared with the requestRateInterval, the aggregateRequestRateInterval is the request rate across all versions
+  // Compared with the requestRateInterval, the requestRateAcrossVersionsInternal is the request rate across all versions
   val requestRateAcrossVersionsInternal = newMeter(RequestsPerSecAcrossVersions, "requests", TimeUnit.SECONDS, tags)
   // time a request spent in a request queue
   val requestQueueTimeHist = newHistogram(RequestQueueTimeMs, biased = true, tags)

@@ -116,8 +116,8 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
   }
 
   @Test
-  def testRequestsPerSecWithoutVersionMetric(): Unit = {
-    val topic = "topicWithOldMessageFormat"
+  def testRequestsPerSecAcrossVersionsMetric(): Unit = {
+    val topic = "topic"
     val props = new Properties
     createTopic(topic, numPartitions = 1, replicationFactor = 1, props)
     val tp = new TopicPartition(topic, 0)

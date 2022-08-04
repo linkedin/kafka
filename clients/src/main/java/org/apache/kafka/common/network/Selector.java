@@ -647,9 +647,9 @@ public class Selector implements Selectable, AutoCloseable {
     private void attemptRead(SelectionKey key, KafkaChannel channel) throws IOException {
         //if channel is ready and has bytes to read from socket or buffer, and has no
         //previous receive(s) already staged or otherwise in progress then read from it
-        log.trace("Attempt read from the channel (channel.ready:{}, key.isReadable:{}, " +
+        log.trace("Attempt read from the channel {} (channel.ready:{}, key.isReadable:{}, " +
             "channel.hasBytesBuffered:{}, hasStagedReceive:{}, explicitlyMutedChannels.contains(channel): {})",
-            channel.ready(), key.isReadable(), channel.hasBytesBuffered(), hasStagedReceive(channel),
+            channel.id(), channel.ready(), key.isReadable(), channel.hasBytesBuffered(), hasStagedReceive(channel),
             explicitlyMutedChannels.contains(channel));
 
         if (channel.ready() && (key.isReadable() || channel.hasBytesBuffered()) && !hasStagedReceive(channel)
@@ -1017,6 +1017,7 @@ public class Selector implements Selectable, AutoCloseable {
 
     private void addToCompletedReceives(KafkaChannel channel, Deque<NetworkReceive> stagedDeque) {
         NetworkReceive networkReceive = stagedDeque.poll();
+        log.trace("Adding NetworkReceive from the source {} to completed receives", networkReceive.source());
         this.completedReceives.add(networkReceive);
         this.sensors.recordBytesReceived(channel.id(), networkReceive.size());
     }

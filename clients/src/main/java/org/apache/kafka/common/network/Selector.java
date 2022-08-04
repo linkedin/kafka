@@ -647,7 +647,7 @@ public class Selector implements Selectable, AutoCloseable {
     private void attemptRead(SelectionKey key, KafkaChannel channel) throws IOException {
         //if channel is ready and has bytes to read from socket or buffer, and has no
         //previous receive(s) already staged or otherwise in progress then read from it
-        log.trace("attempt read from the channel (channel.ready:{}, key.isReadable:{}, "+
+        log.trace("attempt read from the channel (channel.ready:{}, key.isReadable:{}, " +
             "channel.hasBytesBuffered:{}, hasStagedReceive: {}, explicitlyMutedChannels.contains(channel): {})",
             channel.ready(), key.isReadable(), channel.hasBytesBuffered(), hasStagedReceive(channel),
             explicitlyMutedChannels.contains(channel));

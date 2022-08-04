@@ -978,6 +978,8 @@ class ReplicaManager(val config: KafkaConfig,
         try {
           val partition = getPartitionOrException(topicPartition)
           if (!partition.isAcksValid(requiredAcks)) {
+            // When this metric is recorded, enable the DEBUG level logging on kafka.request.logger to
+            // get the identify of producers
             brokerTopicStats.topicStats(topicPartition.topic).produceRequestsWithInvalidAcksRate.mark()
             brokerTopicStats.allTopicsStats.produceRequestsWithInvalidAcksRate.mark()
           }

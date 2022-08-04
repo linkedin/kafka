@@ -132,7 +132,7 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
     assertTrue(requestRateWithoutVersionMeter.count() > 0, "The Produce RequestsPerSecAcrossVersions metric is not recorded")
   }
 
-  private def sendRecords(producer: KafkaProducer[Array[Byte], Array[Byte]], numRecords: Int,
+  def sendRecords(producer: KafkaProducer[Array[Byte], Array[Byte]], numRecords: Int,
       recordSize: Int, tp: TopicPartition) = {
     val bytes = new Array[Byte](recordSize)
     (0 until numRecords).map { i =>
@@ -323,7 +323,7 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
     }
   }
 
-  private def yammerMeterWithPrefix(prefix: String): Meter = {
+  def yammerMeterWithPrefix(prefix: String): Meter = {
     val allMetrics = KafkaYammerMetrics.defaultRegistry.allMetrics.asScala
     val (_, metric) = allMetrics.find { case (n, _) => n.getMBeanName.startsWith(prefix) }
       .getOrElse(fail(s"Unable to find broker metric with prefix $prefix: allMetrics: ${allMetrics.keySet.map(_.getMBeanName)}"))
@@ -333,7 +333,7 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
     }
   }
 
-  private def verifyYammerMetricRecorded(name: String, verify: Double => Boolean = d => d > 0): Double = {
+  def verifyYammerMetricRecorded(name: String, verify: Double => Boolean = d => d > 0): Double = {
     val metricValue = yammerMetricValue(name).asInstanceOf[Double]
     assertTrue(verify(metricValue), s"Broker metric not recorded correctly for $name value $metricValue")
     metricValue

@@ -977,6 +977,11 @@ class ReplicaManager(val config: KafkaConfig,
       } else {
         try {
           val partition = getPartitionOrException(topicPartition)
+          if (!partition.isAcksValid(requiredAcks)) {
+            brokerTopicStats.topicStats(topicPartition.topic).produceRequestsWithInvalidAcksRate.mark()
+            brokerTopicStats.allTopicsStats.produceRequestsWithInvalidAcksRate.mark()
+          }
+
           val info = partition.appendRecordsToLeader(records, origin, requiredAcks, requestLocal)
           val numAppendedMessages = info.numMessages
 

@@ -42,7 +42,7 @@ abstract class ReplicaStateMachine(controllerContext: ControllerContext) extends
     handleStateChanges(onlineReplicas.toSeq, OnlineReplica)
     info(s"Triggering offline replica state changes for ${offlineReplicas.size} replicas ${KafkaController.timing(-1, controllerStartMs)}")
     handleStateChanges(offlineReplicas.toSeq, OfflineReplica)
-    debug(s"Started replica state machine with initial state -> ${controllerContext.replicaStates} ${KafkaController.timing(-1, controllerStartMs)}")
+    debug(s"Started replica state machine ${KafkaController.timing(-1, controllerStartMs)} with initial state -> ${controllerContext.replicaStates}")
   }
 
   /**
@@ -111,29 +111,19 @@ class ZkReplicaStateMachine(config: KafkaConfig,
       try {
         var taskStartMs: Long = Time.SYSTEM.milliseconds
         val doExtraTiming: Boolean = (targetState == OnlineReplica && replicas.size > 250000)
-        val timings = AggregatedTimings()
-        val timingsOpt = if (doExtraTiming) Some(timings) else None
-        var startMs: Long = 0L
-        var numBatches: Int = 0  // GRR TEMP
+        val timingsOpt = if (doExtraTiming) Some(AggregatedTimings()) else None
 
-        startMs = if (doExtraTiming) Time.SYSTEM.milliseconds else 0L
         controllerBrokerRequestBatch.newBatch()
-        if (doExtraTiming) {
-          timings.newBatchSumMs += (Time.SYSTEM.milliseconds - startMs)
-        }
-
         replicas.groupBy(_.replica).forKeyValue { (replicaId, replicas) =>
-          numBatches += 1
           doHandleStateChanges(replicaId, replicas, targetState, timingsOpt)
         }
 
-        startMs = if (doExtraTiming) Time.SYSTEM.milliseconds else 0L
+        var startMs: Long = if (doExtraTiming) Time.SYSTEM.milliseconds else 0L
         controllerBrokerRequestBatch.sendRequestsToBrokers(controllerContext.epoch)
-        if (doExtraTiming) {
+        timingsOpt.foreach { timings =>
           timings.sendRequestsToBrokersSumMs += (Time.SYSTEM.milliseconds - startMs)
 
-          info(s"Done changing state of ${replicas.size} replicas in ${numBatches} batches to OnlineReplica ${KafkaController.timing(taskStartMs, -1)}:")
-          info(s" - single newBatch() took ${timings.newBatchSumMs} ms")
+          info(s"Done changing state of ${replicas.size} replicas to OnlineReplica ${KafkaController.timing(taskStartMs, -1)}:")
           info(s" - aggregate variables-init took ${timings.varInitSumMs} ms")
           info(s" - aggregate NewReplica partitionFullReplicaAssignment() took ${timings.partitionFullReplicaAssignmentSumMs} ms")
           info(s" - aggregate NewReplica unassigned-replica handling took ${timings.unassignedReplicaHandlingSumMs} ms")
@@ -152,9 +142,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
     }
   }
 
-//GRR
   case class AggregatedTimings(
-    var newBatchSumMs: Long = 0L,
     var varInitSumMs: Long = 0L,
     var partitionFullReplicaAssignmentSumMs: Long = 0L,
     var unassignedReplicaHandlingSumMs: Long = 0L,
@@ -232,15 +220,14 @@ class ZkReplicaStateMachine(config: KafkaConfig,
           }
         }
       case OnlineReplica =>
-        var timings: AggregatedTimings = if (timingsOpt.isDefined) timingsOpt.get else AggregatedTimings()
         var startMs: Long = 0L
         var endMs: Long = 0L
 
         validReplicas.foreach { replica =>
-          startMs = if (timingsOpt.isDefined) Time.SYSTEM.milliseconds else 0L
+          if (timingsOpt.isDefined) startMs = Time.SYSTEM.milliseconds
           val partition = replica.topicPartition
           val currentState = controllerContext.replicaState(replica)
-          if (timingsOpt.isDefined) {
+          timingsOpt.foreach { timings =>
             endMs = Time.SYSTEM.milliseconds
             timings.varInitSumMs += (endMs - startMs)
             startMs = endMs
@@ -249,7 +236,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
           currentState match {
             case NewReplica =>
               val assignment = controllerContext.partitionFullReplicaAssignment(partition)
-              if (timingsOpt.isDefined) {
+              timingsOpt.foreach { timings =>
                 endMs = Time.SYSTEM.milliseconds
                 timings.partitionFullReplicaAssignmentSumMs += (endMs - startMs)
                 startMs = endMs
@@ -259,7 +246,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
                 val newAssignment = assignment.copy(replicas = assignment.replicas :+ replicaId)
                 controllerContext.updatePartitionFullReplicaAssignment(partition, newAssignment)
               }
-              if (timingsOpt.isDefined) {
+              timingsOpt.foreach { timings =>
                 endMs = Time.SYSTEM.milliseconds
                 timings.unassignedReplicaHandlingSumMs += (endMs - startMs)
                 startMs = endMs
@@ -273,7 +260,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
                     controllerContext.partitionFullReplicaAssignment(partition), isNew = false)
                 case None =>
               }
-              if (timingsOpt.isDefined) {
+              timingsOpt.foreach { timings =>
                 endMs = Time.SYSTEM.milliseconds
                 timings.addLeaderAndIsrRequestForBrokersSumMs += (endMs - startMs)
                 startMs = endMs
@@ -282,7 +269,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
           if (traceEnabled)
             logSuccessfulTransition(stateLogger, replicaId, partition, currentState, OnlineReplica)
           controllerContext.putReplicaState(replica, OnlineReplica)
-          if (timingsOpt.isDefined) {
+          timingsOpt.foreach { timings =>
             endMs = Time.SYSTEM.milliseconds
             timings.putReplicaStateSumMs += (endMs - startMs)
             startMs = endMs

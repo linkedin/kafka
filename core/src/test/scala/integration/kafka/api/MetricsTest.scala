@@ -303,7 +303,7 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
     }
   }
 
-  def yammerMeterWithPrefix(prefix: String): Meter = {
+  private def yammerMeterWithPrefix(prefix: String): Meter = {
     val allMetrics = KafkaYammerMetrics.defaultRegistry.allMetrics.asScala
     val (_, metric) = allMetrics.find { case (n, _) => n.getMBeanName.startsWith(prefix) }
       .getOrElse(fail(s"Unable to find broker metric with prefix $prefix: allMetrics: ${allMetrics.keySet.map(_.getMBeanName)}"))

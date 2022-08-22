@@ -37,6 +37,7 @@ import kafka.utils._
 import kafka.zk.{AdminZkClient, BrokerInfo, KafkaZkClient}
 import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, NetworkClient, NetworkClientUtils}
 import org.apache.kafka.common.internals.Topic
+import org.apache.kafka.common.memory.MemoryPoolStatsStore
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
 import org.apache.kafka.common.message.ControlledShutdownRequestData
 import org.apache.kafka.common.metrics.Metrics
@@ -46,13 +47,14 @@ import org.apache.kafka.common.requests.{ControlledShutdownRequest, ControlledSh
 import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.security.{JaasContext, JaasUtils}
-import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils, PoisonPill}
+import org.apache.kafka.common.utils.{AppInfoParser, LogContext, PoisonPill, Time, Utils}
 import org.apache.kafka.common.{Endpoint, Node, TopicPartition}
 import org.apache.kafka.metadata.BrokerState
 import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
 import org.apache.zookeeper.client.ZKClientConfig
 
+import java.util.Optional
 import scala.collection.{Map, Seq}
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable.{ArrayBuffer, Buffer}
@@ -323,13 +325,43 @@ class KafkaServer(
 
         observer = Observer(config)
 
+        def initializeMemoryPoolStats(): Optional[MemoryPoolStatsStore] = {
+          if (!config.memoryPoolStatsLoggingEnable) {
+            return Optional.empty()
+          }
+
+          info(s"Memory pool stats logging is enabled, segments = " +
+            s"${config.memoryPoolStatsNumSegments}, max size = ${config.memoryPoolStatsMaxSize}, " +
+            s"logging frequency in minutes = ${config.memoryPoolStatsLoggingFrequencyMinutes}")
+          val memoryPoolStatsStore = new MemoryPoolStatsStore(config.memoryPoolStatsNumSegments, config.memoryPoolStatsMaxSize)
+          val requestStatsLogger = new MemoryPoolStatsLogger()
+
+          def publishHistogramToLog(): Unit = {
+            info("Publishing memory pool stats")
+            requestStatsLogger.logStats(memoryPoolStatsStore)
+            memoryPoolStatsStore.clear()
+          }
+
+          val histogramPublisher = new KafkaScheduler(threads = 1, "histogram-publisher-")
+          histogramPublisher.startup()
+          histogramPublisher.schedule(name = "publish-histogram-to-log",
+            fun = publishHistogramToLog,
+            period = config.memoryPoolStatsLoggingFrequencyMinutes.toLong,
+            unit = TimeUnit.MINUTES)
+
+          Optional.of(memoryPoolStatsStore)
+        }
+
+        val memoryPoolStatsStore = initializeMemoryPoolStats()
+
         // Create and start the socket server acceptor threads so that the bound port is known.
         // Delay starting processors until the end of the initialization sequence to ensure
         // that credentials have been loaded before processing authentications.
         //
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
-        socketServer = new SocketServer(config, metrics, time, credentialProvider, observer, apiVersionManager)
+        socketServer = new SocketServer(
+          config, metrics, time, credentialProvider, observer, apiVersionManager, memoryPoolStatsStore)
         socketServer.startup(startProcessingRequests = false)
 
         /* start replica manager */

@@ -38,7 +38,7 @@ import kafka.utils._
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.config.internals.QuotaConfigs
 import org.apache.kafka.common.errors.InvalidRequestException
-import org.apache.kafka.common.memory.{MemoryPool, RecyclingMemoryPool, SimpleMemoryPool}
+import org.apache.kafka.common.memory.{MemoryPool, RecyclingMemoryPool, MemoryPoolStatsStore, SimpleMemoryPool}
 import org.apache.kafka.common.metrics._
 import org.apache.kafka.common.metrics.stats.Percentiles.BucketSizing
 import org.apache.kafka.common.metrics.stats.{Avg, CumulativeSum, Max, Meter, Percentile, Percentiles, Rate}
@@ -79,8 +79,18 @@ class SocketServer(val config: KafkaConfig,
                    val time: Time,
                    val credentialProvider: CredentialProvider,
                    val observer: Observer,
-                   val apiVersionManager: ApiVersionManager)
+                   val apiVersionManager: ApiVersionManager,
+                   val memoryPoolStatsStore: Optional[MemoryPoolStatsStore])
   extends Logging with KafkaMetricsGroup with BrokerReconfigurable {
+
+  def this(config: KafkaConfig,
+    metrics: Metrics,
+    time: Time,
+    credentialProvider: CredentialProvider,
+    observer: Observer,
+    apiVersionManager: ApiVersionManager) {
+    this(config, metrics, time, credentialProvider, observer, apiVersionManager, Optional.empty())
+  }
 
   private val maxQueuedRequests = config.queuedMaxRequests
 
@@ -100,7 +110,7 @@ class SocketServer(val config: KafkaConfig,
   private val percentiles = (1 to 9).map( i => new Percentile(metrics.metricName("MemoryPoolAllocateSize%dPercentile".format(i * 10), MetricsGroup), i * 10))
   // At current stage, we do not know the max decrypted request size, temporarily set it to 10MB.
   memoryPoolAllocationSensor.add(new Percentiles(400, 0.0, 10485760, BucketSizing.CONSTANT, percentiles:_*))
-  private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolUsageSensor, memoryPoolAllocationSensor)
+  private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolUsageSensor, memoryPoolAllocationSensor, memoryPoolStatsStore)
                            else if (config.socketRequestCommonBytes > 0) new RecyclingMemoryPool(config.socketRequestCommonBytes, config.socketRequestBufferCacheSize, memoryPoolAllocationSensor)
                            else MemoryPool.NONE
   // data-plane

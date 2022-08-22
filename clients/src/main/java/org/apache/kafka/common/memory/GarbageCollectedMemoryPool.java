@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.common.memory;
 
+import java.util.Optional;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.utils.Utils;
 
@@ -42,7 +43,7 @@ public class GarbageCollectedMemoryPool extends SimpleMemoryPool implements Auto
     private volatile boolean alive = true;
 
     public GarbageCollectedMemoryPool(long sizeBytes, int maxSingleAllocationSize, boolean strict, Sensor oomPeriodSensor) {
-        super(sizeBytes, maxSingleAllocationSize, strict, oomPeriodSensor, null);
+        super(sizeBytes, maxSingleAllocationSize, strict, oomPeriodSensor, null, Optional.empty());
         this.alive = true;
         this.gcListenerThread = new Thread(gcListener, "memory pool GC listener");
         this.gcListenerThread.setDaemon(true); //so we dont need to worry about shutdown

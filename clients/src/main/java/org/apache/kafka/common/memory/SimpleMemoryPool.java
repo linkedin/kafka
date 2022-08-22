@@ -17,6 +17,7 @@
 package org.apache.kafka.common.memory;
 
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kafka.common.metrics.Sensor;
@@ -37,10 +38,13 @@ public class SimpleMemoryPool implements MemoryPool {
     protected final AtomicLong availableMemory;
     protected final int maxSingleAllocationSize;
     protected final AtomicLong startOfNoMemPeriod = new AtomicLong(); //nanoseconds
+    private final Optional<MemoryPoolStatsStore> memoryPoolStatsStore;
     protected volatile Sensor oomTimeSensor;
     protected volatile Sensor allocateSensor;
 
-    public SimpleMemoryPool(long sizeInBytes, int maxSingleAllocationBytes, boolean strict, Sensor oomPeriodSensor, Sensor allocateSensor) {
+    public SimpleMemoryPool(long sizeInBytes, int maxSingleAllocationBytes, boolean strict, Sensor oomPeriodSensor,
+        Sensor allocateSensor, Optional<MemoryPoolStatsStore> memoryPoolStatsStore) {
+        this.memoryPoolStatsStore = memoryPoolStatsStore;
         if (sizeInBytes <= 0 || maxSingleAllocationBytes <= 0 || maxSingleAllocationBytes > sizeInBytes)
             throw new IllegalArgumentException("must provide a positive size and max single allocation size smaller than size."
                 + "provided " + sizeInBytes + " and " + maxSingleAllocationBytes + " respectively");
@@ -57,7 +61,8 @@ public class SimpleMemoryPool implements MemoryPool {
         if (sizeBytes < 1)
             throw new IllegalArgumentException("requested size " + sizeBytes + "<=0");
         if (sizeBytes > maxSingleAllocationSize)
-            throw new IllegalArgumentException("requested size " + sizeBytes + " is larger than maxSingleAllocationSize " + maxSingleAllocationSize);
+            throw new IllegalArgumentException(
+                "requested size " + sizeBytes + " is larger than maxSingleAllocationSize " + maxSingleAllocationSize);
 
         long available;
         boolean success = false;
@@ -114,6 +119,7 @@ public class SimpleMemoryPool implements MemoryPool {
     //allows subclasses to do their own bookkeeping (and validation) _before_ memory is returned to client code.
     protected void bufferToBeReturned(ByteBuffer justAllocated) {
         this.allocateSensor.record(justAllocated.capacity());
+        memoryPoolStatsStore.ifPresent(sizeStore -> sizeStore.recordAllocation(justAllocated.capacity()));
         log.trace("allocated buffer of size {} ", justAllocated.capacity());
     }
 

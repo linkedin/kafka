@@ -84,6 +84,11 @@ object Defaults {
   val AllowPreferredControllerFallback = true
   val MissingPerTopicConfig = "-1"
 
+  val MemoryPoolStatsLoggingEnable = false
+  val MemoryPoolStatsMaxSize = Integer.MAX_VALUE
+  val MemoryPoolStatsNumSegments = 1000
+  val MemoryPoolStatsLoggingFrequencyMinutes = 60
+
   val UnofficialClientLoggingEnable = false
   val UnofficialClientCacheTtl = 1
   val ExpectedClientSoftwareNames = util.Arrays.asList(
@@ -441,6 +446,10 @@ object KafkaConfig {
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
   val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
   val ExpectedClientSoftwareNamesProp = "expected.client.software.names"
+  val MemoryPoolStatsLoggingEnableProp = "memory.pool.stats.logging.enable"
+  val MemoryPoolStatsMaxSizeProp = "memory.pool.stats.max.size"
+  val MemoryPoolStatsNumSegmentsProp = "memory.pool.stats.num.segments"
+  val MemoryPoolStatsLoggingFrequencyMinutesProp = "memory.pool.stats.logging.frequency.minutes"
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameProp = "authorizer.class.name"
@@ -780,6 +789,10 @@ object KafkaConfig {
   val UnofficialClientLoggingEnableDoc = "Controls whether logging occurs when an ApiVersionsRequest is received from a client unsupported by LinkedIn, such as an Apache Kafka client."
   val UnofficialClientCacheTtlDoc = "The amount of time (in hours) for the identity of an unofficial client to live in the local cache to avoid duplicate log messages."
   val ExpectedClientSoftwareNamesDoc = "The software names of clients that are supported by LinkedIn, such as Avro, Raw, and Tracking clients."
+  val MemoryPoolStatsLoggingEnableDoc = "Specifies whether memory pool statistics should be logged."
+  val MemoryPoolStatsMaxSizeDoc = "Maximum size of memory allocation which will be recorded if memory pool statistics logging is enabled."
+  val MemoryPoolStatsNumSegmentsDoc = "The number of segments into which the memory pool statistics histogram will be broken."
+  val MemoryPoolStatsLoggingFrequencyMinutesDoc = "The frequency in minutes at which memory pool statistics will be recorded."
 
   /************* Authorizer Configuration ***********/
   val AuthorizerClassNameDoc = s"The fully qualified name of a class that implements s${classOf[Authorizer].getName}" +
@@ -1214,6 +1227,10 @@ object KafkaConfig {
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
       .define(ExpectedClientSoftwareNamesProp, LIST, Defaults.ExpectedClientSoftwareNames, LOW, ExpectedClientSoftwareNamesDoc)
+      .define(MemoryPoolStatsLoggingEnableProp, BOOLEAN, Defaults.MemoryPoolStatsLoggingEnable, LOW, MemoryPoolStatsLoggingEnableDoc)
+      .define(MemoryPoolStatsMaxSizeProp, INT, Defaults.MemoryPoolStatsMaxSize, LOW, MemoryPoolStatsMaxSizeDoc)
+      .define(MemoryPoolStatsNumSegmentsProp, INT, Defaults.MemoryPoolStatsNumSegments, LOW, MemoryPoolStatsNumSegmentsDoc)
+      .define(MemoryPoolStatsLoggingFrequencyMinutesProp, INT, Defaults.MemoryPoolStatsLoggingFrequencyMinutes, LOW, MemoryPoolStatsLoggingFrequencyMinutesDoc)
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)
@@ -1722,6 +1739,11 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)
   def unofficialClientCacheTtl = getLong(KafkaConfig.UnofficialClientCacheTtlProp)
   def expectedClientSoftwareNames = getList(KafkaConfig.ExpectedClientSoftwareNamesProp)
+
+  def memoryPoolStatsLoggingEnable = getBoolean(KafkaConfig.MemoryPoolStatsLoggingEnableProp)
+  def memoryPoolStatsMaxSize = getInt(KafkaConfig.MemoryPoolStatsMaxSizeProp)
+  def memoryPoolStatsNumSegments = getInt(KafkaConfig.MemoryPoolStatsNumSegmentsProp)
+  def memoryPoolStatsLoggingFrequencyMinutes = getInt(KafkaConfig.MemoryPoolStatsLoggingFrequencyMinutesProp)
 
   def getNumReplicaAlterLogDirsThreads: Int = {
     val numThreads: Integer = Option(getInt(KafkaConfig.NumReplicaAlterLogDirsThreadsProp)).getOrElse(logDirs.size)

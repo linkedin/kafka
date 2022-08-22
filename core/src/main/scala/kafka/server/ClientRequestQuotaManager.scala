@@ -46,10 +46,13 @@ class ClientRequestQuotaManager(private val config: ClientQuotaManagerConfig,
   private val exemptMetricName = metrics.metricName("exempt-request-time",
     QuotaType.Request.toString, "Tracking exempt-request-time utilization percentage")
 
-  lazy val exemptSensor: Sensor = getOrCreateSensor(ClientRequestQuotaManager.ExemptSensorName, exemptMetricName)
-
   def recordExempt(value: Double): Unit = {
+    val exemptSensor = getOrCreateExemptSensor()
     exemptSensor.record(value)
+  }
+
+  def getOrCreateExemptSensor(): Sensor = {
+    getOrCreateSensor(ClientRequestQuotaManager.ExemptSensorName, exemptMetricName)
   }
 
   /**

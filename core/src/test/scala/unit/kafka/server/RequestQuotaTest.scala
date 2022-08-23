@@ -202,7 +202,7 @@ class RequestQuotaTest extends BaseRequestTest {
 
   private def exemptRequestMetricValue: Double = {
     val metricName = leaderNode.metrics.metricName("exempt-request-time", QuotaType.Request.toString, "")
-    metricValue(leaderNode.metrics.metrics.get(metricName), leaderNode.quotaManagers.request.getOrCreateExemptSensor())
+    metricValue(leaderNode.metrics.metrics.get(metricName), leaderNode.quotaManagers.request.exemptSensor)
   }
 
   private def metricValue(metric: KafkaMetric, sensor: Sensor): Double = {

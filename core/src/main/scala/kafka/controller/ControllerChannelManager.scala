@@ -513,7 +513,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
                                        topicPartition: TopicPartition,
                                        leaderIsrAndControllerEpoch: LeaderIsrAndControllerEpoch,
                                        replicaAssignment: ReplicaAssignment,
-                                       isNew: Boolean): Unit = {
+                                       isNew: Boolean,
+                                       controllerContextSnapshot: ControllerContextSnapshot = ControllerContextSnapshot(controllerContext)): Unit = {
 
     brokerIds.filter(_ >= 0).foreach { brokerId =>
       val result = leaderAndIsrRequestMap.getOrElseUpdate(brokerId, mutable.Map.empty)
@@ -533,7 +534,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
         .setIsNew(isNew || alreadyNew))
     }
 
-    addUpdateMetadataRequestForBrokers(controllerContext.liveOrShuttingDownBrokerIds.toSeq, Set(topicPartition))
+    addUpdateMetadataRequestForBrokers(controllerContextSnapshot.liveOrShuttingDownBrokerIds.toSeq, Set(topicPartition),
+      controllerContextSnapshot)
   }
 
   def addStopReplicaRequestForBrokers(brokerIds: Seq[Int],
@@ -561,12 +563,12 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
   /** Send UpdateMetadataRequest to the given brokers for the given partitions and partitions that are being deleted */
   def addUpdateMetadataRequestForBrokers(brokerIds: Seq[Int],
-                                         partitions: collection.Set[TopicPartition]): Unit = {
-    val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
+                                         partitions: collection.Set[TopicPartition],
+                                         controllerContextSnapshot: ControllerContextSnapshot = ControllerContextSnapshot(controllerContext)): Unit = {
     def updateMetadataRequestPartitionInfo(partition: TopicPartition, beingDeleted: Boolean): Unit = {
-      controllerContext.partitionLeadershipInfo(partition) match {
+      controllerContext.partitionLeadershipInfo(partition) match {  // [PERF:  partitionLeadershipInfo's contrib is tiny: 0.357% + 2*0.268% = 0.893%]
         case Some(LeaderIsrAndControllerEpoch(leaderAndIsr, controllerEpoch)) =>
-          val replicas = controllerContext.partitionReplicaAssignment(partition)
+          val replicas = controllerContext.partitionReplicaAssignment(partition)  // [PERF:  partitionReplicaAssignment's contrib is even tinier:  0.268%]
           val offlineReplicas = replicas.filter(!controllerContextSnapshot.isReplicaOnline(_, partition))
           val updatedLeaderAndIsr =
             if (beingDeleted) LeaderAndIsr.duringDelete(leaderAndIsr.isr)
@@ -591,7 +593,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
     updateMetadataRequestBrokerSet ++= brokerIds.filter(_ >= 0)
     partitions.foreach(partition => updateMetadataRequestPartitionInfo(partition,
-      beingDeleted = controllerContext.topicsToBeDeleted.contains(partition.topic)))
+      beingDeleted = controllerContext.topicsToBeDeleted.contains(partition.topic)))  // [PERF:  topicsToBeDeleted's contrib is nonexistent in orig profile (makes sense: not deleting any topics), but should profile Venice cluster's controller init: TODO]
   }
 
   private def sendLeaderAndIsrRequest(controllerEpoch: Int, stateChangeLog: StateChangeLogger): Unit = {

@@ -68,7 +68,7 @@ class ReplicaStateMachineTest {
     controllerContext.setLiveBrokers(liveBrokerEpochs)
     controllerContext.updatePartitionFullReplicaAssignment(partition, ReplicaAssignment(Seq(brokerId)))
     assertEquals(None, controllerContext.replicaStates.get(replica))
-    replicaStateMachine.startup()
+    replicaStateMachine.startup(ControllerContextSnapshot(controllerContext))
     assertEquals(OnlineReplica, replicaState(replica))
   }
 
@@ -76,7 +76,7 @@ class ReplicaStateMachineTest {
   def testStartupOfflinePartition(): Unit = {
     controllerContext.updatePartitionFullReplicaAssignment(partition, ReplicaAssignment(Seq(brokerId)))
     assertEquals(None, controllerContext.replicaStates.get(replica))
-    replicaStateMachine.startup()
+    replicaStateMachine.startup(ControllerContextSnapshot(controllerContext))
     assertEquals(OfflineReplica, replicaState(replica))
   }
 
@@ -90,7 +90,7 @@ class ReplicaStateMachineTest {
     controllerContext.setLiveBrokers(liveBrokerEpochs)
     controllerContext.updatePartitionFullReplicaAssignment(partition, ReplicaAssignment(Seq(shutdownBrokerId)))
     assertEquals(None, controllerContext.replicaStates.get(offlineReplica))
-    replicaStateMachine.startup()
+    replicaStateMachine.startup(ControllerContextSnapshot(controllerContext))
     assertEquals(OfflineReplica, replicaState(offlineReplica))
   }
 

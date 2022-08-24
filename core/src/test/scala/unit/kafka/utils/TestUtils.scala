@@ -966,46 +966,34 @@ object TestUtils extends Logging {
     }.toMap
   }
 
-  def waitUntilTopicPresent(client: Admin, topic: String, maxAttempts: Int = 3): Unit = {
-    if (maxAttempts <= 0) {
-      throw new IllegalArgumentException("0 or negative maxAttempts")
-    }
-
-    var remaining = maxAttempts
-    while (remaining > 0) {
-      remaining -= 1
-      try {
-        client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
-      } catch {
-        case e: Throwable =>
-          if (remaining == 0) {
-            e.getCause match {
-              // On unknown topic, it's wrapped inside an ExecutionException's cause
-              case _: UnknownTopicOrPartitionException => fail(s"Specified topic not present after ($maxAttempts) attempts ")
-              case _ => fail(e)
-            }
-          }
-      }
-    }
-  }
-
-  def waitUntilTopicNotPresent(client: Admin, topic: String, maxAttempts: Int = 3): Unit = {
-    if (maxAttempts <= 0) {
-      throw new IllegalArgumentException("0 or negative maxAttempts")
-    }
-    assertThrows(
-      classOf[UnknownTopicOrPartitionException],
+  def waitUntilTopicPresent(client: Admin, topic: String): Unit = {
+    waitUntilTrue(
       () => {
         try {
-          (0 until maxAttempts).foreach {_ =>
-            client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
-          }
+          client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
+          true
         } catch {
-          case e: ExecutionException => throw e.getCause  // UnknownTopicOrPartitionException is wrapped inside
-          case e => throw e
+          case _: Throwable => false
         }
       },
-      () => s"Exceeded ${maxAttempts} attempts awaiting topic `${topic}` to not present"
+      s"Timeout awaiting topic ${topic} to present."
+    )
+  }
+
+  def waitUntilTopicNotPresent(client: Admin, topic: String): Unit = {
+    def describeTopicFailWithUnknownTopicOrPartitionException(): Boolean = {
+      try {
+        client.describeTopics(List(topic).asJava).values().get(topic).get(JTestUtils.DEFAULT_MAX_WAIT_MS, TimeUnit.MILLISECONDS)
+        false
+      } catch {
+        // On unknown topic, it's wrapped inside an ExecutionException's cause
+        case e: ExecutionException => e.getCause.getClass == classOf[UnknownTopicOrPartitionException]
+        case _ => false
+      }
+    }
+    waitUntilTrue(
+      describeTopicFailWithUnknownTopicOrPartitionException,
+      s"Timeout attempts awaiting topic `${topic}` to not present"
     )
   }
 

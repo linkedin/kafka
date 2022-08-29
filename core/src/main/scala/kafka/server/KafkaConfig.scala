@@ -1228,9 +1228,9 @@ object KafkaConfig {
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
       .define(ExpectedClientSoftwareNamesProp, LIST, Defaults.ExpectedClientSoftwareNames, LOW, ExpectedClientSoftwareNamesDoc)
       .define(MemoryPoolStatsLoggingEnableProp, BOOLEAN, Defaults.MemoryPoolStatsLoggingEnable, LOW, MemoryPoolStatsLoggingEnableDoc)
-      .define(MemoryPoolStatsMaxSizeProp, INT, Defaults.MemoryPoolStatsMaxSize, LOW, MemoryPoolStatsMaxSizeDoc)
-      .define(MemoryPoolStatsNumSegmentsProp, INT, Defaults.MemoryPoolStatsNumSegments, LOW, MemoryPoolStatsNumSegmentsDoc)
-      .define(MemoryPoolStatsLoggingFrequencyMinutesProp, INT, Defaults.MemoryPoolStatsLoggingFrequencyMinutes, LOW, MemoryPoolStatsLoggingFrequencyMinutesDoc)
+      .define(MemoryPoolStatsMaxSizeProp, INT, Defaults.MemoryPoolStatsMaxSize, atLeast(1), LOW, MemoryPoolStatsMaxSizeDoc)
+      .define(MemoryPoolStatsNumSegmentsProp, INT, Defaults.MemoryPoolStatsNumSegments, atLeast(1), LOW, MemoryPoolStatsNumSegmentsDoc)
+      .define(MemoryPoolStatsLoggingFrequencyMinutesProp, INT, Defaults.MemoryPoolStatsLoggingFrequencyMinutes, atLeast(1), LOW, MemoryPoolStatsLoggingFrequencyMinutesDoc)
 
       /************* Authorizer Configuration ***********/
       .define(AuthorizerClassNameProp, STRING, Defaults.AuthorizerClassName, LOW, AuthorizerClassNameDoc)

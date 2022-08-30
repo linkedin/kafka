@@ -24,19 +24,54 @@ import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.management.MBeanServer;
+import org.apache.kafka.common.MetricNameTemplate;
+import org.apache.kafka.common.metrics.Metrics;
+import org.apache.kafka.common.metrics.Sensor;
+import org.apache.kafka.common.metrics.stats.Avg;
+import org.apache.kafka.common.metrics.stats.Max;
+import org.apache.kafka.common.metrics.stats.Value;
 
+
+class PoisonPillStats {
+    private final Metrics metrics;
+    private final Sensor timeSinceLastDequeueSensor;
+    public PoisonPillStats(Metrics metrics) {
+        this.metrics = metrics;
+
+        String metricGroupName = "PoisonPill-metrics";
+        this.timeSinceLastDequeueSensor = metrics.sensor("time-since-last-dequeue");
+
+        this.timeSinceLastDequeueSensor.add(metrics.metricName("time-since-last-dequeue",
+            metricGroupName,
+            "The latest time-since-last-dequeue in milliseconds"),
+            new Value());
+        this.timeSinceLastDequeueSensor.add(metrics.metricName("time-since-last-dequeue-max",
+            metricGroupName,
+            "The maximum value of time-since-last-dequeue in milliseconds"),
+            new Max());
+    }
+
+    public void recordTimeSinceLastDequeInMs(final long timeSinceLastDequeue) {
+        this.timeSinceLastDequeueSensor.record(timeSinceLastDequeue);
+    }
+}
 
 public class PoisonPill {
+    private final PoisonPillStats poisonPillStats;
 
-    public static void die() {
+    public PoisonPill(Metrics metrics) {
+        poisonPillStats = new PoisonPillStats(metrics);
+    }
+
+    public void die() {
         die(null, -1, 1);
     }
 
-    public static void die(File heapDumpFolder, final long maxWaitForDump) {
+    public void die(File heapDumpFolder, final long maxWaitForDump) {
         die(heapDumpFolder, maxWaitForDump, 1);
     }
 
-    public static void die(File heapDumpFolder, final long maxWaitForDump, int haltStatusCode) {
+    public void die(File heapDumpFolder, final long maxWaitForDump, int haltStatusCode) {
         try {
             if (maxWaitForDump > 0 && heapDumpFolder != null) {
                 grabHeapDump(heapDumpFolder, maxWaitForDump, haltStatusCode);
@@ -50,7 +85,11 @@ public class PoisonPill {
         }
     }
 
-    private static void grabHeapDump(File heapDumpFolder, final long maxWait, final int haltStatusCode) throws Exception {
+    public void recordTimeSinceLastDequeInMs(final long timeSinceLastDequeue) {
+        this.poisonPillStats.recordTimeSinceLastDequeInMs(timeSinceLastDequeue);
+    }
+
+    private void grabHeapDump(File heapDumpFolder, final long maxWait, final int haltStatusCode) throws Exception {
 
         //set up a watchdog background thread that will halt in ~maxWait regardless of whether or not
         //we succeed in taking a heap dump (since we dont know when it'll ever complete)

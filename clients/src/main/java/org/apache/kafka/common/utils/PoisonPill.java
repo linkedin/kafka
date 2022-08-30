@@ -86,7 +86,7 @@ public class PoisonPill {
             return;
         }
 
-        System.err.println("dumping heap to " + heapDumpFolder.getCanonicalPath());
+        System.err.println("PoisonPill dumping heap to " + heapDumpFolder.getCanonicalPath());
         System.err.flush();
 
         //we dump into dump.inprogress and atomically rename it to be dump.complete

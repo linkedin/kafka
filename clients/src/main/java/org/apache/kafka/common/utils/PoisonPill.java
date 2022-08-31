@@ -34,6 +34,9 @@ class PoisonPillStats {
     private final Metrics metrics;
     private final Sensor timeSinceLastDequeueSensor;
     public PoisonPillStats(Metrics metrics) {
+        if (metrics == null) {
+            throw new IllegalArgumentException("The metrics for PoisonPillStats should not be null");
+        }
         this.metrics = metrics;
 
         String metricGroupName = "PoisonPill-metrics";
@@ -49,11 +52,20 @@ class PoisonPillStats {
             new Max());
     }
 
-    public void recordTimeSinceLastDequeInMs(final long timeSinceLastDequeue) {
-        this.timeSinceLastDequeueSensor.record(timeSinceLastDequeue);
+    public void recordTimeSinceLastDequeue(final long timeSinceLastDequeueMs) {
+        this.timeSinceLastDequeueSensor.record(timeSinceLastDequeueMs, Time.SYSTEM.milliseconds(), false);
     }
 }
 
+/**
+ * The PoisonPill class provides the die method to
+ * 1) generate a heap-dump file under the provided directory;
+ * 2) exit the JVM process.
+ *
+ * A maxWait time can be specified for generating the heap-dump. If the heap-dump cannot be finished within the maxWait,
+ * the JVM process will be terminated.
+ * Logs from this class are sent to standard error output (which means they are sent to the kafka.out file within LinkedIn).
+ */
 public class PoisonPill {
     private final PoisonPillStats poisonPillStats;
 
@@ -83,8 +95,8 @@ public class PoisonPill {
         }
     }
 
-    public void recordTimeSinceLastDequeInMs(final long timeSinceLastDequeue) {
-        this.poisonPillStats.recordTimeSinceLastDequeInMs(timeSinceLastDequeue);
+    public void recordTimeSinceLastDequeue(final long timeSinceLastDequeueMs) {
+        this.poisonPillStats.recordTimeSinceLastDequeue(timeSinceLastDequeueMs);
     }
 
     private void grabHeapDump(File heapDumpFolder, final long maxWait, final int haltStatusCode) throws Exception {
@@ -97,6 +109,7 @@ public class PoisonPill {
             public void run() {
                 try {
                     latch.countDown();
+                    System.err.println("PoisonPill watch-dog will sleep for " + maxWait + "ms, waiting for heap-dump to be completed");
                     Thread.sleep(maxWait);
                     //at this point ~maxWait has passed since the call to die().
                     //if the heap dump process completed successfully die() would

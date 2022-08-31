@@ -189,7 +189,7 @@ class KafkaServer(
     // This relies on io-thread to receive request from RequestChannel with 300 ms timeout, so that lastDequeueTimeMs
     // will keep increasing even if there is no incoming request
     val timeSinceLastDequeueInMs = time.milliseconds - socketServer.dataPlaneRequestChannel.lastDequeueTimeMs;
-    poisonPill.recordTimeSinceLastDequeInMs(timeSinceLastDequeueInMs)
+    poisonPill.recordTimeSinceLastDequeue(timeSinceLastDequeueInMs)
     if (timeSinceLastDequeueInMs > config.requestMaxLocalTimeMs) {
       fatal(s"It has been more than ${config.requestMaxLocalTimeMs} ms since the last time any io-thread reads from RequestChannel. Shutdown broker now.")
       poisonPill.die(config.heapDumpFolder, config.heapDumpTimeout)

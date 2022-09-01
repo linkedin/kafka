@@ -1721,7 +1721,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   val liAsyncFetcherEnable = getBoolean(KafkaConfig.LiAsyncFetcherEnableProp)
   def liCombinedControlRequestEnable = getBoolean(KafkaConfig.LiCombinedControlRequestEnableProp)
-  def liAlterIsrSupported = getBoolean(KafkaConfig.LiAlterIsrEnableProp)
+  def liAlterIsrEnable = getBoolean(KafkaConfig.LiAlterIsrEnableProp)
   def liNumControllerInitThreads = getInt(KafkaConfig.LiNumControllerInitThreadsProp)
 
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)

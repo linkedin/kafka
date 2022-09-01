@@ -120,6 +120,26 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     assertTrue(dataPlaneMetricMap("network-io-total").metricValue().asInstanceOf[Double] == 0.0)
   }
 
+  /**
+   * createTopic(zkClient: KafkaZkClient,
+                  topic: String,
+                  numPartitions: Int = 1,
+                  replicationFactor: Int = 1,
+                  servers: Seq[KafkaServer],
+                  topicConfig: Properties = new Properties): scala.collection.immutable.Map[Int, Int] =
+   */
+  @Test
+  def testSumOfTopicNameLength(): Unit = {
+    servers = makeServers(1)
+    val topic1 = "topic1"
+    TestUtils.createTopic(zkClient, topic1, 1, 1, servers)
+    val topic2 = "topic2WithALongName"
+    TestUtils.createTopic(zkClient, topic2, 1, 1, servers)
+
+    val sumOfTopicNameLength = TestUtils.yammerMetricValue("SumOfTopicNameLength")
+    assertEquals(topic1.size + topic2.size + 2 * KafkaController.topicNameBytesOverheadOnZk, sumOfTopicNameLength)
+  }
+
   // This test case is used to ensure that there will be no correctness issue after we avoid sending out full
   // UpdateMetadataRequest to all brokers in the cluster
   @Test

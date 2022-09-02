@@ -120,14 +120,6 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     assertTrue(dataPlaneMetricMap("network-io-total").metricValue().asInstanceOf[Double] == 0.0)
   }
 
-  /**
-   * createTopic(zkClient: KafkaZkClient,
-                  topic: String,
-                  numPartitions: Int = 1,
-                  replicationFactor: Int = 1,
-                  servers: Seq[KafkaServer],
-                  topicConfig: Properties = new Properties): scala.collection.immutable.Map[Int, Int] =
-   */
   @Test
   def testSumOfTopicNameLength(): Unit = {
     servers = makeServers(1)

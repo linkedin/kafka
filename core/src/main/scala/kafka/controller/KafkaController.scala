@@ -1804,7 +1804,7 @@ class KafkaController(val config: KafkaConfig,
 
     globalTopicCount = if (!isActive) 0 else controllerContext.allTopics.size
 
-    sumOfTopicNameLength = if (!isActive) 0 else controllerContext.allTopics.map(_.size + topicNameBytesOverheadOnZk).sum
+    sumOfTopicNameLength = if (!isActive) 0 else controllerContext.allTopics.foldLeft(0)((prevSum: Int, topicName: String) => prevSum + topicName.size + topicNameBytesOverheadOnZk)
 
     globalPartitionCount = if (!isActive) 0 else controllerContext.partitionWithLeadersCount
 

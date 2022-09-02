@@ -133,7 +133,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     servers = makeServers(1)
     val topic1 = "topic1"
     TestUtils.createTopic(zkClient, topic1, 1, 1, servers)
-    val topic2 = "topic2WithALongName"
+    val topic2 = "topic2"
     TestUtils.createTopic(zkClient, topic2, 1, 1, servers)
 
     val sumOfTopicNameLength = TestUtils.yammerMetricValue("SumOfTopicNameLength")

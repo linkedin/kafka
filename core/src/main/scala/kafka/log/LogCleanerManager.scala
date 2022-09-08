@@ -169,17 +169,22 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
     * the log manager maintains.
     */
   def grabFilthiestCompactedLog(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
-    inLock(lock) {
+    // inLock(lock) {
       val now = time.milliseconds
       this.timeOfLastRun = now
       val lastClean = allCleanerCheckpoints
-      val dirtyLogs = logs.filter {
-        case (_, log) => log.config.compact  // match logs that are marked as compacted
-      }.filterNot {
-        case (topicPartition, log) =>
-          // skip any logs already in-progress and uncleanable partitions
-          inProgress.contains(topicPartition) || isUncleanablePartition(log, topicPartition)
-      }.map {
+
+      val candidateLogs = inLock(lock) {
+        logs.filter {
+          case (_, log) => log.config.compact // match logs that are marked as compacted
+        }.filterNot {
+          case (topicPartition, log) =>
+            // skip any logs already in-progress and uncleanable partitions
+            inProgress.contains(topicPartition) || isUncleanablePartition(log, topicPartition)
+        }
+      }
+
+      val dirtyLogs = candidateLogs.map {
         case (topicPartition, log) => // create a LogToClean instance for each
           try {
             val lastCleanOffset = lastClean.get(topicPartition)
@@ -207,10 +212,12 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
       } else {
         preCleanStats.recordCleanablePartitions(cleanableLogs.size)
         val filthiest = cleanableLogs.max
-        inProgress.put(filthiest.topicPartition, LogCleaningInProgress)
+        inLock(lock) {
+          inProgress.put(filthiest.topicPartition, LogCleaningInProgress)
+        }
         Some(filthiest)
       }
-    }
+   //}
   }
 
   /**

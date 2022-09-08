@@ -204,18 +204,27 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
 
       this.dirtiestLogCleanableRatio = if (dirtyLogs.nonEmpty) dirtyLogs.max.cleanableRatio else 0
       // and must meet the minimum threshold for dirty byte ratio or have some bytes required to be compacted
-      val cleanableLogs = dirtyLogs.filter { ltc =>
+      var cleanableLogs = dirtyLogs.filter { ltc =>
         (ltc.needCompactionNow && ltc.cleanableBytes > 0) || ltc.cleanableRatio > ltc.log.config.minCleanableRatio
+      }
+      inLock(lock) {
+      // the logs inside cleanableLogs may have changed when we are not holding the lock, possibilities are
+      // 1. becoming aborted
+      // 2. becoming in progress in other cleaner threads
+      // 3. becoming uncleanable due to LogCleaningExceptions
+      // We shouldn't proceed in any of these cases
+      cleanableLogs = cleanableLogs.filterNot {
+        logToClean =>
+          inProgress.contains(logToClean.topicPartition) || isUncleanablePartition(logToClean.log, logToClean.topicPartition)
       }
       if(cleanableLogs.isEmpty) {
         None
       } else {
         preCleanStats.recordCleanablePartitions(cleanableLogs.size)
         val filthiest = cleanableLogs.max
-        inLock(lock) {
-          inProgress.put(filthiest.topicPartition, LogCleaningInProgress)
-        }
+        inProgress.put(filthiest.topicPartition, LogCleaningInProgress)
         Some(filthiest)
+      }
       }
    //}
   }

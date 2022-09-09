@@ -61,7 +61,8 @@ private[log] class LogCleaningException(val log: Log,
 private[log] class LogCleanerManager(val logDirs: Seq[File],
                                      val logs: Pool[TopicPartition, Log],
                                      val logDirFailureChannel: LogDirFailureChannel,
-                                     val retentionCheckMs: Long) extends Logging with KafkaMetricsGroup {
+                                     val retentionCheckMs: Long,
+                                     val fineGrainedLockEnable: Boolean) extends Logging with KafkaMetricsGroup {
   import LogCleanerManager._
 
 
@@ -163,12 +164,71 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
     }
   }
 
-   /**
+  def grabFilthiestCompactedLog(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
+    if (fineGrainedLockEnable) {
+      grabFilthiestCompactedLogWithFineGrainedLock(time, preCleanStats)
+    } else {
+      grabFilthiestCompactedLogWithLongLastingLock(time, preCleanStats)
+    }
+  }
+
+  /**
+   * Choose the log to clean next and add it to the in-progress set. We recompute this
+   * each time from the full set of logs to allow logs to be dynamically added to the pool of logs
+   * the log manager maintains.
+   */
+  def grabFilthiestCompactedLogWithLongLastingLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
+    inLock(lock) {
+      val now = time.milliseconds
+      this.timeOfLastRun = now
+      val lastClean = allCleanerCheckpoints
+      val dirtyLogs = logs.filter {
+        case (_, log) => log.config.compact  // match logs that are marked as compacted
+      }.filterNot {
+        case (topicPartition, log) =>
+          // skip any logs already in-progress and uncleanable partitions
+          inProgress.contains(topicPartition) || isUncleanablePartition(log, topicPartition)
+      }.map {
+        case (topicPartition, log) => // create a LogToClean instance for each
+          try {
+            val lastCleanOffset = lastClean.get(topicPartition)
+            val offsetsToClean = cleanableOffsets(log, lastCleanOffset, now)
+            // update checkpoint for logs with invalid checkpointed offsets
+            if (offsetsToClean.forceUpdateCheckpoint)
+              updateCheckpoints(log.parentDirFile, partitionToUpdateOrAdd = Option(topicPartition, offsetsToClean.firstDirtyOffset))
+            val compactionDelayMs = maxCompactionDelay(log, offsetsToClean.firstDirtyOffset, now)
+            preCleanStats.updateMaxCompactionDelay(compactionDelayMs)
+
+            LogToClean(topicPartition, log, offsetsToClean.firstDirtyOffset, offsetsToClean.firstUncleanableDirtyOffset, compactionDelayMs > 0)
+          } catch {
+            case e: Throwable => throw new LogCleaningException(log,
+              s"Failed to calculate log cleaning stats for partition $topicPartition", e)
+          }
+      }.filter(ltc => ltc.totalBytes > 0) // skip any empty logs
+
+      this.dirtiestLogCleanableRatio = if (dirtyLogs.nonEmpty) dirtyLogs.max.cleanableRatio else 0
+      // and must meet the minimum threshold for dirty byte ratio or have some bytes required to be compacted
+      val cleanableLogs = dirtyLogs.filter { ltc =>
+        (ltc.needCompactionNow && ltc.cleanableBytes > 0) || ltc.cleanableRatio > ltc.log.config.minCleanableRatio
+      }
+      if(cleanableLogs.isEmpty) {
+        None
+      } else {
+        preCleanStats.recordCleanablePartitions(cleanableLogs.size)
+        val filthiest = cleanableLogs.max
+        inProgress.put(filthiest.topicPartition, LogCleaningInProgress)
+        Some(filthiest)
+      }
+    }
+  }
+
+
+  /**
     * Choose the log to clean next and add it to the in-progress set. We recompute this
     * each time from the full set of logs to allow logs to be dynamically added to the pool of logs
     * the log manager maintains.
     */
-  def grabFilthiestCompactedLog(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
+  def grabFilthiestCompactedLogWithFineGrainedLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
     // This method's indentation is not fixed, since we'd like to minimize the code changes with upstream Kafka.
     // The indentation should be fixed after the code is merged in upstream.
       val now = time.milliseconds

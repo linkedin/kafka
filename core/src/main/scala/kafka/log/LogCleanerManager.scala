@@ -169,7 +169,8 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
     * the log manager maintains.
     */
   def grabFilthiestCompactedLog(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
-    // inLock(lock) {
+    // This method's indentation is not fixed, since we'd like to minimize the code changes with upstream Kafka.
+    // The indentation should be fixed after the code is merged in upstream.
       val now = time.milliseconds
       this.timeOfLastRun = now
       val lastClean = allCleanerCheckpoints
@@ -208,12 +209,16 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
         (ltc.needCompactionNow && ltc.cleanableBytes > 0) || ltc.cleanableRatio > ltc.log.config.minCleanableRatio
       }
       inLock(lock) {
-      // the logs inside cleanableLogs may have changed when we are not holding the lock, possibilities are
-      // 1. becoming aborted
-      // 2. becoming in progress in other cleaner threads
-      // 3. becoming uncleanable due to LogCleaningExceptions
-      // We shouldn't proceed in any of these cases
-      cleanableLogs = cleanableLogs.filterNot {
+      // the logs inside cleanableLogs may have changed when we are not holding the lock, e.g. they could have become
+      // 1. removed from the logs due to topic deletion
+      // 2. aborted (with the log's value in the inProgress map being LogCleaningAborted)
+      // 3. in progress in other cleaner threads
+      // 4. uncleanable due to LogCleaningExceptions
+      // We shouldn't proceed with logs in any of these condition
+      //
+      cleanableLogs = cleanableLogs.filter {
+        logToClean => logs.contains(logToClean.topicPartition)
+      }.filterNot {
         logToClean =>
           inProgress.contains(logToClean.topicPartition) || isUncleanablePartition(logToClean.log, logToClean.topicPartition)
       }
@@ -226,7 +231,6 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
         Some(filthiest)
       }
       }
-   //}
   }
 
   /**

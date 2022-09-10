@@ -103,6 +103,36 @@ object Election extends Logging {
     }
   }
 
+  private def leaderForRecommendation(partition: TopicPartition,
+    leaderAndIsr: LeaderAndIsr,
+    recommendedLeader: Option[Int],
+    controllerContext: ControllerContext): ElectionResult = {
+    val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
+    val assignment = controllerContext.partitionReplicaAssignment(partition)
+    val liveReplicas = assignment.filter(replica => controllerContextSnapshot.isReplicaOnline(replica, partition))
+    val isr = leaderAndIsr.isr
+    val leaderOpt = PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(recommendedLeader, isr, liveReplicas.toSet)
+    val newLeaderAndIsrOpt = leaderOpt.map(leader => leaderAndIsr.newLeader(leader))
+    ElectionResult(partition, newLeaderAndIsrOpt, liveReplicas)
+  }
+
+  /**
+   * Elect leaders for partitions that have a recommended leader.
+   *
+   * @param controllerContext Context with the current state of the cluster
+   * @param leaderAndIsrs A sequence of tuples representing the partitions that need election
+   *                                     and their respective leader/ISR states
+   * @param recommendedLeaders A map from each partition to its recommended leader
+   * @return The election results
+   */
+  def leaderForRecommendation(controllerContext: ControllerContext,
+    leaderAndIsrs: Seq[(TopicPartition, LeaderAndIsr)],
+    recommendedLeaders: Map[TopicPartition, Int]): Seq[ElectionResult] = {
+    leaderAndIsrs.map { case (partition, leaderAndIsr) =>
+      leaderForRecommendation(partition, leaderAndIsr, recommendedLeaders.get(partition), controllerContext)
+    }
+  }
+
   private def leaderForPreferredReplica(partition: TopicPartition,
                                         leaderAndIsr: LeaderAndIsr,
                                         controllerContext: ControllerContext): ElectionResult = {

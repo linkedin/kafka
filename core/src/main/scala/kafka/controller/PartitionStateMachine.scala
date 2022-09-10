@@ -540,6 +540,10 @@ object PartitionLeaderElectionAlgorithms {
     reassignment.find(id => liveReplicas.contains(id) && isr.contains(id))
   }
 
+  def recommendedPartitionLeaderElection(recommendedLeader: Option[Int], isr: Seq[Int], liveReplicas: Set[Int]): Option[Int] = {
+    recommendedLeader.find(id => liveReplicas.contains(id) && isr.contains(id))
+  }
+
   def preferredReplicaPartitionLeaderElection(assignment: Seq[Int], isr: Seq[Int], liveReplicas: Set[Int]): Option[Int] = {
     assignment.headOption.filter(id => liveReplicas.contains(id) && isr.contains(id))
   }
@@ -554,6 +558,7 @@ final case class OfflinePartitionLeaderElectionStrategy(allowUnclean: Boolean) e
 final case object ReassignPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
 final case object PreferredReplicaPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
 final case object ControlledShutdownPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
+final case class RecommendedLeaderElectionStrategy(recommendedLeaders: Map[TopicPartition, Int]) extends PartitionLeaderElectionStrategy
 
 sealed trait PartitionState {
   def state: Byte

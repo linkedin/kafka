@@ -32,7 +32,7 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
   override def generateConfigs: Seq[KafkaConfig] = TestUtils.createBrokerConfigs(numNodes, zkConnect).map(KafkaConfig.fromProps(_, overridingProps))
 
   @Test
-  def testRecommendedLeaderElection: Unit = {
+  def testRecommendedLeaderElection(): Unit = {
     val topic = "test"
     val tp = new TopicPartition(topic, 0)
     createTopic(topic, 1, 2 )

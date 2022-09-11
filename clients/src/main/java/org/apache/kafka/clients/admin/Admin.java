@@ -1002,6 +1002,15 @@ public interface Admin extends AutoCloseable {
         ElectLeadersOptions options);
 
 
+    default ElectLeadersResult electRecommendedLeaders(
+        Map<TopicPartition, Integer> partitionsWithRecommendedLeaders) {
+        return electRecommendedLeaders(partitionsWithRecommendedLeaders, new ElectLeadersOptions());
+    }
+
+    ElectLeadersResult electRecommendedLeaders(
+        Map<TopicPartition, Integer> partitionsWithRecommendedLeaders,
+        ElectLeadersOptions options);
+
     /**
      * Change the reassignments for one or more partitions.
      * Providing an empty Optional (e.g via {@link Optional#empty()}) will <bold>revert</bold> the reassignment for the associated partition.

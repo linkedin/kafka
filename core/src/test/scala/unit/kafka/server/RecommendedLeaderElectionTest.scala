@@ -37,7 +37,6 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
     val tp = new TopicPartition(topic, 0)
     createTopic(topic, 1, 2)
 
-    // val allBrokerIds = Set(0, 1)
     val currentLeader = zkClient.getTopicPartitionState(tp).get.leaderAndIsr.leader
     val currentFollower = if (currentLeader == 0) {
       1
@@ -46,7 +45,7 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
     }
     val newLeader = currentFollower
 
-    // create admin client
+    // elect the recommended leader for the partition
     val adminClient = createAdminClient()
     val partitionWithRecommendedLeaders = new util.HashMap[TopicPartition, Integer]()
     partitionWithRecommendedLeaders.put(tp, newLeader)

@@ -35,7 +35,7 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
   def testRecommendedLeaderElection(): Unit = {
     val topic = "test"
     val tp = new TopicPartition(topic, 0)
-    createTopic(topic, 1, 2 )
+    createTopic(topic, 1, 2)
 
     // val allBrokerIds = Set(0, 1)
     val currentLeader = zkClient.getTopicPartitionState(tp).get.leaderAndIsr.leader
@@ -61,7 +61,14 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
 
   @Test
   def testRecommendedLeaderElectionWithoutLeaderInRequest(): Unit = {
+    val topic = "test"
+    createTopic(topic, 1, 2)
 
+    val adminClient = createAdminClient()
+    val partitionWithRecommendedLeaders = new util.HashMap[TopicPartition, Integer]()
+    // elect with empty map should result in no exceptions
+    adminClient.electRecommendedLeaders(partitionWithRecommendedLeaders).all().get()
+    adminClient.close()
   }
 
   def createAdminClient(props: Properties = new Properties): Admin = {

@@ -2632,20 +2632,18 @@ class KafkaController(val config: KafkaConfig,
           info(s"Skipping replica leader election ($electionType) for partition $p by $electionTrigger since it doesn't exist.")
         }
 
-        val knownPartitionsWithValidRequest = if (electionType == ElectionType.RECOMMENDED) {
-          val (validPartitions, invalidPartitions) = partitionRecommendedLeadersFromAdminClientOpt match {
-            case Some(partitionRecommendedLeaders) => {
-              knownPartitions.partition(partitionRecommendedLeaders.contains(_))
-            }
+        val (knownPartitionsWithValidRequest, knownPartitionsWithInvalidRequest) = if (electionType == ElectionType.RECOMMENDED) {
+          partitionRecommendedLeadersFromAdminClientOpt match {
+            case Some(partitionRecommendedLeaders) => knownPartitions.partition(partitionRecommendedLeaders.contains(_))
             case None => (Set.empty[TopicPartition], knownPartitions) // all known partitions are invalid
           }
-          if (invalidPartitions.nonEmpty) {
-            warn(s"Skipping replica leader election ($electionType) for partitions $invalidPartitions " +
-              s"by $electionTrigger since there is no recommended leader")
-          }
-          validPartitions
         } else {
-          knownPartitions
+          (knownPartitions, Set.empty)
+        }
+
+        if (knownPartitionsWithInvalidRequest.nonEmpty) {
+          warn(s"Skipping replica leader election ($electionType) for partitions $knownPartitionsWithInvalidRequest " +
+            s"by $electionTrigger since there is no recommended leader")
         }
 
         val (partitionsBeingDeleted, livePartitions) = knownPartitionsWithValidRequest.partition(partition =>
@@ -2694,6 +2692,9 @@ class KafkaController(val config: KafkaConfig,
         alreadyValidLeader.map(_ -> Left(new ApiError(Errors.ELECTION_NOT_NEEDED))) ++
         partitionsBeingDeleted.map(
           _ -> Left(new ApiError(Errors.INVALID_TOPIC_EXCEPTION, "The topic is being deleted"))
+        ) ++
+        knownPartitionsWithInvalidRequest.map(
+          _ -> Left(new ApiError(Errors.INVALID_REQUEST, "No recommended leader provided for the partition"))
         ) ++
         unknownPartitions.map(
           _ -> Left(new ApiError(Errors.UNKNOWN_TOPIC_OR_PARTITION, "The partition does not exist."))

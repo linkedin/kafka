@@ -419,6 +419,8 @@ class ZkPartitionStateMachine(config: KafkaConfig,
         leaderForPreferredReplica(controllerContext, validLeaderAndIsrs).partition(_.leaderAndIsr.isEmpty)
       case ControlledShutdownPartitionLeaderElectionStrategy =>
         leaderForControlledShutdown(controllerContext, validLeaderAndIsrs).partition(_.leaderAndIsr.isEmpty)
+      case RecommendedLeaderElectionStrategy(recommendedLeaders) =>
+        leaderForRecommendation(controllerContext, validLeaderAndIsrs, recommendedLeaders).partition(_.leaderAndIsr.isEmpty)
     }
     partitionsWithoutLeaders.foreach { electionResult =>
       val partition = electionResult.topicPartition

@@ -44,14 +44,24 @@ class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
     } else {
       0
     }
-
     val newLeader = currentFollower
 
     // create admin client
     val adminClient = createAdminClient()
     val partitionWithRecommendedLeaders = new util.HashMap[TopicPartition, Integer]()
     partitionWithRecommendedLeaders.put(tp, newLeader)
-    adminClient.electRecommendedLeaders(partitionWithRecommendedLeaders).all().get();
+    adminClient.electRecommendedLeaders(partitionWithRecommendedLeaders).all().get()
+    adminClient.close()
+
+    // wait until the leader has changed to the recommended one
+    TestUtils.waitUntilTrue(() => {
+      zkClient.getTopicPartitionState(tp).get.leaderAndIsr.leader == newLeader
+    }, s"The leader cannot be changed to the recommended one $newLeader")
+  }
+
+  @Test
+  def testRecommendedLeaderElectionWithoutLeaderInRequest(): Unit = {
+
   }
 
   def createAdminClient(props: Properties = new Properties): Admin = {

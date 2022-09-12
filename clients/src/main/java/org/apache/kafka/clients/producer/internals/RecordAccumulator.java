@@ -182,8 +182,8 @@ public final class RecordAccumulator {
      * @param headers the Headers for the record
      * @param callback The user-supplied callback to execute when the request is complete
      * @param maxTimeToBlock The maximum time in milliseconds to block for buffer memory to be available
-     * @param abortOnNewBatch A boolean that indicates returning before a new batch is created and 
-     *                        running the the partitioner's onNewBatch method before trying to append again
+     * @param abortOnNewBatch A boolean that indicates returning before a new batch is created and
+     *                        running the partitioner's onNewBatch method before trying to append again
      */
     public RecordAppendResult append(TopicPartition tp,
                                      long timestamp,
@@ -214,7 +214,7 @@ public final class RecordAccumulator {
                 // Return a result that will cause another call to append.
                 return new RecordAppendResult(null, false, false, true);
             }
-            
+
             byte maxUsableMagic = apiVersions.maxUsableProduceMagic();
             int size = Math.max(this.batchSize, AbstractRecords.estimateSizeInBytesUpperBound(maxUsableMagic, compression, key, value, headers));
             log.trace("Allocating a new {} byte message buffer for topic {} partition {}", size, tp.topic(), tp.partition());
@@ -289,7 +289,7 @@ public final class RecordAccumulator {
             muted.remove(tp);
             return false;
         }
-        
+
         return true;
     }
 
@@ -463,34 +463,49 @@ public final class RecordAccumulator {
         boolean exhausted = this.free.queued() > 0;
         for (Map.Entry<TopicPartition, Deque<ProducerBatch>> entry : this.batches.entrySet()) {
             Deque<ProducerBatch> deque = entry.getValue();
+
+            final ProducerBatch batch;
+            final long waitedTimeMs;
+            final boolean backingOff;
+            final boolean full;
+
+            // This loop is especially hot with large partition counts.
+
+            // We are careful to only perform the minimum required inside the
+            // synchronized block, as this lock is also used to synchronize producer threads
+            // attempting to append() to a partition/batch.
+
             synchronized (deque) {
                 // When producing to a large number of partitions, this path is hot and deques are often empty.
                 // We check whether a batch exists first to avoid the more expensive checks whenever possible.
-                ProducerBatch batch = deque.peekFirst();
-                if (batch != null) {
-                    TopicPartition part = entry.getKey();
-                    Node leader = cluster.leaderFor(part);
-                    if (leader == null) {
-                        // This is a partition for which leader is not known, but messages are available to send.
-                        // Note that entries are currently not removed from batches when deque is empty.
-                        unknownLeaderTopics.add(part.topic());
-                    } else if (!readyNodes.contains(leader) && !isMuted(part, nowMs)) {
-                        long waitedTimeMs = batch.waitedTimeMs(nowMs);
-                        boolean backingOff = batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
-                        long timeToWaitMs = backingOff ? retryBackoffMs : lingerMs;
-                        boolean full = deque.size() > 1 || batch.isFull();
-                        boolean expired = waitedTimeMs >= timeToWaitMs;
-                        boolean sendable = full || expired || exhausted || closed || flushInProgress();
-                        if (sendable && !backingOff) {
-                            readyNodes.add(leader);
-                        } else {
-                            long timeLeftMs = Math.max(timeToWaitMs - waitedTimeMs, 0);
-                            // Note that this results in a conservative estimate since an un-sendable partition may have
-                            // a leader that will later be found to have sendable data. However, this is good enough
-                            // since we'll just wake up and then sleep again for the remaining time.
-                            nextReadyCheckDelayMs = Math.min(timeLeftMs, nextReadyCheckDelayMs);
-                        }
-                    }
+                batch = deque.peekFirst();
+                if (batch == null) {
+                    continue;
+                }
+
+                waitedTimeMs = batch.waitedTimeMs(nowMs);
+                backingOff = batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
+                full = deque.size() > 1 || batch.isFull();
+            }
+
+            TopicPartition part = entry.getKey();
+            Node leader = cluster.leaderFor(part);
+            if (leader == null) {
+                // This is a partition for which leader is not known, but messages are available to send.
+                // Note that entries are currently not removed from batches when deque is empty.
+                unknownLeaderTopics.add(part.topic());
+            } else if (!readyNodes.contains(leader) && !isMuted(part, nowMs)) {
+                long timeToWaitMs = backingOff ? retryBackoffMs : lingerMs;
+                boolean expired = waitedTimeMs >= timeToWaitMs;
+                boolean sendable = full || expired || exhausted || closed || flushInProgress();
+                if (sendable && !backingOff) {
+                    readyNodes.add(leader);
+                } else {
+                    long timeLeftMs = Math.max(timeToWaitMs - waitedTimeMs, 0);
+                    // Note that this results in a conservative estimate since an un-sendable partition may have
+                    // a leader that will later be found to have sendable data. However, this is good enough
+                    // since we'll just wake up and then sleep again for the remaining time.
+                    nextReadyCheckDelayMs = Math.min(timeLeftMs, nextReadyCheckDelayMs);
                 }
             }
         }
@@ -559,6 +574,7 @@ public final class RecordAccumulator {
             if (deque == null)
                 continue;
 
+            final ProducerBatch batch;
             synchronized (deque) {
                 // invariant: !isMuted(tp,now) && deque != null
                 ProducerBatch first = deque.peekFirst();
@@ -578,35 +594,40 @@ public final class RecordAccumulator {
                 } else {
                     if (shouldStopDrainBatchesForPartition(first, tp))
                         break;
+                }
 
-                    boolean isTransactional = transactionManager != null && transactionManager.isTransactional();
-                    ProducerIdAndEpoch producerIdAndEpoch =
-                        transactionManager != null ? transactionManager.producerIdAndEpoch() : null;
-                    ProducerBatch batch = deque.pollFirst();
-                    if (producerIdAndEpoch != null && !batch.hasSequence()) {
-                        // If the batch already has an assigned sequence, then we should not change the producer id and
-                        // sequence number, since this may introduce duplicates. In particular, the previous attempt
-                        // may actually have been accepted, and if we change the producer id and sequence here, this
-                        // attempt will also be accepted, causing a duplicate.
-                        //
-                        // Additionally, we update the next sequence number bound for the partition, and also have
-                        // the transaction manager track the batch so as to ensure that sequence ordering is maintained
-                        // even if we receive out of order responses.
-                        batch.setProducerState(producerIdAndEpoch, transactionManager.sequenceNumber(batch.topicPartition), isTransactional);
-                        transactionManager.incrementSequenceNumber(batch.topicPartition, batch.recordCount);
-                        log.debug("Assigned producerId {} and producerEpoch {} to batch with base sequence " +
-                                "{} being sent to partition {}", producerIdAndEpoch.producerId,
-                            producerIdAndEpoch.epoch, batch.baseSequence(), tp);
+                batch = deque.pollFirst();
 
-                        transactionManager.addInFlightBatch(batch);
-                    }
-                    batch.close();
-                    size += batch.records().sizeInBytes();
-                    ready.add(batch);
+                boolean isTransactional = transactionManager != null && transactionManager.isTransactional();
+                ProducerIdAndEpoch producerIdAndEpoch =
+                    transactionManager != null ? transactionManager.producerIdAndEpoch() : null;
+                if (producerIdAndEpoch != null && !batch.hasSequence()) {
+                    // If the batch already has an assigned sequence, then we should not change the producer id and
+                    // sequence number, since this may introduce duplicates. In particular, the previous attempt
+                    // may actually have been accepted, and if we change the producer id and sequence here, this
+                    // attempt will also be accepted, causing a duplicate.
+                    //
+                    // Additionally, we update the next sequence number bound for the partition, and also have
+                    // the transaction manager track the batch so as to ensure that sequence ordering is maintained
+                    // even if we receive out of order responses.
+                    batch.setProducerState(producerIdAndEpoch, transactionManager.sequenceNumber(batch.topicPartition), isTransactional);
+                    transactionManager.incrementSequenceNumber(batch.topicPartition, batch.recordCount);
+                    log.debug("Assigned producerId {} and producerEpoch {} to batch with base sequence " +
+                            "{} being sent to partition {}", producerIdAndEpoch.producerId,
+                        producerIdAndEpoch.epoch, batch.baseSequence(), tp);
 
-                    batch.drained(now);
+                    transactionManager.addInFlightBatch(batch);
                 }
             }
+
+            // the rest of the work by processing outside the lock
+            // close() is particularly expensive
+
+            batch.close();
+            size += batch.records().sizeInBytes();
+            ready.add(batch);
+
+            batch.drained(now);
         } while (start != drainIndex);
         return ready;
     }

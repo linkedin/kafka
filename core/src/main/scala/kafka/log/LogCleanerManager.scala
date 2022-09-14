@@ -168,6 +168,9 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
     if (fineGrainedLockEnable) {
       grabFilthiestCompactedLogWithFineGrainedLock(time, preCleanStats)
     } else {
+      // TODO: once we know the grabFilthiestCompactedLogWithFineGrainedLock is stable,
+      // the fineGrainedLockEnable should always be set to true, and we should discard the following
+      // grabFilthiestCompactedLogWithLongLastingLock method
       grabFilthiestCompactedLogWithLongLastingLock(time, preCleanStats)
     }
   }
@@ -175,9 +178,10 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
   /**
    * Choose the log to clean next and add it to the in-progress set. We recompute this
    * each time from the full set of logs to allow logs to be dynamically added to the pool of logs
-   * the log manager maintains.
+   * the log manager maintains. Compared with {@link grabFilthiestCompactedLogWithFineGrainedLock() grabFilthiestCompactedLogWithFineGrainedLock},
+   * this method holds the lock while iterating through the logs to check which one is the filthiest.
    */
-  def grabFilthiestCompactedLogWithLongLastingLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
+  private def grabFilthiestCompactedLogWithLongLastingLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
     inLock(lock) {
       val now = time.milliseconds
       this.timeOfLastRun = now
@@ -226,11 +230,11 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
   /**
     * Choose the log to clean next and add it to the in-progress set. We recompute this
     * each time from the full set of logs to allow logs to be dynamically added to the pool of logs
-    * the log manager maintains.
+    * the log manager maintains. Compared with {@link grabFilthiestCompactedLogWithLongLastingLock() grabFilthiestCompactedLogWithLongLastingLock},
+   * this method does NOT hold the lock while iterating through the logs to check which one is the filthiest.
     */
-  def grabFilthiestCompactedLogWithFineGrainedLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
-    // This method's indentation is not fixed, since we'd like to minimize the code changes with upstream Kafka.
-    // The indentation should be fixed after the code is merged in upstream.
+  private def grabFilthiestCompactedLogWithFineGrainedLock(time: Time, preCleanStats: PreCleanStats = new PreCleanStats()): Option[LogToClean] = {
+      info(s"Grabbing filthiest compacted log with fine grained lock")
       val now = time.milliseconds
       this.timeOfLastRun = now
       val lastClean = allCleanerCheckpoints

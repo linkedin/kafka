@@ -105,8 +105,8 @@ object Election extends Logging {
   private def leaderForRecommendation(partition: TopicPartition,
     leaderAndIsr: LeaderAndIsr,
     recommendedLeader: Option[Int],
-    controllerContext: ControllerContext): ElectionResult = {
-    val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
+    controllerContext: ControllerContext,
+    controllerContextSnapshot: ControllerContextSnapshot): ElectionResult = {
     val assignment = controllerContext.partitionReplicaAssignment(partition)
     val liveReplicas = assignment.filter(replica => controllerContextSnapshot.isReplicaOnline(replica, partition))
     val isr = leaderAndIsr.isr
@@ -127,8 +127,9 @@ object Election extends Logging {
   def leaderForRecommendation(controllerContext: ControllerContext,
     leaderAndIsrs: Seq[(TopicPartition, LeaderAndIsr)],
     recommendedLeaders: Map[TopicPartition, Int]): Seq[ElectionResult] = {
+    val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
     leaderAndIsrs.map { case (partition, leaderAndIsr) =>
-      leaderForRecommendation(partition, leaderAndIsr, recommendedLeaders.get(partition), controllerContext)
+      leaderForRecommendation(partition, leaderAndIsr, recommendedLeaders.get(partition), controllerContext, controllerContextSnapshot)
     }
   }
 

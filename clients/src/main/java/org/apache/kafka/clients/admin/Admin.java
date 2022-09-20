@@ -1007,6 +1007,37 @@ public interface Admin extends AutoCloseable {
         return electRecommendedLeaders(partitionsWithRecommendedLeaders, new ElectLeadersOptions());
     }
 
+    /**
+     * Switch the leadership of the given {@code partitions} to the corresponding recommending replicas.
+     * <p>
+     * This operation is not transactional, so it may succeed for some partitions while fail for others.
+     * <p>
+     * It may take several seconds after this method returns success for all the brokers in the cluster
+     * to become aware that the partitions have new leaders. During this time,
+     * {@link #describeTopics(Collection)} may not return information about the partitions'
+     * new leaders.
+     * <p>
+     * The following exceptions can be anticipated when calling {@code get()} on the future obtained
+     * from the returned {@link ElectLeadersResult}:
+     * <ul>
+     * <li>{@link org.apache.kafka.common.errors.ClusterAuthorizationException}
+     * if the authenticated user didn't have alter access to the cluster.</li>
+     * <li>{@link org.apache.kafka.common.errors.UnknownTopicOrPartitionException}
+     * if the topic or partition did not exist within the cluster.</li>
+     * <li>{@link org.apache.kafka.common.errors.InvalidTopicException}
+     * if the topic was already queued for deletion.</li>
+     * <li>{@link org.apache.kafka.common.errors.NotControllerException}
+     * if the request was sent to a broker that was not the controller for the cluster.</li>
+     * <li>{@link org.apache.kafka.common.errors.TimeoutException}
+     * if the request timed out before the election was complete.</li>
+     * <li>{@link org.apache.kafka.common.errors.LeaderNotAvailableException}
+     * if the preferred leader was not alive or not in the ISR.</li>
+     * </ul>
+     *
+     * @param partitionsWithRecommendedLeaders      The map from partitions to their corresponding recommended new leaders
+     * @param options                               The options to use when electing the leaders.
+     * @return The ElectLeadersResult.
+     */
     ElectLeadersResult electRecommendedLeaders(
         Map<TopicPartition, Integer> partitionsWithRecommendedLeaders,
         ElectLeadersOptions options);

@@ -289,8 +289,8 @@ class RequestSendThread(val controllerId: Int,
         // The LeaderAndIsrRequest starts having the full/incremental flag since IBP KAFKA_2_8_IV1.
         // Thus, we require the firstFullLeaderAndIsrSent to be set only when IBP >= KAFKA_2_8_IV1
         (config.interBrokerProtocolVersion < KAFKA_2_8_IV1 || firstFullLeaderAndIsrSent ||
-          // The preferred controllers and maintenance brokers don't hast any partitions,
-          // and therefore will never receive a LeaderAndIsr request. We treat them specially here
+          // Brokers that don't host any replicas will never receive a LeaderAndIsr request, including
+          // the preferred controllers and maintenance brokers. We treat them specially here
           // so that they can have the LiCombinedControl requests enabled.
           controllerContext.partitionsOnBroker(brokerNode.id()).isEmpty))) {
       // Only start the merging logic after the first UpdateMetadata request with partitions,

@@ -132,6 +132,7 @@ class ControllerContext {
     topicIds.clear()
     topicNames.clear()
     partitionAssignments.clear()
+    partitionAssignmentsChanged = true
     partitionLeadershipInfo.clear()
     partitionsBeingReassigned.clear()
     replicasOnOfflineDirs.clear()
@@ -172,7 +173,7 @@ class ControllerContext {
   }
 
   /**
-   * This method should be called whenever there is an update to the partitionAssignments map
+   * this method should be called each time the per broker partition assignments are queried
    */
   private def maybeUpdateAssignmentsByBroker(): Unit = {
     if (partitionAssignmentsChanged) {

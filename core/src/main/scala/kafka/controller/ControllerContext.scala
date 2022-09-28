@@ -88,6 +88,10 @@ class ControllerContext {
   var topicIds = mutable.Map.empty[String, Uuid]
   var topicNames = mutable.Map.empty[Uuid, String]
   val partitionAssignments = mutable.Map.empty[String, mutable.Map[Int, ReplicaAssignment]]
+  var partitionAssignmentsChanged = false
+  // Caution: for performance optimization, the lazilyUpdatedAssignmentsByBroker is not always up to date, and it's only updated
+  // when the per broker partition assignments are queried and the partitionAssignmentChanged is true
+  private val lazilyUpdatedAssignmentsByBroker = mutable.Map.empty[Int, mutable.Set[PartitionAndReplica]]
   private val partitionLeadershipInfo = mutable.Map.empty[TopicPartition, LeaderIsrAndControllerEpoch]
   val partitionsBeingReassigned = mutable.Set.empty[TopicPartition]
   val partitionStates = mutable.Map.empty[TopicPartition, PartitionState]
@@ -167,8 +171,26 @@ class ControllerContext {
       .getOrElse(topicPartition.partition, ReplicaAssignment.empty)
   }
 
+  /**
+   * This method should be called whenever there is an update to the partitionAssignments map
+   */
+  private def maybeUpdateAssignmentsByBroker(): Unit = {
+    if (partitionAssignmentsChanged) {
+      partitionAssignments.foreach {
+        case (topic, topicReplicaAssignment) => topicReplicaAssignment.foreach {
+          case (partition, partitionAssignment) =>
+            partitionAssignment.replicas.foreach { brokerId =>
+              lazilyUpdatedAssignmentsByBroker.getOrElseUpdate(brokerId, mutable.Set.empty).add(PartitionAndReplica(new TopicPartition(topic, partition), brokerId))
+            }
+        }
+      }
+      partitionAssignmentsChanged = false
+    }
+  }
+
   def updatePartitionFullReplicaAssignment(topicPartition: TopicPartition, newAssignment: ReplicaAssignment): Unit = {
     val assignments = partitionAssignments.getOrElseUpdate(topicPartition.topic, mutable.Map.empty)
+    partitionAssignmentsChanged = true
     val previous = assignments.put(topicPartition.partition, newAssignment)
     val leadershipInfo = partitionLeadershipInfo.get(topicPartition)
     updatePreferredReplicaImbalanceMetric(topicPartition, previous, leadershipInfo,
@@ -250,23 +272,16 @@ class ControllerContext {
   def partitionUnassignableBrokerIds(maintenanceBrokers: Seq[Int]): Seq[Int] = maintenanceBrokers ++ getLivePreferredControllerIds
 
   def partitionsOnBroker(brokerId: Int): Set[TopicPartition] = {
-    partitionAssignments.flatMap {
-      case (topic, topicReplicaAssignment) => topicReplicaAssignment.filter {
-        case (_, partitionAssignment) => partitionAssignment.replicas.contains(brokerId)
-      }.map {
-        case (partition, _) => new TopicPartition(topic, partition)
-      }
+    maybeUpdateAssignmentsByBroker()
+    lazilyUpdatedAssignmentsByBroker.getOrElse(brokerId, mutable.Set.empty).map {
+      partitionAndReplica => partitionAndReplica.topicPartition
     }.toSet
   }
 
   def replicasOnBrokers(brokerIds: Set[Int]): Set[PartitionAndReplica] = {
+    maybeUpdateAssignmentsByBroker()
     brokerIds.flatMap { brokerId =>
-      partitionAssignments.flatMap {
-        case (topic, topicReplicaAssignment) => topicReplicaAssignment.collect {
-          case (partition, partitionAssignment) if partitionAssignment.replicas.contains(brokerId) =>
-            PartitionAndReplica(new TopicPartition(topic, partition), brokerId)
-        }
-      }
+      lazilyUpdatedAssignmentsByBroker.getOrElse(brokerId, mutable.Set.empty)
     }
   }
 
@@ -347,6 +362,7 @@ class ControllerContext {
         partitionLeadershipInfo.remove(new TopicPartition(topic, partition))
       }
     }
+    partitionAssignmentsChanged = true
 
     partitionStates.foreach {
       case (topicPartition, _) if topicPartition.topic == topic => partitionStates.remove(topicPartition)

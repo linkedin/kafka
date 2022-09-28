@@ -292,7 +292,7 @@ class RequestSendThread(val controllerId: Int,
           // The preferred controllers and maintenance brokers don't hast any partitions,
           // and therefore will never receive a LeaderAndIsr request. We treat them specially here
           // so that they can have the LiCombinedControl requests enabled.
-          controllerContext.partitionUnassignableBrokerIds(config.getMaintenanceBrokerList).toSet.contains(config.brokerId)))) {
+          controllerContext.partitionsOnBroker(brokerNode.id()).isEmpty))) {
       // Only start the merging logic after the first UpdateMetadata request with partitions,
       // since the first UpdateMetadata request with partitions may contain hundreds of thousands of partitions,
       // and thus needs to be cached and shared by all brokers in order to prevent OOM

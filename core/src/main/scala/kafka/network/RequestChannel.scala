@@ -311,6 +311,7 @@ object RequestChannel extends Logging {
       val apiRemoteTimeMs = nanosToMs(responseCompleteTimeNanos - apiLocalCompleteTimeNanos)
       val responseQueueTimeMs = nanosToMs(responseDequeueTimeNanos - responseCompleteTimeNanos)
       val responseSendTimeMs = nanosToMs(endTimeNanos - responseDequeueTimeNanos)
+      val responseSendTimeNs = endTimeNanos - responseDequeueTimeNanos
       val messageConversionsTimeMs = nanosToMs(messageConversionsTimeNanos)
       val totalTimeMs = nanosToMs(endTimeNanos - startTimeNanos)
       val fetchMetricNames =
@@ -339,6 +340,7 @@ object RequestChannel extends Logging {
         m.throttleTimeHist.update(apiThrottleTimeMs)
         m.responseQueueTimeHist.update(Math.round(responseQueueTimeMs))
         m.responseSendTimeHist.update(Math.round(responseSendTimeMs))
+        m.responseSendTimeNsHist.update(Math.round(responseSendTimeNs))
         m.totalTimeHist.update(Math.round(totalTimeMs))
         m.requestBytesHist.update(sizeOfBodyInBytes)
         m.responseBytesHist.update(responseBytes)
@@ -678,6 +680,7 @@ object RequestMetrics {
   val ThrottleTimeMs = "ThrottleTimeMs"
   val ResponseQueueTimeMs = "ResponseQueueTimeMs"
   val ResponseSendTimeMs = "ResponseSendTimeMs"
+  val ResponseSendTimeNs = "ResponseSendTimeNs"
   val TotalTimeMs = "TotalTimeMs"
   val RequestBytes = "RequestBytes"
   val ResponseBytes = "ResponseBytes"
@@ -707,6 +710,7 @@ class RequestMetrics(name: String) extends KafkaMetricsGroup {
   val responseQueueTimeHist = newHistogram(ResponseQueueTimeMs, biased = true, tags)
   // time to send the response to the requester
   val responseSendTimeHist = newHistogram(ResponseSendTimeMs, biased = true, tags)
+  val responseSendTimeNsHist = newHistogram(ResponseSendTimeNs, biased = true, tags)
   val totalTimeHist = newHistogram(TotalTimeMs, biased = true, tags)
   // request size in bytes
   val requestBytesHist = newHistogram(RequestBytes, biased = true, tags)
@@ -775,6 +779,7 @@ class RequestMetrics(name: String) extends KafkaMetricsGroup {
     removeMetric(ResponseQueueTimeMs, tags)
     removeMetric(TotalTimeMs, tags)
     removeMetric(ResponseSendTimeMs, tags)
+    removeMetric(ResponseSendTimeNs, tags)
     removeMetric(RequestBytes, tags)
     removeMetric(ResponseBytes, tags)
     removeMetric(ResponseSendTimeMs, tags)

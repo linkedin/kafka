@@ -57,6 +57,7 @@ spotless {
 allprojects {
 
   repositories {
+    mavenLocal()
     mavenCentral()
   }
 
@@ -1243,6 +1244,7 @@ project(':clients') {
     implementation libs.snappy
     implementation libs.slf4jApi
     implementation libs.conscrypt
+    implementation libs.ktls
 
     compileOnly libs.jacksonDatabind // for SASL/OAUTHBEARER bearer token parsing
     compileOnly libs.jacksonJDK8Datatypes

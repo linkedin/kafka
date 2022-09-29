@@ -113,7 +113,7 @@ class DefaultAlterIsrManager(
 ) extends AlterIsrManager with Logging with KafkaMetricsGroup {
 
   // Used to allow only one pending ISR update per partition (visible for testing)
-  private[server] val unsentIsrUpdates: util.Map[TopicPartition, mutable.Buffer[AlterIsrItem]] = new ConcurrentHashMap[TopicPartition, mutable.Buffer[AlterIsrItem]]()
+  private[server] val unsentIsrUpdates: util.Map[TopicPartition, AlterIsrItem] = new ConcurrentHashMap[TopicPartition, AlterIsrItem]()
 
   // Used to allow only one in-flight request at a time
   private val inflightRequest: AtomicBoolean = new AtomicBoolean(false)
@@ -127,7 +127,7 @@ class DefaultAlterIsrManager(
   }
 
   override def submit(alterIsrItem: AlterIsrItem): Boolean = {
-    val enqueued = unsentIsrUpdates.putIfAbsent(alterIsrItem.topicPartition, mutable.Buffer())
+    val enqueued = unsentIsrUpdates.putIfAbsent(alterIsrItem.topicPartition, alterIsrItem) == null
     maybePropagateIsrChanges()
     enqueued
   }

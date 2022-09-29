@@ -290,7 +290,16 @@ class ControllerContext {
     }
   }
 
-  def replicasForTopic(topic: String): Set[PartitionAndReplica] = {
+  def replicasOnBrokers(brokerIds: Set[Int]): Set[PartitionAndReplica] = {
+    maybeUpdateAssignmentsByBroker()
+    lazilyUpdatedAssignmentsByBroker.synchronized {
+      brokerIds.flatMap { brokerId =>
+        lazilyUpdatedAssignmentsByBroker.getOrElse(brokerId, mutable.Set.empty)
+      }
+    }
+  }
+
+    def replicasForTopic(topic: String): Set[PartitionAndReplica] = {
     partitionAssignments.getOrElse(topic, mutable.Map.empty).flatMap {
       case (partition, assignment) => assignment.replicas.map { r =>
         PartitionAndReplica(new TopicPartition(topic, partition), r)

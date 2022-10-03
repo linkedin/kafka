@@ -97,7 +97,7 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     topicIds.forEach((topicName, topicId) => {
       val existingTopicId = aggregateTopicIds.get(topicName)
       if (existingTopicId != null && !existingTopicId.equals(topicId)) {
-        warn(s"topic $topicName associated with the topic id $existingTopicId is given a new topic id $topicId" +
+        warn(s"topic $topicName associated with the topic id $existingTopicId is given a new topic id $topicId " +
           "clearing relevant requests associated with previous topic ids")
 
         def clearObsoleteEntriesInMap(map: mutable.Map[TopicIdPartition, _]) = {

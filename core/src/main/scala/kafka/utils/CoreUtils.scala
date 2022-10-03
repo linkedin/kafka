@@ -34,6 +34,7 @@ import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.utils.Utils
 import org.slf4j.event.Level
 
+import java.nio.file.{Files, Paths}
 import java.util.concurrent.TimeUnit
 import scala.annotation.nowarn
 
@@ -83,6 +84,12 @@ object CoreUtils {
    * @param files sequence of files to be deleted
    */
   def delete(files: Seq[String]): Unit = files.foreach(f => Utils.delete(new File(f)))
+
+  /**
+   * Clear the content of a file by truncating its size to 0
+   * @param file the file to be truncated
+   */
+  def truncateToZero(file: String): Unit = Files.deleteIfExists(Paths.get(file))
 
   /**
    * Invokes every function in `all` even if one or more functions throws an exception.

@@ -18,12 +18,13 @@ package kafka.server.checkpoints
 
 import java.io._
 import java.nio.charset.StandardCharsets
-import java.nio.file.{FileAlreadyExistsException, Files, Paths}
+import java.nio.file.{FileAlreadyExistsException, Files, Paths, StandardOpenOption}
 import kafka.server.{GlobalConfig, LogDirFailureChannel}
-import kafka.utils.Logging
+import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.errors.KafkaStorageException
 import org.apache.kafka.common.utils.Utils
 
+import java.nio.channels.FileChannel
 import scala.collection.{Seq, mutable}
 
 trait CheckpointFileFormatter[T]{
@@ -75,8 +76,8 @@ class CheckpointReadBuffer[T](location: String,
 
   private def maybeThrowException(e: Exception): Seq[T] = {
     if (GlobalConfig.liDropCorruptedFilesEnable) {
-      // delete the file and return an empty sequence
-      Files.deleteIfExists(new File(location).toPath)
+      // clear contents of the file and return an empty sequence
+      CoreUtils.truncateToZero(location)
       Seq.empty[T]
     } else {
       throw e

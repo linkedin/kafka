@@ -24,7 +24,9 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+
 import java.io.{BufferedWriter, File, FileOutputStream, OutputStreamWriter}
+import java.nio.file.Files
 
 class LeaderEpochCheckpointFileTest extends Logging {
 
@@ -137,7 +139,8 @@ class LeaderEpochCheckpointFileTest extends Logging {
       val epochs = checkpoint.read()
       assertTrue(epochs.isEmpty, "reading from a corrupted leader-epoch-checkpoint file should have returned an empty list of EpochEntries")
       // verify that the file no longer exists
-      assertFalse(file.exists(), "the corrupted file should have been deleted")
+      assertTrue(file.exists(), "the file should still exists")
+      assertEquals(0, Files.size(file.toPath), "the content of the corrupted file should have been cleared")
     } else {
       assertThrows(classOf[KafkaStorageException], ()=> checkpoint.read())
     }

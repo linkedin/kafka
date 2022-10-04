@@ -1597,7 +1597,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
   def testFastTopicDeletionAndRecreation(): Unit = {
     val topic = "t1"
     val tp = new TopicPartition(topic, 0)
-    // delay the 2nd broker's LiCombinedControl requests by 10s
+    // delay the 2nd broker's UpdateMetadata
     servers = makeServers(2, liUpdateMetadataDelayMap = Map(0 -> 0, 1 -> 5000))
 
     val assignment = Map(0 -> Seq(0))
@@ -1631,7 +1631,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
         val topicMetadataOpt = server.metadataCache.getTopicMetadata(Set(topic), ListenerName.forSecurityProtocol(SecurityProtocol.PLAINTEXT)).find(_.name() == topic)
         val result = topicMetadataOpt.isDefined && !topicMetadataOpt.get.topicId().equals(originalTopicId)
         if (result) {
-          warn(s"server ${server.config.brokerId} got new topic id ${topicMetadataOpt.get.topicId()}")
+          info(s"server ${server.config.brokerId} got new topic id ${topicMetadataOpt.get.topicId()}")
         }
         result
       }

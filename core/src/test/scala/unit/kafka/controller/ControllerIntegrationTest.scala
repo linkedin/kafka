@@ -129,6 +129,7 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     TestUtils.createTopic(zkClient, topic2, 1, 1, servers)
 
     val sumOfTopicNameLength = TestUtils.yammerMetricValue("SumOfTopicNameLength")
+    Thread.sleep(5000)
     assertEquals(topic1.size + topic2.size + 2 * KafkaController.topicNameBytesOverheadOnZk, sumOfTopicNameLength)
   }
 

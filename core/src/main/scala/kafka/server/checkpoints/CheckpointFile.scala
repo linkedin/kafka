@@ -18,13 +18,12 @@ package kafka.server.checkpoints
 
 import java.io._
 import java.nio.charset.StandardCharsets
-import java.nio.file.{FileAlreadyExistsException, Files, Paths, StandardOpenOption}
+import java.nio.file.{FileAlreadyExistsException, Files, Paths}
 import kafka.server.{GlobalConfig, LogDirFailureChannel}
 import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.errors.KafkaStorageException
 import org.apache.kafka.common.utils.Utils
 
-import java.nio.channels.FileChannel
 import scala.collection.{Seq, mutable}
 
 trait CheckpointFileFormatter[T]{

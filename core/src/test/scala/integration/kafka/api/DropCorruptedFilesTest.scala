@@ -1,13 +1,14 @@
 package integration.kafka.api
 
 import kafka.api.IntegrationTestHarness
+import kafka.controller.OfflinePartition
 import kafka.server.{KafkaConfig, KafkaServer}
 import kafka.utils.Implicits.PropertiesOps
 import kafka.utils.{Exit, TestUtils}
 import kafka.zk.ZooKeeperTestHarness
 import org.apache.kafka.clients.admin.{Admin, AdminClient, AdminClientConfig}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer, ProducerConfig, ProducerRecord}
-import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.{ElectionType, TopicPartition}
 import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.record.{CompressionType, MemoryRecords, SimpleRecord}
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 import java.nio.charset.StandardCharsets
+import java.util
 import java.util.{Collections, Properties}
 import scala.collection.{Map, Seq}
 
@@ -30,6 +32,7 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
       // start servers in reverse order to ensure broker 2 becomes the controller
       val servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
       val controllerId = TestUtils.waitUntilControllerElected(zkClient)
+      val controller = servers.find(p => p.config.brokerId == controllerId).get.kafkaController
       assertTrue(controllerId == 2)
 
       // create the topic with min ISR of 2, which should allow one broker to shut down but should block subsequent
@@ -63,12 +66,13 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
       val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, partition, "key".getBytes(StandardCharsets.UTF_8),
         "value".getBytes(StandardCharsets.UTF_8))
       val recordMetadata0 = producer.send(record).get
-      warn("LLWW0 0th message produced at offset "+ recordMetadata0.offset())
+
       // wait until all servers get the message
-      // wait until truncation of the message in epoch 1 on the follower
       TestUtils.waitUntilTrue(() => {
-        followerBroker.replicaManager.getLog(tp).get.logEndOffset == 1
+        orderedBrokers.forall{broker => broker.replicaManager.getLog(tp).get.logEndOffset == 1}
       }, "some brokers cannot get the message")
+      warn("LLWW0 0th message produced at offset "+ recordMetadata0.offset())
+
 
       // shutdown the follower
       followerBroker.shutdown()
@@ -80,18 +84,45 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
       // shutdown the leader and startup the follower
       leaderBroker.shutdown()
       warn("LLWW0 leader shutdown complete")
+      TestUtils.waitUntilTrue(() => {
+        controller.controllerContext.partitionState(tp) == OfflinePartition
+      }, s"the partition $tp does not become offline after all replicas are shutdown")
+      warn("LLWW0 the partiton has become offline")
+
+
       followerBroker.startup()
       warn("LLWW0 follower startup complete")
 
 
-      TestUtils.waitUntilTrue(() => {
-        val topicDescMap = adminClient.describeTopics(Collections.singleton(topic)).all().get()
-        val currentLeader = topicDescMap.get(topic).partitions().get(0).leader()
-        currentLeader == follower
-      }, "LLWW0 the leadership cannot be transferred to the follower")
+      def ensureLeader(desiredLeader: Int): Unit = {
+        TestUtils.waitUntilTrue(() => {
+          val topicDescMap = adminClient.describeTopics(Collections.singleton(topic)).all().get()
+          val currentLeader = topicDescMap.get(topic).partitions().get(0).leader()
+          warn(s"LLWW0 current leader ${currentLeader.id()}, required leader: $desiredLeader")
+          desiredLeader.equals(currentLeader.id())
+        }, "LLWW0 the leadership cannot be transferred to the follower")
+      }
+      ensureLeader(follower)
       // produce the record in epoch 1
+
+      warn("LLWW0 producing the 2nd message")
       val recordMetadata2 = producer.send(record).get()
       warn("LLWW0 2nd message produced at offset "+ recordMetadata2.offset())
+
+      followerBroker.shutdown()
+      leaderBroker.startup()
+      ensureLeader(leader)
+      warn(s"LLWW0 the leadership has returned to original leader $leader")
+
+      followerBroker.startup()
+
+      // wait until the follower joins the ISR again
+      TestUtils.waitUntilTrue(() => {
+        val topicDescMap = adminClient.describeTopics(Collections.singleton(topic)).all().get()
+        val currentISR = topicDescMap.get(topic).partitions().get(0).isr()
+        currentISR.size() == 2
+      }, "the follower cannot rejoin the ISR")
+      warn("LLWW0 the ISR has converged to 2 again")
 
       adminClient.close()
       producer.close()

@@ -775,6 +775,10 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
   def testSkipShutdownCheck(): Unit = {
     // create brokers
     val serverConfigs = TestUtils.createBrokerConfigs(3, zkConnect, true, enableControlledShutdownSafetyCheck = true)
+      .map{props => {
+        props.setProperty(KafkaConfig.ControlledShutdownMaxRetriesProp, Integer.MAX_VALUE.toString)
+        props
+      }}
       .map(KafkaConfig.fromProps)
     // create the servers in reverse order so that broker 2 becomes the controller
     servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))

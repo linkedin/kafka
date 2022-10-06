@@ -294,7 +294,7 @@ subprojects {
   def shouldUseJUnit5 = !(["runtime", "streams"].contains(it.project.name))
 
   def testLoggingEvents = ["passed", "skipped", "failed"]
-  def testShowStandardStreams = false
+  def testShowStandardStreams = true
   def testExceptionFormat = 'full'
   // Gradle built-in logging only supports sending test output to stdout, which generates a lot
   // of noise, especially for passing tests. We really only want output for failed tests. This
@@ -386,6 +386,7 @@ subprojects {
   }
 
   test {
+    outputs.upToDateWhen { false }
     maxParallelForks = userMaxForks ?: Runtime.runtime.availableProcessors()
     ignoreFailures = userIgnoreFailures
 

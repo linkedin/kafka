@@ -199,15 +199,15 @@ public class TestUtils {
         } catch (final IOException ex) {
             throw new RuntimeException("Failed to create a temp dir", ex);
         }
-        file.deleteOnExit();
+        // file.deleteOnExit();
 
-        Exit.addShutdownHook("delete-temp-file-shutdown-hook", () -> {
-            try {
-                Utils.delete(file);
-            } catch (IOException e) {
-                log.error("Error deleting {}", file.getAbsolutePath(), e);
-            }
-        });
+//        Exit.addShutdownHook("delete-temp-file-shutdown-hook", () -> {
+//            try {
+//                Utils.delete(file);
+//            } catch (IOException e) {
+//                log.error("Error deleting {}", file.getAbsolutePath(), e);
+//            }
+//        });
 
         return file;
     }

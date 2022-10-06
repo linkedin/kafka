@@ -252,7 +252,7 @@ object TestUtils extends Logging {
     */
   def createBrokerConfig(nodeId: Int,
                          zkConnect: String,
-                         enableControlledShutdown: Boolean = true,
+                         enableControlledShutdown: Boolean = false,
                          enableControlledShutdownSafetyCheck: Boolean = false,
                          enableDeleteTopic: Boolean = true,
                          port: Int = RandomPort,
@@ -299,6 +299,7 @@ object TestUtils extends Logging {
       props.put(KafkaConfig.LogDirsProp, logDirs)
     } else {
       props.put(KafkaConfig.LogDirProp, tempDir().getAbsolutePath)
+      warn(s"logDir for broker $nodeId: " + props.get(KafkaConfig.LogDirProp))
     }
     props.put(KafkaConfig.ZkConnectProp, zkConnect)
     props.put(KafkaConfig.ZkConnectionTimeoutMsProp, "10000")

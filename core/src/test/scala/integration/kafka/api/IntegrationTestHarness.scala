@@ -81,7 +81,7 @@ abstract class IntegrationTestHarness extends KafkaServerTestHarness {
 
   @BeforeEach
   override def setUp(): Unit = {
-    doSetup(createOffsetsTopic = true)
+    doSetup(createOffsetsTopic = false)
   }
 
   def doSetup(createOffsetsTopic: Boolean): Unit = {

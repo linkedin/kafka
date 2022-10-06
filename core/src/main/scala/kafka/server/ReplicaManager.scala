@@ -1480,7 +1480,7 @@ class ReplicaManager(val config: KafkaConfig,
         s"$controllerId for ${requestPartitionStates.size} partitions")
       if (stateChangeLogger.isTraceEnabled)
         requestPartitionStates.foreach { partitionState =>
-          stateChangeLogger.trace(s"Received LeaderAndIsr request $partitionState " +
+          stateChangeLogger.trace(s"LLWW0 Received LeaderAndIsr request $partitionState " +
             s"correlation id $correlationId from controller $controllerId " +
             s"epoch ${leaderAndIsrRequest.controllerEpoch}")
         }

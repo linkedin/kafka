@@ -8,7 +8,7 @@
 
 
 rm -rf /tmp/kafka-*
-./gradlew :core:test --tests '*.testCorruptedLeaderEpochCheckpointOnLeader'|grep LLWW2
+./gradlew :core:test --tests '*.testCorruptedLeaderEpochCheckpointOnLeader'|grep LLWW3
 
 
 for partitionDir in /tmp/kafka-*/test-0; do

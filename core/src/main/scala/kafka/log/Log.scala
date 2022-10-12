@@ -1295,9 +1295,6 @@ class Log(@volatile private var _dir: File,
 
       // update the last offset seen
       lastOffset = batch.lastOffset
-      if (ReplicaManager.divergingFixed) {
-        warn(s"LLWW2 analyzeAndValidateRecords found batch with leaderEpoch ${batch.partitionLeaderEpoch}")
-      }
       lastLeaderEpoch = batch.partitionLeaderEpoch
 
       // Check if the message sizes are valid.

@@ -56,8 +56,8 @@ class LeaderEpochFileCache(topicPartition: TopicPartition,
   def assign(epoch: Int, startOffset: Long): Unit = {
     val entry = EpochEntry(epoch, startOffset)
     if (assign(entry)) {
-      if (ReplicaManager.divergingFixed)
-        warn(s"LLWW2 Appended new epoch entry $entry. Cache now contains ${epochs.size} entries.")
+      if (ReplicaManager.followerStartedCatchingup)
+        warn(s"LLWW3 Appended new epoch entry $entry. Cache now contains ${epochs.size} entries.")
       flush()
     }
   }

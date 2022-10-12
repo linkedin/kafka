@@ -1,23 +1,21 @@
 package integration.kafka.api
 
-import kafka.api.IntegrationTestHarness
 import kafka.controller.OfflinePartition
 import kafka.server.{KafkaConfig, KafkaServer, ReplicaManager}
 import kafka.utils.Implicits.PropertiesOps
 import kafka.utils.{Exit, TestUtils}
 import kafka.zk.ZooKeeperTestHarness
 import org.apache.kafka.clients.admin.{Admin, AdminClient, AdminClientConfig}
-import org.apache.kafka.clients.producer.{KafkaProducer, Producer, ProducerConfig, ProducerRecord}
-import org.apache.kafka.common.{ElectionType, TopicPartition}
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.network.ListenerName
-import org.apache.kafka.common.record.{CompressionType, MemoryRecords, SimpleRecord}
 import org.apache.kafka.common.serialization.{ByteArraySerializer, Serializer}
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
 import java.nio.charset.StandardCharsets
-import java.util
 import java.util.{Collections, Properties}
 import scala.collection.{Map, Seq}
 
@@ -28,6 +26,10 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
 
       // create brokers
       val serverConfigs = TestUtils.createBrokerConfigs(3, zkConnect, false)
+        .map{props => {
+          props.setProperty(KafkaConfig.LiDropCorruptedFilesEnableProp, "true")
+          props
+        }}
         .map(KafkaConfig.fromProps)
       // start servers in reverse order to ensure broker 2 becomes the controller
       val servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
@@ -110,11 +112,16 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
       warn("LLWW0 2nd message produced at offset "+ recordMetadata2.offset())
 
       followerBroker.shutdown()
+      // before the leader startup, corrupt its leader epoch cache file
+      corruptLeaderEpochCheckpoint(leaderBroker.config.get(KafkaConfig.LogDirProp) + "/" + tp + "/leader-epoch-checkpoint")
+
+
       leaderBroker.startup()
       ensureLeader(leader)
       warn(s"LLWW0 the leadership has returned to original leader $leader")
 
       ReplicaManager.followerStartedCatchingup = true
+
       followerBroker.startup()
 
       // wait until the follower joins the ISR again
@@ -157,43 +164,12 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
     producer
   }
 
-  def anotherFunc() : Unit = {
-    /*
-    servers.foreach(_.shutdown())
-      warn("LLWW0 all servers have been shutdown")
-
-      // the offset of the records gets changed, so we cannot reuse the same records object on mulitple appends
-      def getRecords(leaderEpoch: Int) = {
-        MemoryRecords.withRecords(CompressionType.NONE, leaderEpoch,
-          new SimpleRecord("hello".getBytes))
-      }
-
-      leaderLog.appendAsLeader(getRecords(0), leaderEpoch = 0)
-      leaderLog.appendAsLeader(getRecords(0), leaderEpoch = 0)
-
-      followerLog.appendAsFollower(getRecords(0))
-
-      followerLog.appendAsLeader(getRecords(1), leaderEpoch = 1)
-
-      assertTrue(orderedBrokers.forall{broker =>
-        broker.replicaManager.getLog(tp).get.logEndOffset == 2
-      })
-      warn("LLWW0 all brokers have 2 messages now")
-
-      // start the leader host first so that it's still the leader
-
-      leaderBroker.startup()
-      warn("LLWW0 leader broker has been restarted")
-      followerBroker.startup()
-      warn("LLWW0 follower broker has been restarted")
-
-      // wait until truncation of the message in epoch 1 on the follower
-      TestUtils.waitUntilTrue(() => {
-        followerBroker.replicaManager.getLog(tp).get.logEndOffset == 1
-      }, "some brokers cannot get the message")
-      warn("LLWW0 message in epoch 1 on the followir has been truncated")
-      adminClient.close()
-     */
+  private def corruptLeaderEpochCheckpoint(checkpointFile: String): Unit = {
+    val bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(checkpointFile)))
+    // create a file with a corrupted version number
+    bw.write("100")
+    bw.newLine()
+    bw.close()
   }
 
 

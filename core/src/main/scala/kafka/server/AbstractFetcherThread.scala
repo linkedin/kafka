@@ -387,7 +387,7 @@ abstract class AbstractFetcherThread(name: String,
                           .setEndOffset(divergingEpoch.endOffset)
 
                         if (ReplicaManager.followerStartedCatchingup) {
-                          warn(s"LLWW1 collected diverging Epoch from fetch response for $topicPartition " + divergingEndOffsets(topicPartition))
+                          warn(s"LLWW3 collected diverging Epoch from fetch response for $topicPartition " + divergingEndOffsets(topicPartition))
                         }
                       }
                     }
@@ -599,14 +599,14 @@ abstract class AbstractFetcherThread(name: String,
       endOffsetForEpoch(tp, leaderEpochOffset.leaderEpoch) match {
         case Some(OffsetAndEpoch(followerEndOffset, followerEpoch)) =>
           if (ReplicaManager.followerStartedCatchingup) {
-            warn(s"LLWW1 endOffsetForEpach(${leaderEpochOffset.leaderEpoch}) is " + OffsetAndEpoch(followerEndOffset, followerEpoch))
+            warn(s"LLWW3 endOffsetForEpoch(${leaderEpochOffset.leaderEpoch}) is " + OffsetAndEpoch(followerEndOffset, followerEpoch))
           }
           if (followerEpoch != leaderEpochOffset.leaderEpoch) {
             // the follower does not know about the epoch that leader replied with
             // we truncate to the end offset of the largest epoch that is smaller than the
             // epoch the leader replied with, and send another offset for leader epoch request
             val intermediateOffsetToTruncateTo = min(followerEndOffset, replicaEndOffset)
-            warn(s"LLWW1 Based on replica's leader epoch, leader replied with epoch ${leaderEpochOffset.leaderEpoch} " +
+            warn(s"LLWW3 Based on replica's leader epoch, leader replied with epoch ${leaderEpochOffset.leaderEpoch} " +
               s"unknown to the replica for $tp. " +
               s"Will truncate to $intermediateOffsetToTruncateTo and send another leader epoch request to the leader.")
             if (ReplicaManager.followerStartedCatchingup) {
@@ -617,7 +617,7 @@ abstract class AbstractFetcherThread(name: String,
           } else {
             val offsetToTruncateTo = min(followerEndOffset, leaderEpochOffset.endOffset)
             if (ReplicaManager.followerStartedCatchingup) {
-              warn(s"LLWW1 epoch matched on $followerEpoch, followerEndOffset $followerEndOffset, leaderEpochEndOffset ${leaderEpochOffset.endOffset} " +
+              warn(s"LLWW3 epoch matched on $followerEpoch, followerEndOffset $followerEndOffset, leaderEpochEndOffset ${leaderEpochOffset.endOffset} " +
                 s" truncating to the min $offsetToTruncateTo")
             }
             OffsetTruncationState(min(offsetToTruncateTo, replicaEndOffset), truncationCompleted = true)

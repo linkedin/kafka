@@ -2,7 +2,7 @@ package integration.kafka.api
 
 import kafka.api.IntegrationTestHarness
 import kafka.controller.OfflinePartition
-import kafka.server.{KafkaConfig, KafkaServer}
+import kafka.server.{KafkaConfig, KafkaServer, ReplicaManager}
 import kafka.utils.Implicits.PropertiesOps
 import kafka.utils.{Exit, TestUtils}
 import kafka.zk.ZooKeeperTestHarness
@@ -114,6 +114,7 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
       ensureLeader(leader)
       warn(s"LLWW0 the leadership has returned to original leader $leader")
 
+      ReplicaManager.followerStartedCatchingup = true
       followerBroker.startup()
 
       // wait until the follower joins the ISR again

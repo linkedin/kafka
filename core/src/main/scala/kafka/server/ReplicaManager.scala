@@ -183,6 +183,8 @@ object HostedPartition {
 
 object ReplicaManager {
   val HighWatermarkFilename = "replication-offset-checkpoint"
+  @volatile var followerStartedCatchingup = false
+  @volatile var divergingFixed = false
 }
 
 class ReplicaManager(val config: KafkaConfig,
@@ -1282,7 +1284,9 @@ class ReplicaManager(val config: KafkaConfig,
         } else {
           // Try the read first, this tells us whether we need all of adjustedFetchSize for this partition
           log = partition.localLogWithEpochOrException(fetchInfo.currentLeaderEpoch, fetchOnlyFromLeader)
-
+          if (ReplicaManager.followerStartedCatchingup && localBrokerId == 0) {
+            warn(s"LLWW0 reading for a request with lastFetchedEpoch ${fetchInfo.lastFetchedEpoch}")
+          }
           val readInfo: LogReadInfo = partition.readRecords(
             lastFetchedEpoch = fetchInfo.lastFetchedEpoch,
             fetchOffset = fetchInfo.fetchOffset,
@@ -1294,6 +1298,9 @@ class ReplicaManager(val config: KafkaConfig,
 
           val fetchDataInfo = checkFetchDataInfo(partition, readInfo.fetchedData)
 
+          if (ReplicaManager.followerStartedCatchingup && readInfo.divergingEpoch.nonEmpty) {
+            warn(s"LLWW1 divergingEpoch in readInfo ${readInfo.divergingEpoch}")
+          }
           LogReadResult(info = fetchDataInfo,
             divergingEpoch = readInfo.divergingEpoch,
             highWatermark = readInfo.highWatermark,
@@ -1620,10 +1627,13 @@ class ReplicaManager(val config: KafkaConfig,
           else
             Set.empty[Partition]
           breakdown("makeLeaders") = intervalMarker.markTimeAndReturnLatestInterval(time.milliseconds())
-          val partitionsBecomeFollower = if (partitionsToBeFollower.nonEmpty)
+          val partitionsBecomeFollower = if (partitionsToBeFollower.nonEmpty) {
+            if (ReplicaManager.followerStartedCatchingup && localBrokerId == 1) {
+              warn(s"LLWW0 partitionsToBeFollowers $partitionsToBeFollower")
+            }
             makeFollowers(controllerId, controllerEpoch, partitionsToBeFollower, correlationId, responseMap,
               highWatermarkCheckpoints, topicIdFromRequest)
-          else
+          } else
             Set.empty[Partition]
           breakdown("makeFollowers") = intervalMarker.markTimeAndReturnLatestInterval(time.milliseconds())
 
@@ -1946,6 +1956,9 @@ class ReplicaManager(val config: KafkaConfig,
           val leader = new BrokerEndPoint(leaderNode.id(), leaderNode.host(), leaderNode.port())
           val log = partition.localLogOrException
           val fetchOffset = initialFetchOffset(log)
+          if (ReplicaManager.followerStartedCatchingup && localBrokerId == 1) {
+            warn(s"LLWW0 using $fetchOffset as the initial fetch offset")
+          }
           partition.topicPartition -> InitialFetchState(leader, partition.getLeaderEpoch, fetchOffset)
         }.toMap
 

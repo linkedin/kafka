@@ -883,6 +883,9 @@ class KafkaApis(val requestChannel: RequestChannel,
           .setAbortedTransactions(abortedTransactions)
           .setRecords(data.records)
           .setPreferredReadReplica(data.preferredReadReplica.getOrElse(FetchResponse.INVALID_PREFERRED_REPLICA_ID))
+        if (ReplicaManager.followerStartedCatchingup && data.divergingEpoch.nonEmpty) {
+          warn(s"LLWW1 got divergingEpoch in Fetch response for $tp ${data.divergingEpoch}")
+        }
         data.divergingEpoch.foreach(partitionData.setDivergingEpoch)
         partitions.put(tp, partitionData)
       }

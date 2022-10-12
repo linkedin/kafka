@@ -16,9 +16,10 @@
   */
 package kafka.server.epoch
 
+import kafka.server.ReplicaManager
+
 import java.util
 import java.util.concurrent.locks.ReentrantReadWriteLock
-
 import kafka.server.checkpoints.LeaderEpochCheckpoint
 import kafka.utils.CoreUtils._
 import kafka.utils.Logging
@@ -55,7 +56,8 @@ class LeaderEpochFileCache(topicPartition: TopicPartition,
   def assign(epoch: Int, startOffset: Long): Unit = {
     val entry = EpochEntry(epoch, startOffset)
     if (assign(entry)) {
-      debug(s"Appended new epoch entry $entry. Cache now contains ${epochs.size} entries.")
+      if (ReplicaManager.divergingFixed)
+        warn(s"LLWW2 Appended new epoch entry $entry. Cache now contains ${epochs.size} entries.")
       flush()
     }
   }
@@ -228,6 +230,9 @@ class LeaderEpochFileCache(topicPartition: TopicPartition,
             } else {
               // We have at least one previous epoch and one subsequent epoch. The result is the first
               // prior epoch and the starting offset of the first subsequent epoch.
+              if (ReplicaManager.followerStartedCatchingup) {
+                warn(s"LLWW1 for requestedEpoch $requestedEpoch returning floor entry " + (floorEntry.getValue.epoch, higherEntry.getValue.startOffset))
+              }
               (floorEntry.getValue.epoch, higherEntry.getValue.startOffset)
             }
           }

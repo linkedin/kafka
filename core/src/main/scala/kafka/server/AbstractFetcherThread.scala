@@ -216,6 +216,10 @@ abstract class AbstractFetcherThread(name: String,
     */
   private def truncateToEpochEndOffsets(latestEpochsForPartitions: Map[TopicPartition, EpochData]): Unit = {
     val endOffsets = fetchEpochEndOffsets(latestEpochsForPartitions)
+    //if (ReplicaManager.followerStartedCatchingup) {
+    warn(s"LLWW0 fetching with $latestEpochsForPartitions resulted in $endOffsets, catchingup ${ReplicaManager.followerStartedCatchingup}")
+    //}
+
     //Ensure we hold a lock during truncation.
     inLock(partitionMapLock) {
       //Check no leadership and no leader epoch changes happened whilst we were unlocked, fetching epochs
@@ -381,6 +385,10 @@ abstract class AbstractFetcherThread(name: String,
                           .setErrorCode(Errors.NONE.code)
                           .setLeaderEpoch(divergingEpoch.epoch)
                           .setEndOffset(divergingEpoch.endOffset)
+
+                        if (ReplicaManager.followerStartedCatchingup) {
+                          warn(s"LLWW1 collected diverging Epoch from fetch response for $topicPartition " + divergingEndOffsets(topicPartition))
+                        }
                       }
                     }
                   } catch {
@@ -489,6 +497,10 @@ abstract class AbstractFetcherThread(name: String,
       // to truncate to high watermark.
       val lastFetchedEpoch = latestEpoch(tp)
       val state = if (lastFetchedEpoch.nonEmpty) Fetching else Truncating
+      if (ReplicaManager.followerStartedCatchingup) {
+        warn(s"LLWW1 adding $tp with initOffset ${initialFetchState.initOffset}, currentLeaderEpoch ${initialFetchState.currentLeaderEpoch},"
+        + s"state $state, lastFetchedEpoch $lastFetchedEpoch")
+      }
       PartitionFetchState(initialFetchState.initOffset, None, initialFetchState.currentLeaderEpoch,
           state, lastFetchedEpoch)
     } else {
@@ -586,17 +598,28 @@ abstract class AbstractFetcherThread(name: String,
       // less than or equal to the requested epoch.
       endOffsetForEpoch(tp, leaderEpochOffset.leaderEpoch) match {
         case Some(OffsetAndEpoch(followerEndOffset, followerEpoch)) =>
+          if (ReplicaManager.followerStartedCatchingup) {
+            warn(s"LLWW1 endOffsetForEpach(${leaderEpochOffset.leaderEpoch}) is " + OffsetAndEpoch(followerEndOffset, followerEpoch))
+          }
           if (followerEpoch != leaderEpochOffset.leaderEpoch) {
             // the follower does not know about the epoch that leader replied with
             // we truncate to the end offset of the largest epoch that is smaller than the
             // epoch the leader replied with, and send another offset for leader epoch request
             val intermediateOffsetToTruncateTo = min(followerEndOffset, replicaEndOffset)
-            info(s"Based on replica's leader epoch, leader replied with epoch ${leaderEpochOffset.leaderEpoch} " +
+            warn(s"LLWW1 Based on replica's leader epoch, leader replied with epoch ${leaderEpochOffset.leaderEpoch} " +
               s"unknown to the replica for $tp. " +
               s"Will truncate to $intermediateOffsetToTruncateTo and send another leader epoch request to the leader.")
+            if (ReplicaManager.followerStartedCatchingup) {
+              ReplicaManager.divergingFixed = true
+            }
+
             OffsetTruncationState(intermediateOffsetToTruncateTo, truncationCompleted = false)
           } else {
             val offsetToTruncateTo = min(followerEndOffset, leaderEpochOffset.endOffset)
+            if (ReplicaManager.followerStartedCatchingup) {
+              warn(s"LLWW1 epoch matched on $followerEpoch, followerEndOffset $followerEndOffset, leaderEpochEndOffset ${leaderEpochOffset.endOffset} " +
+                s" truncating to the min $offsetToTruncateTo")
+            }
             OffsetTruncationState(min(offsetToTruncateTo, replicaEndOffset), truncationCompleted = true)
           }
         case None =>

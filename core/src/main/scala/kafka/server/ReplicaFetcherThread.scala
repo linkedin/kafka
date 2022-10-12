@@ -285,6 +285,10 @@ class ReplicaFetcherThread(name: String,
             fetchState.lastFetchedEpoch.map(_.asInstanceOf[Integer]).asJava
           else
             Optional.empty[Integer]
+          if (ReplicaManager.divergingFixed) {
+            warn(s"LLWW2 currentLeaderEpoch ${fetchState.currentLeaderEpoch} lastFetchedEpoch $lastFetchedEpoch " +
+              s" fetchOffset ${fetchState.fetchOffset}")
+          }
           builder.add(topicPartition, new FetchRequest.PartitionData(
             fetchState.fetchOffset,
             logStartOffset,

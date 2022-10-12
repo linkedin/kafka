@@ -382,6 +382,9 @@ class Partition(val topicPartition: TopicPartition,
     } else {
       val remoteLeaderEpoch = remoteLeaderEpochOpt.get
       val localLeaderEpoch = leaderEpoch
+      if (ReplicaManager.followerStartedCatchingup) {
+        warn(s"LLWW1 remoteLeaderEpoch $remoteLeaderEpoch localLeaderEpoch $localLeaderEpoch")
+      }
       if (localLeaderEpoch > remoteLeaderEpoch)
         Errors.FENCED_LEADER_EPOCH
       else if (localLeaderEpoch < remoteLeaderEpoch)
@@ -1099,6 +1102,9 @@ class Partition(val topicPartition: TopicPartition,
 
     lastFetchedEpoch.ifPresent { fetchEpoch =>
       val epochEndOffset = lastOffsetForLeaderEpoch(currentLeaderEpoch, fetchEpoch, fetchOnlyFromLeader = false)
+      if (ReplicaManager.divergingFixed) {
+        warn(s"LLWW2 lastOffsetForLeaderEpoch currentLeaderEpoch ${currentLeaderEpoch}, fetchEpochOffset ($fetchEpoch, $fetchOffset), epochEndOffset $epochEndOffset")
+      }
       val error = Errors.forCode(epochEndOffset.errorCode)
       if (error != Errors.NONE) {
         throw error.exception()
@@ -1113,6 +1119,10 @@ class Partition(val topicPartition: TopicPartition,
       if (fetchOffset < initialLogStartOffset) {
         throw new OffsetOutOfRangeException(s"Received request for offset $fetchOffset for partition $topicPartition, " +
           s"but we only have log segments in the range $initialLogStartOffset to $initialLogEndOffset.")
+      }
+
+      if (ReplicaManager.divergingFixed) {
+        warn("LLWW2 divirging check " + (epochEndOffset.leaderEpoch < fetchEpoch || epochEndOffset.endOffset < fetchOffset))
       }
 
       if (epochEndOffset.leaderEpoch < fetchEpoch || epochEndOffset.endOffset < fetchOffset) {
@@ -1138,13 +1148,17 @@ class Partition(val topicPartition: TopicPartition,
     }
 
     val fetchedData = localLog.read(fetchOffset, maxBytes, fetchIsolation, minOneMessage)
-    LogReadInfo(
+    val readInfo = LogReadInfo(
       fetchedData = fetchedData,
       divergingEpoch = None,
       highWatermark = initialHighWatermark,
       logStartOffset = initialLogStartOffset,
       logEndOffset = initialLogEndOffset,
       lastStableOffset = initialLastStableOffset)
+    if (ReplicaManager.divergingFixed) {
+      warn(s"LLWW2 returning readInfo $readInfo")
+    }
+    readInfo
   }
 
   def fetchOffsetForTimestamp(timestamp: Long,

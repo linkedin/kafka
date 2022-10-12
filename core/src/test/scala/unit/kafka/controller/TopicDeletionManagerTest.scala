@@ -92,7 +92,6 @@ class TopicDeletionManagerTest {
     assertEquals(barReplicas, controllerContext.replicasInState("bar", ReplicaDeletionStarted))
     verify(deletionClient).sendMetadataUpdate(fooPartitions ++ barPartitions)
     assertEquals(Set("foo", "bar"), controllerContext.topicsToBeDeleted)
-    assertEquals(Set("foo", "bar"), controllerContext.topicsWithDeletionStarted)
     assertEquals(Set(), controllerContext.topicsIneligibleForDeletion)
 
     // Complete the deletion
@@ -103,7 +102,6 @@ class TopicDeletionManagerTest {
     assertEquals(Set.empty, controllerContext.partitionsForTopic("bar"))
     assertEquals(Set.empty[PartitionAndReplica], controllerContext.replicaStates.keySet.filter(_.topic == "bar"))
     assertEquals(Set(), controllerContext.topicsToBeDeleted)
-    assertEquals(Set(), controllerContext.topicsWithDeletionStarted)
     assertEquals(Set(), controllerContext.topicsIneligibleForDeletion)
 
     assertEquals(1, partitionStateMachine.stateChangesCalls(OfflinePartition))
@@ -152,7 +150,6 @@ class TopicDeletionManagerTest {
     assertEquals(offlineReplicas, controllerContext.replicasInState("foo", OfflineReplica))
 
     assertEquals(Set("foo"), controllerContext.topicsToBeDeleted)
-    assertEquals(Set("foo"), controllerContext.topicsWithDeletionStarted)
     assertEquals(Set(), controllerContext.topicsIneligibleForDeletion)
 
     // Deletion succeeds for online replicas
@@ -161,7 +158,6 @@ class TopicDeletionManagerTest {
     assertEquals(Set.empty, controllerContext.partitionsForTopic("foo"))
     assertEquals(Set.empty[PartitionAndReplica], controllerContext.replicaStates.keySet.filter(_.topic == "foo"))
     assertEquals(Set(), controllerContext.topicsToBeDeleted)
-    assertEquals(Set(), controllerContext.topicsWithDeletionStarted)
     assertEquals(Set(), controllerContext.topicsIneligibleForDeletion)
     assertFalse(controllerContext.allTopics.contains("foo"))
   }

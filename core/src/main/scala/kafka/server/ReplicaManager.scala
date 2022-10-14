@@ -320,7 +320,7 @@ class ReplicaManager(val config: KafkaConfig,
   def startup(): Unit = {
     // start ISR expiration thread
     // A follower can lag behind leader for up to config.replicaLagTimeMaxMs x 1.5 before it is removed from ISR
-    scheduler.schedule("isr-expiration", maybeShrinkIsr _, period = config.replicaLagTimeMaxMs / 2, unit = TimeUnit.MILLISECONDS)
+    scheduler.schedule("isr-expiration", maybeShrinkIsrOrTransferToNewLeader _, period = config.replicaLagTimeMaxMs / 2, unit = TimeUnit.MILLISECONDS)
     // scheduler.schedule("shutdown-idle-replica-alter-log-dirs-thread", shutdownIdleReplicaAlterLogDirsThread _, period = 10000L, unit = TimeUnit.MILLISECONDS)
 
     // If inter-broker protocol (IBP) < 1.0, the controller will send LeaderAndIsrRequest V0 which does not include isNew field.
@@ -1981,12 +1981,17 @@ class ReplicaManager(val config: KafkaConfig,
       log.highWatermark
   }
 
-  private def maybeShrinkIsr(): Unit = {
+  private def maybeShrinkIsrOrTransferToNewLeader(): Unit = {
     trace("Evaluating ISR list of partitions to see which replicas can be removed from the ISR")
 
     // Shrink ISRs for non offline partitions
     allPartitions.keys.foreach { topicPartition =>
       onlinePartition(topicPartition).foreach(_.maybeShrinkIsr())
+    }
+
+    // Transfer leadership for non offline partitions
+    allPartitions.keys.foreach { topicPartition =>
+      onlinePartition(topicPartition).foreach(_.maybeTransferToNewLeader())
     }
   }
 
@@ -2222,38 +2227,45 @@ class ReplicaManager(val config: KafkaConfig,
     partitions: Set[TopicPartition],
     partitionRecommendedLeaders: Map[TopicPartition, Int],
     electionType: ElectionType,
-    responseCallback: Map[TopicPartition, ApiError] => Unit,
+    responseCallback: Either[Map[TopicPartition, ApiError], Errors] => Unit,
     requestTimeout: Int
   ): Unit = {
 
     val deadline = time.milliseconds() + requestTimeout
 
-    def electionCallback(results: Map[TopicPartition, Either[ApiError, Int]]): Unit = {
+    def electionCallback(topResults: Either[Map[TopicPartition, Either[ApiError, Int]], Errors]): Unit = {
       val expectedLeaders = mutable.Map.empty[TopicPartition, Int]
       val failures = mutable.Map.empty[TopicPartition, ApiError]
-      results.foreach {
-        case (partition, Right(leader)) => expectedLeaders += partition -> leader
-        case (partition, Left(error)) => failures += partition -> error
-      }
-      if (expectedLeaders.nonEmpty) {
-        val watchKeys = expectedLeaders.iterator.map {
-          case (tp, _) => TopicPartitionOperationKey(tp)
-        }.toBuffer
+      topResults match {
+        case Right(error) =>
+          responseCallback(Right(error))
+        case Left(results) =>
+          results.foreach {
+            case (partition, Right(leader)) => expectedLeaders += partition -> leader
+            case (partition, Left(error)) => failures += partition -> error
+          }
+          if (expectedLeaders.nonEmpty) {
+            val watchKeys = expectedLeaders.iterator.map {
+              case (tp, _) => TopicPartitionOperationKey(tp)
+            }.toBuffer
 
-        delayedElectLeaderPurgatory.tryCompleteElseWatch(
-          new DelayedElectLeader(
-            math.max(0, deadline - time.milliseconds()),
-            expectedLeaders,
-            failures,
-            this,
-            responseCallback
-          ),
-          watchKeys
-        )
-      } else {
-          // There are no partitions actually being elected, so return immediately
-          responseCallback(failures)
+            delayedElectLeaderPurgatory.tryCompleteElseWatch(
+              new DelayedElectLeader(
+                math.max(0, deadline - time.milliseconds()),
+                expectedLeaders,
+                failures,
+                this,
+                responseCallback
+              ),
+              watchKeys
+            )
+          } else {
+            // There are no partitions actually being elected, so return immediately
+            responseCallback(Left(failures))
+          }
       }
+
+
     }
 
     controller.electLeaders(partitions, partitionRecommendedLeaders, electionType, electionCallback)

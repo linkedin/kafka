@@ -3044,55 +3044,59 @@ class KafkaApis(val requestChannel: RequestChannel,
     val electionRequest = request.body[ElectLeadersRequest]
 
     def sendResponseCallback(
-      error: ApiError
-    )(
-      results: Map[TopicPartition, ApiError]
+      topResults: Either[Map[TopicPartition, ApiError], Errors]
     ): Unit = {
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs => {
-        val adjustedResults = if (electionRequest.data.topicPartitions == null) {
-          /* When performing elections across all of the partitions we should only return
-           * partitions for which there was an eleciton or resulted in an error. In other
-           * words, partitions that didn't need election because they ready have the correct
-           * leader are not returned to the client.
-           */
-          results.filter { case (_, error) =>
-            error.error != Errors.ELECTION_NOT_NEEDED
-          }
-        } else results
+        topResults match {
+          case Right(error) =>
+            new ElectLeadersResponse(
+              requestThrottleMs,
+              error.code,
+              Collections.emptyList(),
+              electionRequest.version
+            )
+          case Left(results) =>
+            val adjustedResults = if (electionRequest.data.topicPartitions == null) {
+              /* When performing elections across all of the partitions we should only return
+               * partitions for which there was an eleciton or resulted in an error. In other
+               * words, partitions that didn't need election because they ready have the correct
+               * leader are not returned to the client.
+               */
+              results.filter { case (_, error) =>
+                error.error != Errors.ELECTION_NOT_NEEDED
+              }
+            } else results
 
-        val electionResults = new util.ArrayList[ReplicaElectionResult]()
-        adjustedResults
-          .groupBy { case (tp, _) => tp.topic }
-          .forKeyValue { (topic, ps) =>
-            val electionResult = new ReplicaElectionResult()
+            val electionResults = new util.ArrayList[ReplicaElectionResult]()
+            adjustedResults
+              .groupBy { case (tp, _) => tp.topic }
+              .forKeyValue { (topic, ps) =>
+                val electionResult = new ReplicaElectionResult()
 
-            electionResult.setTopic(topic)
-            ps.forKeyValue { (topicPartition, error) =>
-              val partitionResult = new PartitionResult()
-              partitionResult.setPartitionId(topicPartition.partition)
-              partitionResult.setErrorCode(error.error.code)
-              partitionResult.setErrorMessage(error.message)
-              electionResult.partitionResult.add(partitionResult)
-            }
+                electionResult.setTopic(topic)
+                ps.forKeyValue { (topicPartition, error) =>
+                  val partitionResult = new PartitionResult()
+                  partitionResult.setPartitionId(topicPartition.partition)
+                  partitionResult.setErrorCode(error.error.code)
+                  partitionResult.setErrorMessage(error.message)
+                  electionResult.partitionResult.add(partitionResult)
+                }
 
-            electionResults.add(electionResult)
-          }
+                electionResults.add(electionResult)
+              }
 
-        new ElectLeadersResponse(
-          requestThrottleMs,
-          error.error.code,
-          electionResults,
-          electionRequest.version
-        )
+            new ElectLeadersResponse(
+              requestThrottleMs,
+              ApiError.NONE.error.code,
+              electionResults,
+              electionRequest.version
+            )
+        }
       })
     }
 
     if (!authHelper.authorize(request.context, ALTER, CLUSTER, CLUSTER_NAME)) {
-      val error = new ApiError(Errors.CLUSTER_AUTHORIZATION_FAILED, null)
-      val partitionErrors: Map[TopicPartition, ApiError] =
-        electionRequest.topicPartitions.iterator.map(partition => partition -> error).toMap
-
-      sendResponseCallback(error)(partitionErrors)
+      sendResponseCallback(Right(Errors.CLUSTER_AUTHORIZATION_FAILED))
     } else {
       val partitions = if (electionRequest.data.topicPartitions == null) {
         metadataCache.getAllTopics().flatMap(metadataCache.getTopicPartitions)
@@ -3105,7 +3109,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         partitions,
         electionRequest.partitionRecommendedLeaders,
         electionRequest.electionType,
-        sendResponseCallback(ApiError.NONE),
+        sendResponseCallback,
         electionRequest.data.timeoutMs
       )
     }

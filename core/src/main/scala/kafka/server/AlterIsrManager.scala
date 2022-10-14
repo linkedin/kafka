@@ -51,6 +51,10 @@ trait AlterIsrManager {
   def submit(alterIsrItem: AlterIsrItem): Boolean
 }
 
+case class TransferToLeaderItem(topicPartition: TopicPartition,
+  newLeader: Int,
+  callback: Either[Errors, LeaderAndIsr] => Unit)
+
 case class AlterIsrItem(topicPartition: TopicPartition,
                         leaderAndIsr: LeaderAndIsr,
                         callback: Either[Errors, LeaderAndIsr] => Unit,

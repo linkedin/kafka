@@ -1394,7 +1394,12 @@ class Partition(val topicPartition: TopicPartition,
   }
 
   private def handleTransferLeaderResponse(response: Either[Errors, TopicPartition]): Unit = {
-    info(s"Received TransferLeader response $response")
+    response match {
+      case Right(tp) =>
+        info(s"Successfully transferred the leadership for $topicPartition")
+      case Left(e) =>
+        error(s"Received error when transferring leadership for $topicPartition", e.exception())
+    }
   }
 
   private def sendAlterIsrRequest(proposedIsrState: IsrState): Unit = {

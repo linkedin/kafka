@@ -528,6 +528,9 @@ class BrokerServer(
       if (alterIsrManager != null)
         CoreUtils.swallow(alterIsrManager.shutdown(), this)
 
+      if (transferLeaderManager != null)
+        CoreUtils.swallow(transferLeaderManager.shutdown(), this)
+
       if (clientToControllerChannelManager != null)
         CoreUtils.swallow(clientToControllerChannelManager.shutdown(), this)
 

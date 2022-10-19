@@ -3390,11 +3390,7 @@ case class ReplicaLeaderElection(
 ) extends ControllerEvent {
   override def state: ControllerState = ControllerState.ManualLeaderBalance
 
-  override def preempt(): Unit = callback(Left(
-    partitionsFromAdminClientOpt.fold(Map.empty[TopicPartition, Either[ApiError, Int]]) { partitions =>
-      partitions.iterator.map(partition => partition -> Left(new ApiError(Errors.NOT_CONTROLLER, null))).toMap
-    }
-  ))
+  override def preempt(): Unit = callback(Right(Errors.NOT_CONTROLLER))
 }
 
 /**

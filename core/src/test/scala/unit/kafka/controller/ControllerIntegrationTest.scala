@@ -1099,13 +1099,13 @@ class ControllerIntegrationTest extends ZooKeeperTestHarness {
     val event1 = ReplicaLeaderElection(Some(partitions), Some(Map.empty), ElectionType.PREFERRED, ZkTriggered, topResult => {
       topResult match {
         case Right(error) =>
-        case Left(partitionsMap) =>
-          for (partition <- partitionsMap) {
-            partition._2 match {
-              case Left(e) => assertEquals(Errors.NOT_CONTROLLER, e.error())
-              case Right(_) => throw new AssertionError("replica leader election should error")
-            }
-          }
+        case Left(partitionsMap) => // To make the rebasing with upstream kafka easier, we don't indent the following block
+      for (partition <- partitionsMap) {
+        partition._2 match {
+          case Left(e) => assertEquals(Errors.NOT_CONTROLLER, e.error())
+          case Right(_) => throw new AssertionError("replica leader election should error")
+        }
+      }
       }
     })
     val event2 = ControlledShutdown(0, 0, {

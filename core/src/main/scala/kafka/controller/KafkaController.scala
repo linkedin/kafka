@@ -2624,19 +2624,17 @@ class KafkaController(val config: KafkaConfig,
     brokerEpoch: Long
   ): Unit = {
     if (!isActive) {
-      callback(Left(partitionsFromAdminClientOpt.fold(Map.empty[TopicPartition, Either[ApiError, Int]]) { partitions =>
-        partitions.iterator.map(partition => partition -> Left(new ApiError(Errors.NOT_CONTROLLER, null))).toMap
-      }))
+      callback(Right(Errors.NOT_CONTROLLER))
     } else {
       if (brokerId != -1) {
         val brokerEpochOpt = controllerContext.liveBrokerIdAndEpochs.get(brokerId)
         if (brokerEpochOpt.isEmpty) {
-          info(s"Ignoring AlterIsr due to unknown broker $brokerId")
+          info(s"Ignoring ElectLeaders due to unknown broker $brokerId")
           callback.apply(Right(Errors.STALE_BROKER_EPOCH))
           return
         }
         if (!brokerEpochOpt.contains(brokerEpoch)) {
-          info(s"Ignoring AlterIsr due to stale broker epoch $brokerEpoch and local broker epoch $brokerEpochOpt for broker $brokerId")
+          info(s"Ignoring ElectLeaders due to stale broker epoch in request $brokerEpoch and local broker epoch $brokerEpochOpt for broker $brokerId")
           callback.apply(Right(Errors.STALE_BROKER_EPOCH))
           return
         }

@@ -2234,30 +2234,30 @@ class ReplicaManager(val config: KafkaConfig,
       topResults match {
         case Right(error) =>
           responseCallback(Right(error))
-        case Left(results) =>
-          results.foreach {
-            case (partition, Right(leader)) => expectedLeaders += partition -> leader
-            case (partition, Left(error)) => failures += partition -> error
-          }
-          if (expectedLeaders.nonEmpty) {
-            val watchKeys = expectedLeaders.iterator.map {
-              case (tp, _) => TopicPartitionOperationKey(tp)
-            }.toBuffer
+        case Left(results) => // To make the rebasing with upstream kafka easier, we don't indent the following block
+      results.foreach {
+        case (partition, Right(leader)) => expectedLeaders += partition -> leader
+        case (partition, Left(error)) => failures += partition -> error
+      }
+      if (expectedLeaders.nonEmpty) {
+        val watchKeys = expectedLeaders.iterator.map {
+          case (tp, _) => TopicPartitionOperationKey(tp)
+        }.toBuffer
 
-            delayedElectLeaderPurgatory.tryCompleteElseWatch(
-              new DelayedElectLeader(
-                math.max(0, deadline - time.milliseconds()),
-                expectedLeaders,
-                failures,
-                this,
-                responseCallback
-              ),
-              watchKeys
-            )
-          } else {
-            // There are no partitions actually being elected, so return immediately
-            responseCallback(Left(failures))
-          }
+        delayedElectLeaderPurgatory.tryCompleteElseWatch(
+          new DelayedElectLeader(
+            math.max(0, deadline - time.milliseconds()),
+            expectedLeaders,
+            failures,
+            this,
+            responseCallback
+          ),
+          watchKeys
+        )
+      } else {
+        // There are no partitions actually being elected, so return immediately
+        responseCallback(Left(failures))
+      }
       }
 
 

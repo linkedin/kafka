@@ -59,21 +59,21 @@ class CheckpointReadBuffer[T](location: String,
               case Some(e) =>
                 entries += e
                 line = reader.readLine()
-              case _ => return maybeThrowException(malformedLineException(line))
+              case _ => return dropCorruptedFileOrThrow(malformedLineException(line))
             }
           }
           if (entries.size != expectedSize)
-            return maybeThrowException(new IOException(s"Expected $expectedSize entries in checkpoint file ($location), but found only ${entries.size}"))
+            return dropCorruptedFileOrThrow(new IOException(s"Expected $expectedSize entries in checkpoint file ($location), but found only ${entries.size}"))
           entries
         case _ =>
-          maybeThrowException(new IOException(s"Unrecognized version of the checkpoint file ($location): " + line))
+          dropCorruptedFileOrThrow(new IOException(s"Unrecognized version of the checkpoint file ($location): " + line))
       }
     } catch {
-      case _: NumberFormatException => maybeThrowException(malformedLineException(line))
+      case _: NumberFormatException => dropCorruptedFileOrThrow(malformedLineException(line))
     }
   }
 
-  private def maybeThrowException(e: Exception): Seq[T] = {
+  private def dropCorruptedFileOrThrow(e: Exception): Seq[T] = {
     if (GlobalConfig.liDropCorruptedFilesEnable) {
       // clear contents of the file and return an empty sequence
       CoreUtils.truncateToZero(location)

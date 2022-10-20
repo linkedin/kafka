@@ -36,8 +36,6 @@ import scala.collection.mutable.ListBuffer
  * Transferring the leadership is an asynchronous operation, so partitions will learn about the result of their
  * request through a callback.
  *
- * Note that ISR state changes can still be initiated by the controller and sent to the partitions via LeaderAndIsr
- * requests.
  */
 trait TransferLeaderManager {
   def start(): Unit = {}
@@ -53,9 +51,6 @@ case class TransferLeaderItem(topicPartition: TopicPartition,
 
 object TransferLeaderManager {
   val defaultTimeout = 60000
-  /**
-   * Factory to TransferLeader based implementation, used when IBP >= 2.7-IV2
-   */
   def apply(
     config: KafkaConfig,
     metadataCache: MetadataCache,
@@ -96,8 +91,8 @@ class DefaultTransferLeaderManager(
 ) extends TransferLeaderManager with Logging with KafkaMetricsGroup {
 
   private[server] val unsentTransferQueue: BlockingQueue[TransferLeaderItem] = new LinkedBlockingQueue()
-  // The inflightIsrUpdates map is populated by the unsentIsrQueue, and the items in it are removed in the response callback.
-  // Putting new items to the inflightIsrUpdates and removing items from it won't be performed at the same time, and the coordination is
+  // The inflightTransfers map is populated by the unsentTransferQueue, and the items in it are removed in the response callback.
+  // Putting new items to the inflightTransfers and removing items from it won't be performed at the same time, and the coordination is
   // done via the inflightRequest flag.
   private[server] val inflightTransfers: util.Map[TopicPartition, TransferLeaderItem] = new ConcurrentHashMap[TopicPartition, TransferLeaderItem]()
 
@@ -127,7 +122,7 @@ class DefaultTransferLeaderManager(
         // and the previous ones will be discarded
         inflightTransfers.put(item.topicPartition, item)
       }
-      // Since the maybePropagateIsrChanges can be called from the response callback,
+      // Since the maybeTransferLeader can be called from the response callback,
       // there may be cases where right after the while loop, some new items are added to the unsentIsrQueue in the submit
       // thread. In such a case, the newly added item will be sent in the next request
 
@@ -148,9 +143,8 @@ class DefaultTransferLeaderManager(
     val request = buildRequest(inflightTransferLeaderItems, brokerEpoch)
     debug(s"Sending TransferLeader to controller $request")
 
-    // We will not timeout AlterISR request, instead letting it retry indefinitely
-    // until a response is received, or a new LeaderAndIsr overwrites the existing isrState
-    // which causes the response for those partitions to be ignored.
+    // We will not timeout the ElectLeaders request, instead letting it retry indefinitely
+    // until a response is received.
     controllerChannelManager.sendRequest(request,
       new ControllerRequestCompletionHandler {
         override def onComplete(response: ClientResponse): Unit = {
@@ -191,12 +185,10 @@ class DefaultTransferLeaderManager(
   }
 
   private def buildRequest(inflightTransferLeaderItems: Seq[TransferLeaderItem], brokerEpoch: Long): ElectLeadersRequest.Builder = {
-    val topicPartitions = new util.ArrayList[TopicPartition]()
     val recommendedLeaders = new util.HashMap[TopicPartition, Integer]()
 
     inflightTransferLeaderItems.groupBy(_.topicPartition.topic).foreach(entry => {
       entry._2.foreach(item => {
-        topicPartitions.add(item.topicPartition)
         recommendedLeaders.put(item.topicPartition, item.newLeader)
       })
     })
@@ -232,8 +224,7 @@ class DefaultTransferLeaderManager(
         }
 
         // Iterate across the items we sent rather than what we received to ensure we run the callback even if a
-        // partition was somehow erroneously excluded from the response. Note that these callbacks are run from
-        // the leaderIsrUpdateLock write lock in Partition#sendTransferLeaderRequest
+        // partition was somehow erroneously excluded from the response.
         inflightTransferLeaderItems.foreach(inflightTransferLeader =>
           if (partitionResponses.contains(inflightTransferLeader.topicPartition)) {
             try {

@@ -155,6 +155,8 @@ class KafkaServer(
 
   var alterIsrManager: AlterIsrManager = null
 
+  var transferLeaderManager: TransferLeaderManager = null
+
   var kafkaScheduler: KafkaScheduler = null
 
   var metadataCache: ZkMetadataCache = null
@@ -353,6 +355,18 @@ class KafkaServer(
         }
         alterIsrManager.start()
 
+        transferLeaderManager = TransferLeaderManager(
+          config = config,
+          metadataCache = metadataCache,
+          scheduler = kafkaScheduler,
+          time = time,
+          metrics = metrics,
+          threadNamePrefix = threadNamePrefix,
+          brokerEpochSupplier = () => kafkaController.brokerEpoch,
+          config.brokerId
+        )
+        transferLeaderManager.start()
+
         _replicaManager = createReplicaManager(isShuttingDown)
         replicaManager.startup()
 
@@ -522,7 +536,7 @@ class KafkaServer(
 
   protected def createReplicaManager(isShuttingDown: AtomicBoolean): ReplicaManager = {
     new ReplicaManager(config, metrics, time, Some(zkClient), kafkaScheduler, logManager, Option.apply(remoteLogManager),
-      isShuttingDown, quotaManagers, brokerTopicStats, metadataCache, logDirFailureChannel, alterIsrManager)
+      isShuttingDown, quotaManagers, brokerTopicStats, metadataCache, logDirFailureChannel, alterIsrManager, transferLeaderManager)
   }
 
   private def initZkClient(time: Time): Unit = {
@@ -823,6 +837,9 @@ class KafkaServer(
 
         if (alterIsrManager != null)
           CoreUtils.swallow(alterIsrManager.shutdown(), this)
+
+        if (transferLeaderManager != null)
+          CoreUtils.swallow(transferLeaderManager.shutdown(), this)
 
         if (clientToControllerChannelManager != null)
           CoreUtils.swallow(clientToControllerChannelManager.shutdown(), this)

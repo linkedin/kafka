@@ -64,7 +64,7 @@ class DegradedLeaderTest extends ZooKeeperTestHarness {
     /**
      * An out-of-sync replica is defined to be one whose log end offset is different from that of the leader,
      * and whose lastCaughtUpTimeMs has been too long in the past.
-     * When no messages have been produced, the log end offsets of all replicas have the same vaule, i.e. 0.
+     * When no messages have been produced, the log end offsets of all replicas have the same value, i.e. 0.
      * Thus there will be no UnderMinISR partitions.
      * The UnderMinISR partitions will only happen after some messages are produced.
      */

@@ -412,18 +412,25 @@ class LogSegment private[log] (val log: FileRecords,
     ", largestRecordTimestamp=" + largestRecordTimestamp +
     ")"
 
+  case class SegmentTruncationResult(bytesTruncated: Long, offsetTruncatedTo: Long)
+
   /**
    * Truncate off all index and log entries with offsets >= the given offset.
    * If the given offset is larger than the largest message in this segment, do nothing.
    *
    * @param offset The offset to truncate to
-   * @return The number of log bytes truncated
+   * @return SegmentTruncationResult containing the number of log bytes truncated and the offset after truncate,
+   *         which may differ from the offset parameter because log segment truncation must be performed over a batch
    */
   @nonthreadsafe
-  def truncateTo(offset: Long): Int = {
+  def truncateTo(offset: Long): SegmentTruncationResult = {
     // Do offset translation before truncating the index to avoid needless scanning
     // in case we truncate the full index
-    val mapping = translateOffset(offset)
+    val startingFilePosition = 0
+    val batch = log.searchForBatchOffsetIsAt(offset, max(offsetIndex.lookup(offset).position, startingFilePosition))
+    val mapping = if (batch == null) null
+                  else new LogOffsetPosition(batch.lastOffset(), batch.position(), batch.sizeInBytes())
+
     offsetIndex.truncateTo(offset)
     timeIndex.truncateTo(offset)
     txnIndex.truncateTo(offset)
@@ -441,7 +448,7 @@ class LogSegment private[log] (val log: FileRecords,
     bytesSinceLastIndexEntry = 0
     if (maxTimestampSoFar >= 0)
       loadLargestTimestamp()
-    bytesTruncated
+    SegmentTruncationResult(bytesTruncated = bytesTruncated, offsetTruncatedTo = batch.baseOffset())
   }
 
   /**

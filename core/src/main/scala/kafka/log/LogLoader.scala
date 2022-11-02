@@ -22,7 +22,7 @@ import java.nio.file.{Files, NoSuchFileException}
 
 import kafka.common.LogSegmentOffsetOverflowException
 import kafka.log.Log.{CleanedFileSuffix, DeletedFileSuffix, SwapFileSuffix, isIndexFile, isLogFile, offsetFromFile}
-import kafka.server.{LogDirFailureChannel, LogOffsetMetadata}
+import kafka.server.{GlobalConfig, LogDirFailureChannel, LogOffsetMetadata}
 import kafka.server.epoch.LeaderEpochFileCache
 import kafka.utils.{CoreUtils, Logging, Scheduler}
 import org.apache.kafka.common.TopicPartition
@@ -351,6 +351,12 @@ object LogLoader extends Logging {
    * @throws LogSegmentOffsetOverflowException if the segment contains messages that cause index offset overflow
    */
   private def recoverSegment(segment: LogSegment, params: LoadLogParams): Int = {
+    if (GlobalConfig.logRecoveryShouldThrowException) {
+      // we should only trigger the exception once
+      GlobalConfig.logRecoveryShouldThrowException = false
+      throw new IllegalStateException("Explicitly trigger an exception to test the log recovery logic")
+    }
+
     val producerStateManager = new ProducerStateManager(
       params.topicPartition,
       params.dir,
@@ -418,10 +424,10 @@ object LogLoader extends Logging {
           try {
             recoverSegment(segment, params)
           } catch {
-            case _: InvalidOffsetException =>
+            case e: Exception =>
               val startOffset = segment.baseOffset
-              warn(s"${params.logIdentifier}Found invalid offset during recovery. Deleting the" +
-                s" corrupt segment and creating an empty one with starting offset $startOffset")
+              warn(s"${params.logIdentifier}Found exception during recovery. Deleting the" +
+                s" corrupt segment and creating an empty one with starting offset $startOffset", e)
               segment.truncateTo(startOffset).bytesTruncated
           }
         if (truncatedBytes > 0) {

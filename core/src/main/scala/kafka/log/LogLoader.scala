@@ -423,6 +423,8 @@ object LogLoader extends Logging {
           try {
             recoverSegment(segment, params)
           } catch {
+            case ooe: LogSegmentOffsetOverflowException =>
+              throw ooe
             case e: Exception =>
               val startOffset = segment.baseOffset
               warn(s"${params.logIdentifier}Found exception during recovery. Deleting the" +

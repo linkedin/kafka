@@ -197,7 +197,7 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
     bw.close()
   }
 
-  private def setupSingleBrokerClusterWithTopic(segmentBytes: Long): (KafkaServer, KafkaProducer[Array[Byte], Array[Byte]]) = {
+  private def setupSingleDataBrokerClusterWithTopic(segmentBytes: Long): (KafkaServer, KafkaProducer[Array[Byte], Array[Byte]]) = {
     // create brokers
     val serverConfigs = TestUtils.createBrokerConfigs(2, zkConnect, false)
       .map { props => {
@@ -228,7 +228,7 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
 
   @Test
   def testCorruptedLog(): Unit = {
-    val (dataBroker, producer) = setupSingleBrokerClusterWithTopic(100)
+    val (dataBroker, producer) = setupSingleDataBrokerClusterWithTopic(100)
 
     val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, partition, "key".getBytes(StandardCharsets.UTF_8),
       "value".getBytes(StandardCharsets.UTF_8))
@@ -273,7 +273,7 @@ class DropCorruptedFilesTest extends ZooKeeperTestHarness {
 
   @Test
   def testUnexpectedExceptionDuringLogLoading(): Unit = {
-    val (dataBroker, producer) = setupSingleBrokerClusterWithTopic(100)
+    val (dataBroker, producer) = setupSingleDataBrokerClusterWithTopic(100)
 
     val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, partition, "key".getBytes(StandardCharsets.UTF_8),
       "value".getBytes(StandardCharsets.UTF_8))

@@ -350,6 +350,13 @@ class KafkaServer(
             time = time,
             metrics = metrics,
             threadNamePrefix = threadNamePrefix,
+            /**
+             * Since the kafkaController object is initialized later in this method, there is the question of whether the brokerEpochSupplier can
+             * trigger NullPointerExceptions. That should not happen because there is a implicit barrier:
+             * 1. The Partition objects are created when processing the LeaderAndISR requests, and only after they are created can the brokerEpochSupplier be called.
+             * 2. Processing an LeaderAndISR request won’t be possible until the {@link SocketServer.startProcessingRequests()} method is called
+             * toward the end of this method.
+             */
             brokerEpochSupplier = () => kafkaController.brokerEpoch,
             config.brokerId
           )

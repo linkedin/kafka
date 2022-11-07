@@ -419,7 +419,7 @@ object LogLoader extends Logging {
       while (unflushed.hasNext && !truncated) {
         val segment = unflushed.next()
         info(s"${params.logIdentifier}Recovering unflushed segment ${segment.baseOffset}")
-        val truncatedBytes =
+        val truncatedBytes: Long =
           try {
             recoverSegment(segment, params)
           } catch {

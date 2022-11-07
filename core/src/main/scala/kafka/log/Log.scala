@@ -2037,6 +2037,11 @@ class Log(@volatile private var _dir: File,
             bytesTruncated += removeAndDeleteSegments(deletable, asyncDelete = true, LogTruncation)
             val activeSegmentTruncationInfo = activeSegment.truncateTo(targetOffset)
             bytesTruncated += activeSegmentTruncationInfo.bytesTruncated
+            // TODO:
+            //  Note that .offsetTruncatedTo can be inaccurate, but since this is for estimation, we accept it for now.
+            //  See details inside LogSegment#truncateTo
+            offsetTruncatedTo = activeSegmentTruncationInfo.offsetTruncatedTo
+            messagesTruncated = originalLogEndOffset - offsetTruncatedTo
 
             leaderEpochCache.foreach(_.truncateFromEnd(targetOffset))
 
@@ -2045,8 +2050,6 @@ class Log(@volatile private var _dir: File,
               localLogStartOffset = math.min(targetOffset, localLogStartOffset),
               endOffset = targetOffset
             )
-            offsetTruncatedTo = activeSegmentTruncationInfo.offsetTruncatedTo
-            messagesTruncated = originalLogEndOffset - offsetTruncatedTo
           }
           // FIXME: this code path involves not only data plane segments but also KRaft metadata logs.  Should find a way to distinguish after moving to KRaft.
           warn(s"Attempted truncating to offset $targetOffset. Resulted in truncated to $offsetTruncatedTo from the original log end offset $originalLogEndOffset, " +

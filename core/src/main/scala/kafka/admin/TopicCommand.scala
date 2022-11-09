@@ -166,7 +166,8 @@ object TopicCommand extends Logging {
       !opts.reportUnavailablePartitions &&
       !opts.reportUnderReplicatedPartitions &&
       !opts.reportUnderMinIsrPartitions &&
-      !opts.reportAtMinIsrPartitions
+      !opts.reportAtMinIsrPartitions &&
+      !opts.reportInFlightPartitions
     val describePartitions = !opts.reportOverriddenConfigs
 
     private def shouldPrintUnderReplicatedPartitions(partitionDescription: PartitionDescription): Boolean = {
@@ -180,6 +181,9 @@ object TopicCommand extends Logging {
     }
     private def shouldPrintAtMinIsrPartitions(partitionDescription: PartitionDescription): Boolean = {
       opts.reportAtMinIsrPartitions && partitionDescription.isAtMinIsrPartitions
+    }
+    private def shouldPrintInFlightPartitions(partitionDescription: PartitionDescription): Boolean = {
+      opts.reportInFlightPartitions && partitionDescription.reassignment.isDefined
     }
 
     private def shouldPrintTopicPartition(partitionDesc: PartitionDescription): Boolean = {
@@ -502,6 +506,8 @@ object TopicCommand extends Logging {
       "if set when describing topics, only show partitions whose isr count is less than the configured minimum.")
     private val reportAtMinIsrPartitionsOpt = parser.accepts("at-min-isr-partitions",
       "if set when describing topics, only show partitions whose isr count is equal to the configured minimum.")
+    private val reportInFlightPartitionsOpt = parser.accepts("inflight-partitions",
+      "if set when describing topics, only show partitions who is undergoing reassignment.")
     private val topicsWithOverridesOpt = parser.accepts("topics-with-overrides",
       "if set when describing topics, only show topics that have overridden configs")
     private val ifExistsOpt = parser.accepts("if-exists",
@@ -518,7 +524,7 @@ object TopicCommand extends Logging {
 
     private val allTopicLevelOpts = immutable.Set[OptionSpec[_]](alterOpt, createOpt, describeOpt, listOpt, deleteOpt)
 
-    private val allReplicationReportOpts = Set(reportUnderReplicatedPartitionsOpt, reportUnderMinIsrPartitionsOpt, reportAtMinIsrPartitionsOpt, reportUnavailablePartitionsOpt)
+    private val allReplicationReportOpts = Set(reportUnderReplicatedPartitionsOpt, reportUnderMinIsrPartitionsOpt, reportAtMinIsrPartitionsOpt, reportInFlightPartitionsOpt, reportUnavailablePartitionsOpt)
 
     def has(builder: OptionSpec[_]): Boolean = options.has(builder)
     def valueAsOption[A](option: OptionSpec[A], defaultValue: Option[A] = None): Option[A] = if (has(option)) Some(options.valueOf(option)) else defaultValue
@@ -545,6 +551,7 @@ object TopicCommand extends Logging {
     def reportUnavailablePartitions: Boolean = has(reportUnavailablePartitionsOpt)
     def reportUnderMinIsrPartitions: Boolean = has(reportUnderMinIsrPartitionsOpt)
     def reportAtMinIsrPartitions: Boolean = has(reportAtMinIsrPartitionsOpt)
+    def reportInFlightPartitions: Boolean = has(reportInFlightPartitionsOpt)
     def reportOverriddenConfigs: Boolean = has(topicsWithOverridesOpt)
     def ifExists: Boolean = has(ifExistsOpt)
     def ifNotExists: Boolean = has(ifNotExistsOpt)
@@ -590,6 +597,8 @@ object TopicCommand extends Logging {
         allTopicLevelOpts -- Set(describeOpt) ++ allReplicationReportOpts - reportUnderMinIsrPartitionsOpt + topicsWithOverridesOpt)
       CommandLineUtils.checkInvalidArgs(parser, options, reportAtMinIsrPartitionsOpt,
         allTopicLevelOpts -- Set(describeOpt) ++ allReplicationReportOpts - reportAtMinIsrPartitionsOpt + topicsWithOverridesOpt)
+      CommandLineUtils.checkInvalidArgs(parser, options, reportInFlightPartitionsOpt,
+        allTopicLevelOpts -- Set(describeOpt) ++ allReplicationReportOpts - reportInFlightPartitionsOpt + topicsWithOverridesOpt)
       CommandLineUtils.checkInvalidArgs(parser, options, reportUnavailablePartitionsOpt,
         allTopicLevelOpts -- Set(describeOpt) ++ allReplicationReportOpts - reportUnavailablePartitionsOpt + topicsWithOverridesOpt)
       CommandLineUtils.checkInvalidArgs(parser, options, topicsWithOverridesOpt,

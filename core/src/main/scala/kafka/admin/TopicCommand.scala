@@ -191,7 +191,8 @@ object TopicCommand extends Logging {
         shouldPrintUnderReplicatedPartitions(partitionDesc) ||
         shouldPrintUnavailablePartitions(partitionDesc) ||
         shouldPrintUnderMinIsrPartitions(partitionDesc) ||
-        shouldPrintAtMinIsrPartitions(partitionDesc)
+        shouldPrintAtMinIsrPartitions(partitionDesc) ||
+        shouldPrintInFlightPartitions(partitionDesc)
     }
 
     def maybePrintPartitionDescription(desc: PartitionDescription): Unit = {

@@ -247,6 +247,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiControlledShutdownSkipSafetyCheck(request)
         case ApiKeys.LI_COMBINED_CONTROL => handleLiCombinedControlRequest(request, requestLocal)
         case ApiKeys.LI_MOVE_CONTROLLER => handleMoveControllerRequest(request)
+        case ApiKeys.LI_REGISTER_CORRUPTED_BROKER => handleRegisterCorruptedBrokerRequest(request)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {
@@ -3648,6 +3649,26 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     requestHelper.sendResponseExemptThrottle(request, moveControllerResponse)
+  }
+
+  def handleRegisterCorruptedBrokerRequest(request: RequestChannel.Request): Unit = {
+    authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    val registerCorruptedBrokerRequest = request.body[LiRegisterCorruptedBrokerRequest]
+
+    def callback(result: Try[Unit]): Unit = {
+      val response = result match {
+        case Success(_) =>
+          LiRegisterCorruptedBrokerResponse.prepareResponse(
+            Errors.NONE, registerCorruptedBrokerRequest.version())
+
+        case Failure(throwable) =>
+          registerCorruptedBrokerRequest.getErrorResponse(throwable)
+      }
+      requestHelper.sendResponseExemptThrottle(request, response)
+    }
+
+    zkSupport.controller.registerCorruptedBroker(registerCorruptedBrokerRequest.data.brokerId, callback)
   }
 }
 

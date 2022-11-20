@@ -35,18 +35,20 @@ import kafka.zookeeper.{StateChangeHandler, ZNodeChangeHandler, ZNodeChildChange
 import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException}
-import org.apache.kafka.common.message.{AllocateProducerIdsRequestData, AllocateProducerIdsResponseData, AlterIsrRequestData, AlterIsrResponseData, UpdateFeaturesRequestData}
+import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException, UnknownServerException}
+import org.apache.kafka.common.message.{AllocateProducerIdsRequestData, AllocateProducerIdsResponseData, AlterIsrRequestData, AlterIsrResponseData, ListOffsetsResponseData, UpdateFeaturesRequestData}
 import org.apache.kafka.common.feature.{Features, FinalizedVersionRange}
+import org.apache.kafka.common.message.ListOffsetsRequestData.{ListOffsetsPartition, ListOffsetsTopic}
 import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.requests.{AbstractControlRequest, ApiError, LeaderAndIsrResponse, UpdateFeaturesRequest, UpdateMetadataResponse}
+import org.apache.kafka.common.protocol.{ApiKeys, Errors}
+import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, ApiError, LeaderAndIsrResponse, ListOffsetsRequest, ListOffsetsResponse, UpdateFeaturesRequest, UpdateMetadataResponse}
 import org.apache.kafka.common.utils.{Time, Utils}
 import org.apache.kafka.server.common.ProducerIdsBlock
 import org.apache.kafka.server.policy.CreateTopicPolicy
 import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.KeeperException.Code
 
+import java.util.Collections
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.collection.mutable.{ArrayBuffer, Buffer}
 import scala.jdk.CollectionConverters._
@@ -155,6 +157,9 @@ class KafkaController(val config: KafkaConfig,
   private[controller] val eventManager = new ControllerEventManager(config.brokerId, this, time,
     controllerContext.stats.rateAndTimeMetrics)
 
+  private val delayedElectionManager = new DelayedElectionManager(
+    config.brokerId, controllerContext, eventManager, controllerChannelManager)
+
   private val brokerRequestBatch = new ControllerBrokerRequestBatch(config, controllerChannelManager,
     eventManager, controllerContext, stateChangeLogger)
   val replicaStateMachine: ReplicaStateMachine = new ZkReplicaStateMachine(config, stateChangeLogger, controllerContext, zkClient,
@@ -170,6 +175,7 @@ class KafkaController(val config: KafkaConfig,
   private val brokerModificationsHandlers: mutable.Map[Int, BrokerModificationsHandler] = mutable.Map.empty
   private val topicChangeHandler = new TopicChangeHandler(eventManager)
   private val topicDeletionHandler = new TopicDeletionHandler(eventManager)
+  private val corruptedBrokersHandler = new CorruptedBrokersHandler(eventManager)
   private val partitionModificationsHandlers: mutable.Map[String, PartitionModificationsHandler] = mutable.Map.empty
   private val partitionReassignmentHandler = new PartitionReassignmentHandler(eventManager)
   private val preferredReplicaElectionHandler = new PreferredReplicaElectionHandler(eventManager)
@@ -331,7 +337,7 @@ class KafkaController(val config: KafkaConfig,
 
     // before reading source of truth from zookeeper, register the listeners to get broker/topic callbacks
     val childChangeHandlers = Seq(brokerChangeHandler, topicChangeHandler, topicDeletionHandler, logDirEventNotificationHandler,
-      isrChangeNotificationHandler)
+      isrChangeNotificationHandler, corruptedBrokersHandler)
     childChangeHandlers.foreach(zkClient.registerZNodeChildChangeHandler)
 
     val nodeChangeHandlers = Seq(preferredReplicaElectionHandler, partitionReassignmentHandler, topicDeletionFlagHandler)
@@ -356,6 +362,8 @@ class KafkaController(val config: KafkaConfig,
     val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
     // PERF TODO:  add controllerContextSnapshot as optional (defaultable) 3rd arg:
     sendUpdateMetadataRequest(controllerContextSnapshot.liveOrShuttingDownBrokerIds.toSeq, Set.empty)
+
+    maybeCleanIsrsForCorruptedBrokers(controllerContext.corruptedBrokers)
 
     info(s"Starting replica state machine ${KafkaController.timing(-1, failoverStartMs, time)}")  // much slower than ZK partition scan
     replicaStateMachine.startup(controllerContextSnapshot, failoverStartMs)
@@ -578,6 +586,7 @@ class KafkaController(val config: KafkaConfig,
     // shutdown partition state machine
     partitionStateMachine.shutdown()
     zkClient.unregisterZNodeChildChangeHandler(topicChangeHandler.path)
+    zkClient.unregisterZNodeChildChangeHandler(corruptedBrokersHandler.path)
     unregisterPartitionModificationsHandlers(partitionModificationsHandlers.keys.toSeq)
     zkClient.unregisterZNodeChildChangeHandler(topicDeletionHandler.path)
     zkClient.unregisterZNodeChangeHandler(topicDeletionFlagHandler.path)
@@ -630,6 +639,8 @@ class KafkaController(val config: KafkaConfig,
     // In cases of controlled shutdown leaders will not be elected when a new broker comes up. So at least in the
     // common controlled shutdown case, the metadata will reach the new brokers faster.
     sendUpdateMetadataRequest(newBrokers, controllerContext.partitionsWithLeaders)
+    val newCorruptedBrokers = newBrokersSet.intersect(controllerContext.corruptedBrokers.keySet)
+    handleCorruptedBrokersStartup(newCorruptedBrokers)
     // the very first thing to do when a new broker comes up is send it the entire list of partitions that it is
     // supposed to host. Based on that the broker starts the high watermark threads for the input list of partitions
     val allReplicasOnNewBrokers = controllerContext.replicasOnBrokers(newBrokersSet)
@@ -654,6 +665,22 @@ class KafkaController(val config: KafkaConfig,
 
     // Clean up any shutdown znodes that may be left behind from when these brokers had shut down before.
     zkClient.removeBrokerShutdown(newBrokers, controllerContext.epochZkVersion)
+  }
+
+  private def handleCorruptedBrokersStartup(corruptedBrokers: Set[Int]): Unit = {
+    corruptedBrokers.foreach(brokerId => delayedElectionManager.onCorruptedBrokerStartup(brokerId))
+  }
+
+  private def processCorruptedBrokersOffsetsReceived(brokerId: Int, listOffsetsResponse: ListOffsetsResponse): Unit = {
+    delayedElectionManager.onListOffsetsResponse(brokerId, listOffsetsResponse)
+  }
+
+  private def processDelayedElectionSuccess(partition: TopicPartition,
+    brokerIdToOffsetAndEpoch: Map[Int, OffsetAndEpoch]): Unit = {
+    if (controllerContext.partitionState(partition) == OfflinePartition) {
+      partitionStateMachine.handleStateChanges(Seq(partition), OnlinePartition,
+        Some(DelayedLeaderElectionStrategy(Map(partition -> brokerIdToOffsetAndEpoch))))
+    }
   }
 
   private def maybeResumeReassignments(shouldResume: (TopicPartition, ReplicaAssignment) => Boolean): Unit = {
@@ -1090,6 +1117,9 @@ class KafkaController(val config: KafkaConfig,
       updateLeaderAndIsrCache(allPartitions.toSeq)
     }
     info(s"Finished recursing ${allPartitions.size} partitions in ZK and setting up LAI cache ${KafkaController.timing(taskStartMs, failoverStartMs, time)}")
+
+    // Load corrupted brokers list from ZK
+    controllerContext.setCorruptedBrokers(zkClient.getCorruptedBrokers.mapValues(_.clearedFromIsrs))
 
     // start the channel manager
     controllerChannelManager.startup()
@@ -2933,6 +2963,116 @@ class KafkaController(val config: KafkaConfig,
       allocateProducerIdsRequest.brokerEpoch, eventManagerCallback))
   }
 
+  def processCorruptedBrokersChange(): Unit = {
+    if (!isActive) {
+      return
+    }
+    val corruptedBrokers = zkClient.getCorruptedBrokers.mapValues(_.clearedFromIsrs)
+    if (corruptedBrokers == controllerContext.corruptedBrokers) {
+      return
+    }
+    maybeCleanIsrsForCorruptedBrokers(corruptedBrokers)
+  }
+
+  private def maybeCleanIsrsForCorruptedBrokers(originalCorruptedBrokers: Map[Int, Boolean]): Unit = {
+    def updateCorruptedBrokerToCleanedInZk(brokerId: Int): Try[Unit] = Try {
+      val corruptedBroker = CorruptedBroker(brokerId, clearedFromIsrs = true)
+      zkClient.updateCorruptedBroker(corruptedBroker)
+    }
+
+    val corruptedBrokersToClearFromIsr = originalCorruptedBrokers
+      .filterNot { case (_, isrCleared) => isrCleared }.keys
+    val corruptedBrokersIsrClearResults = corruptedBrokersToClearFromIsr.map { corruptedBrokerId =>
+      val tryResult = removeBrokerIdFromPartitionsIsrs(corruptedBrokerId).flatMap { _ =>
+        updateCorruptedBrokerToCleanedInZk(corruptedBrokerId)
+      }
+      corruptedBrokerId -> tryResult
+    }
+
+    val (isrCleanSuccessful, isrCleanUnsuccessful) = corruptedBrokersIsrClearResults.partition(_._2.isSuccess)
+    // TODO: log isrCleanUnsuccessful as ERROR
+
+    val modifiedCorruptedBrokers = isrCleanSuccessful
+      .map{ case (brokerId, tryResult) => brokerId -> true }
+      .toMap
+
+    controllerContext.setCorruptedBrokers(originalCorruptedBrokers ++ modifiedCorruptedBrokers)
+  }
+
+  def registerCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit): Unit = {
+    val registerCorruptedBrokerEvent = RegisterCorruptedBroker(brokerId, callback)
+    eventManager.put(registerCorruptedBrokerEvent)
+  }
+
+  private def processRegisterCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit): Unit = {
+    val result = Try {
+      if (!isActive) {
+        throw new ControllerMovedException("Controller moved to another broker. Aborting register corrupted broker operation.")
+      }
+      removeBrokerIdFromPartitionsIsrs(brokerId)
+    }
+    callback(result.flatten)
+  }
+
+  def removeBrokerIdFromPartitionsIsrs(brokerId: Int): Try[Unit] = Try {
+    val partitionsOnBroker = controllerContext.partitionsOnBroker(brokerId).toSeq
+    var remaining = partitionsOnBroker
+    var success = true
+    while (remaining.nonEmpty) {
+      val (finishedRemoval, removalsToRetry) = doRemoveBrokerIdFromPartitionsIsrs(brokerId, remaining)
+      remaining = removalsToRetry
+
+      finishedRemoval.foreach {
+        case (partition, Left(e)) =>
+          logger.error(s"Could not remove corrupted brokerId $brokerId from partition $partition", e)
+          success = false
+      }
+    }
+
+    if (!success) {
+      throw new KafkaException(s"Unexpected error trying to remove brokerId $brokerId from ISRs")
+    }
+  }
+
+  private def doRemoveBrokerIdFromPartitionsIsrs(brokerId: Int, partitions: Iterable[TopicPartition])
+  : (Map[TopicPartition, Either[Exception, LeaderIsrAndControllerEpoch]], Seq[TopicPartition]) = {
+    val leaderAndIsrs = partitions
+      .map(tp => tp -> controllerContext.partitionLeadershipInfo(tp))
+      .toMap
+      .filterNot { case (_, leaderAndIsrAndControllerEpochOption) => leaderAndIsrAndControllerEpochOption.isEmpty }
+      .mapValues(_.get)
+      .filter { case (_, leaderAndIsrAndControllerEpoch) => leaderAndIsrAndControllerEpoch.leaderAndIsr.isr.contains(brokerId) }
+      .mapValues(_.leaderAndIsr)
+
+    val updatedLeaderAndIsrs = leaderAndIsrs.map { case(tp, leaderAndIsr) =>
+      // Validate that brokerId is not present in ISR for any partition that has a leader
+      if (leaderAndIsr.leader != LeaderAndIsr.NoLeader) {
+        logger.warn(s"Unexpected entry $brokerId in ISR for partition $tp, leaderAndIsr = $leaderAndIsr")
+      }
+      else if (leaderAndIsr.isr.length > 1) {
+        logger.warn(s"Unexpected multiple entries in ISR for leaderless partition $tp, leaderAndIsr = $leaderAndIsr")
+      }
+
+      val newLeader = if (brokerId == leaderAndIsr.leader) LeaderAndIsr.NoLeader else leaderAndIsr.leader
+      val adjustedIsr = leaderAndIsr.isr.filter(_ != brokerId)
+      tp -> leaderAndIsr.newLeaderAndIsr(newLeader, adjustedIsr)
+    }
+
+    val UpdateLeaderAndIsrResult(finishedPartitions, updatesToRetry) =
+      zkClient.updateLeaderAndIsr(updatedLeaderAndIsrs, controllerContext.epoch, controllerContext.epochZkVersion)
+
+    val leaderIsrAndControllerEpochs = finishedPartitions.map { case (partition, result) =>
+      (partition, result.map { leaderAndIsr =>
+        val leaderIsrAndControllerEpoch = LeaderIsrAndControllerEpoch(leaderAndIsr, controllerContext.epoch)
+        // Add updated LeaderAndIsr with controller epoch to cache
+        controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+        leaderIsrAndControllerEpoch
+      })
+    }
+
+    (leaderIsrAndControllerEpochs, updatesToRetry)
+  }
+
   def processAllocateProducerIds(brokerId: Int, brokerEpoch: Long, callback: Either[Errors, ProducerIdsBlock] => Unit): Unit = {
     // Handle a few short-circuits
     if (!isActive) {
@@ -3108,6 +3248,15 @@ class KafkaController(val config: KafkaConfig,
           processStartup()
         case SkipControlledShutdownSafetyCheck(id, brokerEpoch, callback) =>
           processSkipControlledShutdownSafetyCheck(id, brokerEpoch, callback)
+        case RegisterCorruptedBroker(brokerId, callback) =>
+          processRegisterCorruptedBroker(brokerId, callback)
+        case CorruptedBrokersChange =>
+          processCorruptedBrokersChange()
+        case CorruptedBrokerOffsetsReceived(brokerId, response) =>
+          processCorruptedBrokersOffsetsReceived(brokerId, response)
+        case DelayedElectionSuccess(partition: TopicPartition, brokerIdToOffsetAndEpoch: Map[Int, OffsetAndEpoch]) =>
+          processDelayedElectionSuccess(partition, brokerIdToOffsetAndEpoch)
+
       }
     } catch {
       case e: ControllerMovedException =>
@@ -3130,6 +3279,14 @@ class BrokerChangeHandler(eventManager: ControllerEventManager) extends ZNodeChi
 
   override def handleChildChange(): Unit = {
     eventManager.put(BrokerChange)
+  }
+}
+
+class CorruptedBrokersHandler(eventManager: ControllerEventManager) extends ZNodeChildChangeHandler {
+  override val path: String = CorruptedBrokersZNode.path
+
+  override def handleChildChange(): Unit = {
+    eventManager.put(CorruptedBrokersChange)
   }
 }
 
@@ -3357,6 +3514,11 @@ case object PreferredControllerChange extends ControllerEvent {
   override def preempt(): Unit = {}
 }
 
+case object CorruptedBrokersChange extends ControllerEvent {
+  override def state: ControllerState = ControllerState.CorruptedBrokersChange
+  override def preempt(): Unit = {}
+}
+
 case class BrokerModifications(brokerId: Int) extends ControllerEvent {
   override def state: ControllerState = ControllerState.BrokerChange
   override def preempt(): Unit = {}
@@ -3414,6 +3576,18 @@ case class TopicDeletionFlagChange(reset: Boolean = false) extends ControllerEve
   override def preempt(): Unit = {}
 }
 
+case class CorruptedBrokerOffsetsReceived(brokerId: Int, response: ListOffsetsResponse) extends ControllerEvent {
+  def state: ControllerState = ControllerState.CorruptedBrokerOffsetsReceived
+  override def preempt(): Unit = {}
+}
+
+case class DelayedElectionSuccess(
+  partition: TopicPartition,
+  brokerIdToOffsetAndEpoch: Map[Int, OffsetAndEpoch]) extends ControllerEvent {
+  def state: ControllerState = ControllerState.DelayedElectionSuccess
+  override def preempt(): Unit = {}
+}
+
 case class ReplicaLeaderElection(
   partitionsFromAdminClientOpt: Option[Set[TopicPartition]],
   partitionRecommendedLeadersFromAdminClientOpt: Option[Map[TopicPartition, Int]],
@@ -3449,6 +3623,11 @@ case class AllocateProducerIds(brokerId: Int, brokerEpoch: Long, callback: Eithe
   override def preempt(): Unit = {}
 }
 
+case class RegisterCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit)
+    extends ControllerEvent {
+  override def state: ControllerState = ControllerState.RegisterCorruptedBroker
+  override def preempt(): Unit = {}
+}
 
 // Used only in test cases
 abstract class MockEvent(val state: ControllerState) extends ControllerEvent {

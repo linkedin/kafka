@@ -278,11 +278,11 @@ class RequestSendThread(val controllerId: Int,
     sendAndReceive(requestBuilder, callback)
   }
 
-  private def takeFromQueueAndMerge() = {
+  private def takeFromQueueAndMerge(): Option[(Long, Boolean)] = {
     val queueItem = queue.take()
     val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queueItem
     requestBuilder match {
-      case controlRequestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest] =>
+      case controlRequestBuilder: AbstractControlRequest.Builder[AbstractControlRequest] =>
         val continueMerge = mergeControlRequest(enqueueTimeMs, apiKey, controlRequestBuilder, callback)
         Some(enqueueTimeMs, continueMerge)
       case _ =>

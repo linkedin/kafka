@@ -16,6 +16,7 @@
  */
 package kafka.controller
 
+import kafka.controller.PartitionLeaderElectionAlgorithms.OfflineElectionResult
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 
@@ -29,8 +30,9 @@ class PartitionLeaderElectionAlgorithmsTest {
     val leaderOpt = PartitionLeaderElectionAlgorithms.offlinePartitionLeaderElection(assignment,
       isr,
       liveReplicas,
+      Set.empty,
       uncleanLeaderElectionEnabled = false)
-    assertEquals(Option(4, false), leaderOpt)
+    assertEquals(OfflineElectionResult.Leader(4, isUncleanElection = false), leaderOpt)
   }
 
   @Test
@@ -41,8 +43,9 @@ class PartitionLeaderElectionAlgorithmsTest {
     val leaderOpt = PartitionLeaderElectionAlgorithms.offlinePartitionLeaderElection(assignment,
       isr,
       liveReplicas,
+      Set.empty,
       uncleanLeaderElectionEnabled = false)
-    assertEquals(None, leaderOpt)
+    assertEquals(OfflineElectionResult.NoLeader, leaderOpt)
   }
 
   @Test
@@ -53,8 +56,9 @@ class PartitionLeaderElectionAlgorithmsTest {
     val leaderOpt = PartitionLeaderElectionAlgorithms.offlinePartitionLeaderElection(assignment,
       isr,
       liveReplicas,
+      Set.empty,
       uncleanLeaderElectionEnabled = true)
-    assertEquals(Option(4, true), leaderOpt)
+    assertEquals(OfflineElectionResult.Leader(4, isUncleanElection = true), leaderOpt)
   }
 
   @Test

@@ -9,7 +9,7 @@ import org.apache.kafka.common.requests.{AbstractResponse, ListOffsetsRequest, L
 
 import java.util
 import java.util.concurrent.ScheduledFuture
-import scala.collection.{Map, Set, mutable}
+import scala.collection.{Set, mutable}
 
 class DelayedElectionManager(
   val config: KafkaConfig,
@@ -35,9 +35,7 @@ class DelayedElectionManager(
     }
 
     def cancel(): Unit = {
-      electionFuture match {
-        case Some(future) => future.cancel(false)
-      }
+      electionFuture.foreach(_.cancel(false))
       isCancelled = true
       onComplete(this)
     }
@@ -172,9 +170,8 @@ class DelayedElectionManager(
   }
 
   def addOffsetForBroker(partition: TopicPartition, brokerId: Int, offsetAndEpoch: OffsetAndEpoch): Unit = {
-    partitionToDelayedTaskMap.get(partition) match {
-      case Some(delayedElectionTask) =>
-        delayedElectionTask.addBrokerOffsetAndEpoch(brokerId, offsetAndEpoch)
-    }
+    partitionToDelayedTaskMap.get(partition).foreach(delayedElectionTask => {
+      delayedElectionTask.addBrokerOffsetAndEpoch(brokerId, offsetAndEpoch)
+    })
   }
 }

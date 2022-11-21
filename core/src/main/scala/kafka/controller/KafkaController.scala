@@ -35,20 +35,18 @@ import kafka.zookeeper.{StateChangeHandler, ZNodeChangeHandler, ZNodeChildChange
 import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException, UnknownServerException}
-import org.apache.kafka.common.message.{AllocateProducerIdsRequestData, AllocateProducerIdsResponseData, AlterIsrRequestData, AlterIsrResponseData, ListOffsetsResponseData, UpdateFeaturesRequestData}
+import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughReplicasException, PolicyViolationException, StaleBrokerEpochException}
+import org.apache.kafka.common.message.{AllocateProducerIdsRequestData, AllocateProducerIdsResponseData, AlterIsrRequestData, AlterIsrResponseData, UpdateFeaturesRequestData}
 import org.apache.kafka.common.feature.{Features, FinalizedVersionRange}
-import org.apache.kafka.common.message.ListOffsetsRequestData.{ListOffsetsPartition, ListOffsetsTopic}
 import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.protocol.{ApiKeys, Errors}
-import org.apache.kafka.common.requests.{AbstractControlRequest, AbstractResponse, ApiError, LeaderAndIsrResponse, ListOffsetsRequest, ListOffsetsResponse, UpdateFeaturesRequest, UpdateMetadataResponse}
+import org.apache.kafka.common.protocol.Errors
+import org.apache.kafka.common.requests.{AbstractControlRequest, ApiError, LeaderAndIsrResponse, ListOffsetsResponse, UpdateFeaturesRequest, UpdateMetadataResponse}
 import org.apache.kafka.common.utils.{Time, Utils}
 import org.apache.kafka.server.common.ProducerIdsBlock
 import org.apache.kafka.server.policy.CreateTopicPolicy
 import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.KeeperException.Code
 
-import java.util.Collections
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.collection.mutable.{ArrayBuffer, Buffer}
 import scala.jdk.CollectionConverters._
@@ -165,7 +163,8 @@ class KafkaController(val config: KafkaConfig,
   val replicaStateMachine: ReplicaStateMachine = new ZkReplicaStateMachine(config, stateChangeLogger, controllerContext, zkClient,
     new ControllerBrokerRequestBatch(config, controllerChannelManager, eventManager, controllerContext, stateChangeLogger))
   val partitionStateMachine: PartitionStateMachine = new ZkPartitionStateMachine(config, stateChangeLogger, controllerContext, zkClient,
-    new ControllerBrokerRequestBatch(config, controllerChannelManager, eventManager, controllerContext, stateChangeLogger))
+    new ControllerBrokerRequestBatch(config, controllerChannelManager, eventManager, controllerContext, stateChangeLogger),
+    delayedElectionManager)
   val topicDeletionManager = new TopicDeletionManager(config, controllerContext, replicaStateMachine,
     partitionStateMachine, new ControllerDeletionClient(this, zkClient))
 
@@ -2999,21 +2998,6 @@ class KafkaController(val config: KafkaConfig,
     controllerContext.setCorruptedBrokers(originalCorruptedBrokers ++ modifiedCorruptedBrokers)
   }
 
-  def registerCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit): Unit = {
-    val registerCorruptedBrokerEvent = RegisterCorruptedBroker(brokerId, callback)
-    eventManager.put(registerCorruptedBrokerEvent)
-  }
-
-  private def processRegisterCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit): Unit = {
-    val result = Try {
-      if (!isActive) {
-        throw new ControllerMovedException("Controller moved to another broker. Aborting register corrupted broker operation.")
-      }
-      removeBrokerIdFromPartitionsIsrs(brokerId)
-    }
-    callback(result.flatten)
-  }
-
   def removeBrokerIdFromPartitionsIsrs(brokerId: Int): Try[Unit] = Try {
     val partitionsOnBroker = controllerContext.partitionsOnBroker(brokerId).toSeq
     var remaining = partitionsOnBroker
@@ -3026,6 +3010,7 @@ class KafkaController(val config: KafkaConfig,
         case (partition, Left(e)) =>
           logger.error(s"Could not remove corrupted brokerId $brokerId from partition $partition", e)
           success = false
+        case _ =>
       }
     }
 
@@ -3248,8 +3233,6 @@ class KafkaController(val config: KafkaConfig,
           processStartup()
         case SkipControlledShutdownSafetyCheck(id, brokerEpoch, callback) =>
           processSkipControlledShutdownSafetyCheck(id, brokerEpoch, callback)
-        case RegisterCorruptedBroker(brokerId, callback) =>
-          processRegisterCorruptedBroker(brokerId, callback)
         case CorruptedBrokersChange =>
           processCorruptedBrokersChange()
         case CorruptedBrokerOffsetsReceived(brokerId, response) =>
@@ -3620,12 +3603,6 @@ case class UpdateFeatures(request: UpdateFeaturesRequest,
 case class AllocateProducerIds(brokerId: Int, brokerEpoch: Long, callback: Either[Errors, ProducerIdsBlock] => Unit)
     extends ControllerEvent {
   override def state: ControllerState = ControllerState.Idle
-  override def preempt(): Unit = {}
-}
-
-case class RegisterCorruptedBroker(brokerId: Int, callback: Try[Unit] => Unit)
-    extends ControllerEvent {
-  override def state: ControllerState = ControllerState.RegisterCorruptedBroker
   override def preempt(): Unit = {}
 }
 

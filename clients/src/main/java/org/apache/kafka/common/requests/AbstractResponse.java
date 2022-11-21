@@ -253,8 +253,6 @@ public abstract class AbstractResponse implements AbstractRequestResponse {
                 return LiCombinedControlResponse.parse(responseBuffer, version);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerResponse.parse(responseBuffer, version);
-            case LI_REGISTER_CORRUPTED_BROKER:
-                return LiRegisterCorruptedBrokerResponse.parse(responseBuffer, version);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseResponse`, the " +
                         "code should be updated to do so.", apiKey));

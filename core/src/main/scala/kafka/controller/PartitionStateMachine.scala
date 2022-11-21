@@ -550,7 +550,9 @@ object PartitionLeaderElectionAlgorithms {
         if (uncleanLeaderElectionEnabled) {
           assignment.find(replicaId =>
             liveReplicas.contains(replicaId) && !corruptedReplicas.contains(replicaId)) match {
-            case Some(uncleanReplicaId) => OfflineElectionResult.Leader(uncleanReplicaId, isUncleanElection = true)
+            case Some(uncleanReplicaId) => return OfflineElectionResult
+              .Leader(uncleanReplicaId, isUncleanElection = true)
+            case None =>
           }
           assignment.find(corruptedReplicas.contains) match {
             case Some(corruptedReplicaId) => OfflineElectionResult.CorruptedBrokerLeader(corruptedReplicaId)

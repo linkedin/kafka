@@ -35,14 +35,14 @@ import kafka.security.CredentialProvider
 import kafka.server.metadata.ZkConfigRepository
 import kafka.utils._
 import kafka.zk.{AdminZkClient, BrokerInfo, KafkaZkClient}
-import org.apache.kafka.clients.{ApiVersions, ClientResponse, ManualMetadataUpdater, NetworkClient, NetworkClientUtils}
+import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, NetworkClient, NetworkClientUtils}
 import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
-import org.apache.kafka.common.message.{ControlledShutdownRequestData, LiRegisterCorruptedBrokerRequestData}
+import org.apache.kafka.common.message.ControlledShutdownRequestData
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network._
 import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.requests.{ControlledShutdownRequest, ControlledShutdownResponse, LiRegisterCorruptedBrokerRequest}
+import org.apache.kafka.common.requests.{ControlledShutdownRequest, ControlledShutdownResponse}
 import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.security.{JaasContext, JaasUtils}
@@ -426,14 +426,6 @@ class KafkaServer(
           () => producerIdManager, metrics, metadataCache, Time.SYSTEM)
         transactionCoordinator.startup(
           () => zkClient.getTopicPartitionCount(Topic.TRANSACTION_STATE_TOPIC_NAME).getOrElse(config.transactionTopicPartitions))
-
-        val corruptedBrokerSend = CorruptedBrokerBlockingSend(
-          clientToControllerChannelManager,
-          logManager,
-          config.brokerId,
-          brokerEpochSupplier = () => kafkaController.brokerEpoch,
-        )
-        corruptedBrokerSend.sendRequest()
 
         /* start auto topic creation manager */
         this.autoTopicCreationManager = AutoTopicCreationManager(

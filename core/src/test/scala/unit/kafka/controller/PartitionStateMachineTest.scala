@@ -36,6 +36,7 @@ class PartitionStateMachineTest {
   private var controllerContext: ControllerContext = null
   private var mockZkClient: KafkaZkClient = null
   private var mockControllerBrokerRequestBatch: ControllerBrokerRequestBatch = null
+  private var delayedElectionManager: DelayedElectionManager = null
   private var partitionStateMachine: PartitionStateMachine = null
 
   private val brokerId = 5
@@ -50,8 +51,9 @@ class PartitionStateMachineTest {
     controllerContext.epoch = controllerEpoch
     mockZkClient = EasyMock.createMock(classOf[KafkaZkClient])
     mockControllerBrokerRequestBatch = EasyMock.createMock(classOf[ControllerBrokerRequestBatch])
+    delayedElectionManager = EasyMock.createMock(classOf[DelayedElectionManager])
     partitionStateMachine = new ZkPartitionStateMachine(config, new StateChangeLogger(brokerId, true, None), controllerContext,
-      mockZkClient, mockControllerBrokerRequestBatch)
+      mockZkClient, mockControllerBrokerRequestBatch, delayedElectionManager)
   }
 
   private def partitionState(partition: TopicPartition): PartitionState = {

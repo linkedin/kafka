@@ -67,6 +67,8 @@ object Election extends Logging {
             }
           case OfflineElectionResult.NoLeader => (ElectionResult(partition, None, liveReplicas), false)
         }
+      case None =>
+        (ElectionResult(partition, None, liveReplicas), false)
     }
   }
 

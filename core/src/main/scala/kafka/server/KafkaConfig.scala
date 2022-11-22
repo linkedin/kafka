@@ -1243,7 +1243,7 @@ object KafkaConfig {
       .define(LiLogCleanerFineGrainedLockEnableProp, BOOLEAN, Defaults.LiLogCleanerFineGrainedLockEnabled, LOW, LiLogCleanerFineGrainedLockEnableDoc)
       .define(LiDropCorruptedFilesEnableProp, BOOLEAN, Defaults.LiDropCorruptedFilesEnabled, HIGH, LiDropCorruptedFilesEnableDoc)
       .define(LiConsumerFetchSampleRatioProp, DOUBLE, Defaults.LiConsumerFetchSampleRatio, between(0.0, 1.0), LOW, LiConsumerFetchSampleRatioDoc)
-      .define(LiLeaderElectionOnCorruptionWaitMsProp, LONG, Defaults.LiLeaderElectionOnCorruptionWaitMs, HIGH, LiLeaderElectionOnCorruptionWaitMsDoc)
+      .define(LiLeaderElectionOnCorruptionWaitMsProp, LONG, Defaults.LiLeaderElectionOnCorruptionWaitMs, atLeast(0), HIGH, LiLeaderElectionOnCorruptionWaitMsDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)

@@ -1,3 +1,19 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package kafka.controller
 
 import kafka.server.{KafkaConfig, OffsetAndEpoch}
@@ -9,45 +25,36 @@ import org.apache.kafka.common.requests.{AbstractResponse, ListOffsetsRequest, L
 
 import java.util
 import java.util.concurrent.ScheduledFuture
-import scala.collection.{Set, mutable}
+import scala.collection.{Set, mutable, concurrent}
 
-class DelayedElectionManager(
+object DelayedElectionManager {
+  def apply(
+    config: KafkaConfig,
+    controllerContext: ControllerContext,
+    eventManager: ControllerEventManager,
+    channelManager: ControllerChannelManager,
+  ): DelayedElectionManager = {
+    val kafkaScheduler = new KafkaScheduler(threads = 1, threadNamePrefix = "delayed-election-")
+    new DelayedElectionManager(
+      config,
+      controllerContext,
+      eventManager,
+      channelManager,
+      kafkaScheduler
+    )
+  }
+}
+
+private[controller] class DelayedElectionManager(
   val config: KafkaConfig,
-  val controllerBrokerId: Int,
   val controllerContext: ControllerContext,
   val eventManager: ControllerEventManager,
   val channelManager: ControllerChannelManager,
+  val kafkaScheduler: KafkaScheduler,
 ) {
-  class DelayedElectionTask(
-    val partition: TopicPartition,
-    val onComplete: (DelayedElectionTask) => Unit
-  ) {
-    var isCancelled = false
-    val brokerIdToOffsetAndEpochMap: mutable.Map[Int, OffsetAndEpoch] = mutable.Map[Int, OffsetAndEpoch]()
-    private var electionFuture: Option[ScheduledFuture[_]] = None
-
-    def addBrokerOffsetAndEpoch(brokerId: Int, offsetAndEpoch: OffsetAndEpoch): Unit = {
-      brokerIdToOffsetAndEpochMap += brokerId -> offsetAndEpoch
-    }
-
-    def start(): Unit = {
-      electionFuture = Some(scheduler.schedule(s"delayed-election-$partition", done, delay=electionWaitMs))
-    }
-
-    def cancel(): Unit = {
-      electionFuture.foreach(_.cancel(false))
-      isCancelled = true
-      onComplete(this)
-    }
-
-    def done(): Unit = {
-      onComplete(this)
-    }
-  }
-
-  private val partitionToDelayedTaskMap = mutable.Map[TopicPartition, DelayedElectionTask]()
+  private val partitionToDelayedTaskMap: concurrent.Map[TopicPartition, DelayedElectionTask]
+    = concurrent.TrieMap[TopicPartition, DelayedElectionTask]()
   private val electionWaitMs = config.liLeaderElectionOnCorruptionWaitMs
-  private val scheduler = new KafkaScheduler(threads = 1, threadNamePrefix = "delayed-election-")
 
   private def onDelayedElectionDone(delayedElectionTask: DelayedElectionTask): Unit = {
     partitionToDelayedTaskMap.remove(delayedElectionTask.partition)
@@ -90,7 +97,12 @@ class DelayedElectionManager(
     val corruptedPartitionsToRemove = partitionToDelayedTaskMap.keySet -- partitionsWithCorruptedLeaders.toSet
 
     corruptedPartitionsToAdd.foreach(partition => {
-      partitionToDelayedTaskMap.put(partition, new DelayedElectionTask(partition, onDelayedElectionDone))
+      val delayedElectionTask = new DelayedElectionTask(kafkaScheduler, electionWaitMs, partition, onDelayedElectionDone)
+      val valueExists = partitionToDelayedTaskMap
+        .putIfAbsent(partition, delayedElectionTask).isDefined
+      if (!valueExists) {
+        delayedElectionTask.start()
+      }
     })
 
     corruptedPartitionsToRemove.foreach(partition => {
@@ -151,27 +163,48 @@ class DelayedElectionManager(
         val listOffsetsTopic = new ListOffsetsTopic()
           .setName(topicName)
           .setPartitions(new util.ArrayList())
-        listOffsetsTopics.add(listOffsetsTopic)
 
         partitions.foreach(partition => {
           listOffsetsTopic.partitions().add(new ListOffsetsPartition()
             .setPartitionIndex(partition.partition())
             .setTimestamp(ListOffsetsRequest.LATEST_TIMESTAMP)
-            //.setCurrentLeaderEpoch()
           )
         })
         listOffsetsTopics.add(listOffsetsTopic)
     }
 
     val listOffsetsRequestBuilder = ListOffsetsRequest.Builder
-      .forReplica(ApiKeys.LIST_OFFSETS.latestVersion(), controllerBrokerId)
+      .forReplica(ApiKeys.LIST_OFFSETS.latestVersion(), config.brokerId)
       .setTargetTimes(listOffsetsTopics)
     listOffsetsRequestBuilder
   }
+}
 
-  def addOffsetForBroker(partition: TopicPartition, brokerId: Int, offsetAndEpoch: OffsetAndEpoch): Unit = {
-    partitionToDelayedTaskMap.get(partition).foreach(delayedElectionTask => {
-      delayedElectionTask.addBrokerOffsetAndEpoch(brokerId, offsetAndEpoch)
-    })
+private class DelayedElectionTask(
+  val kafkaScheduler: KafkaScheduler,
+  val electionWaitMs: Long,
+  val partition: TopicPartition,
+  val onComplete: (DelayedElectionTask) => Unit
+) {
+  var isCancelled = false
+  val brokerIdToOffsetAndEpochMap: mutable.Map[Int, OffsetAndEpoch] = mutable.Map[Int, OffsetAndEpoch]()
+  private var electionFuture: Option[ScheduledFuture[_]] = None
+
+  def addBrokerOffsetAndEpoch(brokerId: Int, offsetAndEpoch: OffsetAndEpoch): Unit = {
+    brokerIdToOffsetAndEpochMap += brokerId -> offsetAndEpoch
+  }
+
+  def start(): Unit = {
+    electionFuture = Some(kafkaScheduler.schedule(s"delayed-election-$partition", done, delay=electionWaitMs))
+  }
+
+  def cancel(): Unit = {
+    electionFuture.foreach(_.cancel(false))
+    isCancelled = true
+    onComplete(this)
+  }
+
+  def done(): Unit = {
+    onComplete(this)
   }
 }

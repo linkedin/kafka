@@ -155,8 +155,8 @@ class KafkaController(val config: KafkaConfig,
   private[controller] val eventManager = new ControllerEventManager(config.brokerId, this, time,
     controllerContext.stats.rateAndTimeMetrics)
 
-  private val delayedElectionManager = new DelayedElectionManager(
-    config.brokerId, controllerContext, eventManager, controllerChannelManager)
+  private val delayedElectionManager = DelayedElectionManager(
+    config, controllerContext, eventManager, controllerChannelManager)
 
   private val brokerRequestBatch = new ControllerBrokerRequestBatch(config, controllerChannelManager,
     eventManager, controllerContext, stateChangeLogger)

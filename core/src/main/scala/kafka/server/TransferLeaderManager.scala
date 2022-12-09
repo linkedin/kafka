@@ -17,10 +17,11 @@
 package kafka.server
 
 import kafka.metrics.KafkaMetricsGroup
-import kafka.utils.{Logging, Scheduler}
+import kafka.utils.{KafkaScheduler, Logging, Scheduler}
 import org.apache.kafka.clients.ClientResponse
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.message.ElectLeadersResponseData
+import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractRequest, ElectLeadersRequest, ElectLeadersResponse}
 import org.apache.kafka.common.utils.Time
@@ -40,10 +41,28 @@ case class TransferLeaderItem(topicPartition: TopicPartition,
   newLeader: Int,
   callback: Either[Errors, TopicPartition] => Unit) extends RequestItem
 
-object TransferLeaderManagerFactory extends BrokerToControllerRequestManagerFactory[TransferLeaderItem] {
-  override def create(controllerChannelManager: BrokerToControllerChannelManager, scheduler: Scheduler, time: Time, brokerId: Int, brokerEpochSupplier: () => Long): BrokerToControllerRequestManager[TransferLeaderItem] = {
+object TransferLeaderManager {
+  def apply( config: KafkaConfig,
+    metadataCache: MetadataCache,
+    scheduler: KafkaScheduler,
+    time: Time,
+    metrics: Metrics,
+    threadNamePrefix: Option[String],
+    brokerEpochSupplier: () => Long,
+    brokerId: Int): TransferLeaderManager = {
+    val nodeProvider = MetadataCacheControllerNodeProvider(config, metadataCache)
+
+    val channelManager = BrokerToControllerChannelManager(
+      controllerNodeProvider = nodeProvider,
+      time = time,
+      metrics = metrics,
+      config = config,
+      channelName = threadNamePrefix.getOrElse("BrokerToController"),
+      threadNamePrefix = threadNamePrefix,
+      retryTimeoutMs = Long.MaxValue
+    )
     new DefaultTransferLeaderManager(
-      controllerChannelManager = controllerChannelManager,
+      controllerChannelManager = channelManager,
       scheduler = scheduler,
       time = time,
       brokerId = brokerId,
@@ -58,7 +77,7 @@ class DefaultTransferLeaderManager(
   time: Time,
   brokerId: Int,
   brokerEpochSupplier: () => Long
-) extends AbstractBrokerToControllerRequestManager[TransferLeaderItem](controllerChannelManager, scheduler, time, brokerId, brokerEpochSupplier) with Logging with KafkaMetricsGroup {
+) extends AbstractBrokerToControllerRequestManager[TransferLeaderItem](controllerChannelManager, scheduler, time, brokerId, brokerEpochSupplier) with TransferLeaderManager with Logging with KafkaMetricsGroup {
   override def buildRequest(inflightItems: Seq[TransferLeaderItem], brokerEpoch: Long): AbstractRequest.Builder[_ <: AbstractRequest] = {
     val recommendedLeaders = new util.HashMap[TopicPartition, Integer]()
 

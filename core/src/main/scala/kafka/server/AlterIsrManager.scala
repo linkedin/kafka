@@ -18,11 +18,12 @@ package kafka.server
 
 import kafka.api.LeaderAndIsr
 import kafka.metrics.KafkaMetricsGroup
-import kafka.utils.{Logging, Scheduler}
+import kafka.utils.{KafkaScheduler, Logging, Scheduler}
 import kafka.zk.KafkaZkClient
 import org.apache.kafka.clients.ClientResponse
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.message.{AlterIsrRequestData, AlterIsrResponseData}
+import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractRequest, AlterIsrRequest, AlterIsrResponse}
 import org.apache.kafka.common.utils.Time
@@ -40,9 +41,9 @@ import scala.jdk.CollectionConverters._
  * requests.
  */
 trait AlterIsrManager {
-  def start(): Unit = {}
+  def start(): Unit
 
-  def shutdown(): Unit = {}
+  def shutdown(): Unit
 
   def submit(alterIsrItem: AlterIsrItem): Boolean
 }
@@ -52,12 +53,12 @@ case class AlterIsrItem(topicPartition: TopicPartition,
                         callback: Either[Errors, LeaderAndIsr] => Unit,
                         controllerEpoch: Int) extends RequestItem // controllerEpoch needed for Zk impl
 
-object AlterIsrManagerFactory extends BrokerToControllerRequestManagerFactory[AlterIsrItem] {
+object AlterIsrManager {
 
   /**
    * Factory for ZK based implementation, used when IBP < 2.7-IV2
    */
-  def create(
+  def apply(
     scheduler: Scheduler,
     time: Time,
     zkClient: KafkaZkClient
@@ -65,13 +66,32 @@ object AlterIsrManagerFactory extends BrokerToControllerRequestManagerFactory[Al
     new ZkIsrManager(scheduler, time, zkClient)
   }
 
-  override def create(controllerChannelManager: BrokerToControllerChannelManager, scheduler: Scheduler, time: Time, brokerId: Int, brokerEpochSupplier: () => Long): BrokerToControllerRequestManager[AlterIsrItem] = {
+  def apply(
+    config: KafkaConfig,
+    metadataCache: MetadataCache,
+    scheduler: KafkaScheduler,
+    time: Time,
+    metrics: Metrics,
+    threadNamePrefix: Option[String],
+    brokerEpochSupplier: () => Long,
+    brokerId: Int
+  ): AlterIsrManager = {
+    val nodeProvider = MetadataCacheControllerNodeProvider(config, metadataCache)
+
+    val channelManager = BrokerToControllerChannelManager(
+      controllerNodeProvider = nodeProvider,
+      time = time,
+      metrics = metrics,
+      config = config,
+      channelName = threadNamePrefix.getOrElse("BrokerToController"),
+      threadNamePrefix = threadNamePrefix,
+      retryTimeoutMs = Long.MaxValue
+    )
+
     new DefaultAlterIsrManager(
-      controllerChannelManager = controllerChannelManager,
+      controllerChannelManager = channelManager,
       scheduler = scheduler,
       time = time,
-      // TODO: populate this with a real cluster id
-      clusterId = "FIXME",
       brokerId = brokerId,
       brokerEpochSupplier = brokerEpochSupplier
     )
@@ -82,13 +102,11 @@ class DefaultAlterIsrManager(
   controllerChannelManager: BrokerToControllerChannelManager,
   scheduler: Scheduler,
   time: Time,
-  clusterId: String,
   brokerId: Int,
   brokerEpochSupplier: () => Long
 ) extends AbstractBrokerToControllerRequestManager[AlterIsrItem](controllerChannelManager, scheduler, time, brokerId, brokerEpochSupplier) with AlterIsrManager with Logging with KafkaMetricsGroup {
   override def buildRequest(inflightItems: Seq[AlterIsrItem], brokerEpoch: Long): AbstractRequest.Builder[_ <: AbstractRequest] = {
     val message = new AlterIsrRequestData()
-      .setClusterId(clusterId)
       .setBrokerId(brokerId)
       .setBrokerEpoch(brokerEpochSupplier.apply())
       .setTopics(new util.ArrayList())

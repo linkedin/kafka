@@ -1,12 +1,28 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package kafka.server
 
 import kafka.metrics.KafkaMetricsGroup
-import kafka.utils.{KafkaScheduler, Logging, Scheduler}
+import kafka.utils.{Logging, Scheduler}
 import org.apache.kafka.clients.ClientResponse
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.requests.{AbstractRequest, ElectLeadersResponse}
+import org.apache.kafka.common.requests.AbstractRequest
 import org.apache.kafka.common.utils.Time
 
 import java.util
@@ -30,46 +46,6 @@ object BrokerToControllerRequestManager {
   val defaultTimeout = 60000
 }
 
-abstract class BrokerToControllerRequestManagerFactory[Item <: RequestItem] {
-  def create(
-    config: KafkaConfig,
-    metadataCache: MetadataCache,
-    scheduler: KafkaScheduler,
-    time: Time,
-    metrics: Metrics,
-    threadNamePrefix: Option[String],
-    brokerEpochSupplier: () => Long,
-    brokerId: Int
-  ): BrokerToControllerRequestManager[Item] = {
-    val nodeProvider = MetadataCacheControllerNodeProvider(config, metadataCache)
-
-    val channelManager = BrokerToControllerChannelManager(
-      controllerNodeProvider = nodeProvider,
-      time = time,
-      metrics = metrics,
-      config = config,
-      channelName = threadNamePrefix.getOrElse("BrokerToController"),
-      threadNamePrefix = threadNamePrefix,
-      retryTimeoutMs = Long.MaxValue
-    )
-    create(
-      controllerChannelManager = channelManager,
-      scheduler = scheduler,
-      time = time,
-      brokerId = brokerId,
-      brokerEpochSupplier = brokerEpochSupplier
-    )
-  }
-
-  def create(controllerChannelManager: BrokerToControllerChannelManager,
-    scheduler: Scheduler,
-    time: Time,
-    brokerId: Int,
-    brokerEpochSupplier: () => Long
-  ): BrokerToControllerRequestManager[Item]
-}
-
-
 abstract class AbstractBrokerToControllerRequestManager[Item <: RequestItem](
   val controllerChannelManager: BrokerToControllerChannelManager,
   val scheduler: Scheduler,
@@ -79,8 +55,8 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: RequestItem](
 ) extends BrokerToControllerRequestManager[Item] with Logging with KafkaMetricsGroup {
 
   private[server] val unsentItemQueue: BlockingQueue[Item] = new LinkedBlockingQueue()
-  // The inflightTransfers map is populated by the unsentTransferQueue, and the items in it are removed in the response callback.
-  // Putting new items to the inflightTransfers and removing items from it won't be performed at the same time, and the coordination is
+  // The inflightItems map is populated by the unsentItemQueue, and the items in it are removed in the response callback.
+  // Putting new items to the inflightItems and removing items from it won't be performed at the same time, and the coordination is
   // done via the inflightRequest flag.
   private[server] val inflightItems: util.Map[TopicPartition, Item] = new ConcurrentHashMap[TopicPartition, Item]()
 
@@ -136,7 +112,7 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: RequestItem](
     val request = buildRequest(itemsToSend, brokerEpoch)
     debug(s"Sending to controller $request")
 
-    // We will not timeout the ElectLeaders request, instead letting it retry indefinitely
+    // We will not timeout the request, instead letting it retry indefinitely
     // until a response is received.
     controllerChannelManager.sendRequest(request,
       new ControllerRequestCompletionHandler {

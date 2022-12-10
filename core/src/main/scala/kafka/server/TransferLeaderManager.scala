@@ -57,7 +57,7 @@ object TransferLeaderManager {
       time = time,
       metrics = metrics,
       config = config,
-      channelName = threadNamePrefix.getOrElse("BrokerToController"),
+      channelName = "TransferLeader",
       threadNamePrefix = threadNamePrefix,
       retryTimeoutMs = Long.MaxValue
     )

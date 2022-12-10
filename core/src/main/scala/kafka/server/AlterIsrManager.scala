@@ -83,7 +83,7 @@ object AlterIsrManager {
       time = time,
       metrics = metrics,
       config = config,
-      channelName = threadNamePrefix.getOrElse("BrokerToController"),
+      channelName = "AlterIsr",
       threadNamePrefix = threadNamePrefix,
       retryTimeoutMs = Long.MaxValue
     )

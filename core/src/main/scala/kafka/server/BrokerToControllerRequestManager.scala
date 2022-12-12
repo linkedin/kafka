@@ -30,11 +30,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{BlockingQueue, ConcurrentHashMap, LinkedBlockingQueue, TimeUnit}
 import scala.collection.mutable.ListBuffer
 
-trait RequestItem {
+trait BrokerToControllerRequestItem {
   def topicPartition(): TopicPartition
 }
 
-trait BrokerToControllerRequestManager[Item <: RequestItem] {
+trait BrokerToControllerRequestManager[Item <: BrokerToControllerRequestItem] {
   def start(): Unit
 
   def shutdown(): Unit
@@ -46,7 +46,7 @@ object BrokerToControllerRequestManager {
   val defaultTimeout = 60000
 }
 
-abstract class AbstractBrokerToControllerRequestManager[Item <: RequestItem](
+abstract class AbstractBrokerToControllerRequestManager[Item <: BrokerToControllerRequestItem](
   val controllerChannelManager: BrokerToControllerChannelManager,
   val scheduler: Scheduler,
   val time: Time,

@@ -51,7 +51,7 @@ trait AlterIsrManager {
 case class AlterIsrItem(topicPartition: TopicPartition,
                         leaderAndIsr: LeaderAndIsr,
                         callback: Either[Errors, LeaderAndIsr] => Unit,
-                        controllerEpoch: Int) extends RequestItem // controllerEpoch needed for Zk impl
+                        controllerEpoch: Int) extends BrokerToControllerRequestItem // controllerEpoch needed for Zk impl
 
 object AlterIsrManager {
 
@@ -83,7 +83,7 @@ object AlterIsrManager {
       time = time,
       metrics = metrics,
       config = config,
-      channelName = "AlterIsr",
+      channelName = "alterIsr",
       threadNamePrefix = threadNamePrefix,
       retryTimeoutMs = Long.MaxValue
     )

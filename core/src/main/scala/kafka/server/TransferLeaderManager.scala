@@ -39,7 +39,7 @@ trait TransferLeaderManager extends BrokerToControllerRequestManager[TransferLea
 
 case class TransferLeaderItem(topicPartition: TopicPartition,
   newLeader: Int,
-  callback: Either[Errors, TopicPartition] => Unit) extends RequestItem
+  callback: Either[Errors, TopicPartition] => Unit) extends BrokerToControllerRequestItem
 
 object TransferLeaderManager {
   def apply( config: KafkaConfig,
@@ -57,7 +57,7 @@ object TransferLeaderManager {
       time = time,
       metrics = metrics,
       config = config,
-      channelName = "TransferLeader",
+      channelName = "transferLeader",
       threadNamePrefix = threadNamePrefix,
       retryTimeoutMs = Long.MaxValue
     )

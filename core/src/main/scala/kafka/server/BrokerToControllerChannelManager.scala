@@ -285,18 +285,13 @@ class BrokerToControllerRequestThread(
 ) extends InterBrokerSendThread(threadName, networkClient, config.controllerSocketTimeoutMs, time, isInterruptible = false) {
 
   private val requestQueue = new LinkedBlockingDeque[BrokerToControllerQueueItem]()
-  private val activeController = new AtomicReference[Node](null)
 
   // Used for testing
   @volatile
   private[server] var started = false
 
   def activeControllerAddress(): Option[Node] = {
-    Option(activeController.get())
-  }
-
-  private def updateControllerAddress(newActiveController: Node): Unit = {
-    activeController.set(newActiveController)
+    controllerNodeProvider.get()
   }
 
   def enqueue(request: BrokerToControllerQueueItem): Unit = {
@@ -347,13 +342,11 @@ class BrokerToControllerRequestThread(
         response.versionMismatch)
       queueItem.callback.onComplete(response)
     } else if (response.wasDisconnected()) {
-      updateControllerAddress(null)
       requestQueue.putFirst(queueItem)
     } else if (response.responseBody().errorCounts().containsKey(Errors.NOT_CONTROLLER)) {
       // just close the controller connection and wait for metadata cache update in doWork
       activeControllerAddress().foreach { controllerAddress => {
         networkClient.disconnect(controllerAddress.idString)
-        updateControllerAddress(null)
       }}
 
       requestQueue.putFirst(queueItem)
@@ -363,21 +356,7 @@ class BrokerToControllerRequestThread(
   }
 
   override def doWork(): Unit = {
-    if (activeControllerAddress().isDefined) {
-      super.pollOnce(Long.MaxValue)
-    } else {
-      debug("Controller isn't cached, looking for local metadata changes")
-      controllerNodeProvider.get() match {
-        case Some(controllerNode) =>
-          info(s"Recorded new controller, from now on will use broker $controllerNode")
-          updateControllerAddress(controllerNode)
-          metadataUpdater.setNodes(Seq(controllerNode).asJava)
-        case None =>
-          // need to backoff to avoid tight loops
-          debug("No controller defined in metadata cache, retrying after backoff")
-          super.pollOnce(maxTimeoutMs = 100)
-      }
-    }
+    super.pollOnce(maxTimeoutMs = 30000)
   }
 
   override def start(): Unit = {

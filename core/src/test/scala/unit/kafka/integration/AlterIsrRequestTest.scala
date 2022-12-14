@@ -21,9 +21,13 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     val serverConfigs = TestUtils.createBrokerConfigs(totalBrokers, zkConnect, false)
       .map(props => {
         if (props.get(KafkaConfig.BrokerIdProp).equals((totalBrokers - 1).toString)) {
-          // let the leader drop Fetch requests from the followers, which will cause the partition to be UnderMinISR
           props.setProperty(KafkaConfig.LiDenyAlterIsrProp, "true")
         }
+        if (props.get(KafkaConfig.BrokerIdProp).equals("0")) {
+          // let the leader drop Fetch requests from the followers, which will cause the partition to shrink its ISR
+          props.setProperty(KafkaConfig.LiDropFetchFollowerEnableProp, "true")
+        }
+        props.setProperty(KafkaConfig.ReplicaLagTimeMaxMsProp, "10000")
         props
       })
       .map(KafkaConfig.fromProps)
@@ -31,6 +35,7 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     val servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
     val firstControllerId = TestUtils.waitUntilControllerElected(zkClient)
     assertTrue(firstControllerId == totalBrokers - 1)
+    info(s"First elected controller is $firstControllerId")
 
     val topic = "test"
     val partition = 0
@@ -41,35 +46,36 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
 
     // ensure the ISR has a size of 3
     val adminClient = TestUtils.createAdminClient(servers)
-    assertEquals(3, getISR(adminClient, tp).size())
-
-    // shutdown 1 follower
-    val follower = servers.find(_.config.brokerId == 2).get
-    follower.shutdown()
+    val initialISR = getISR(adminClient, tp)
+    assertEquals(3, initialISR.size())
+    info(s"The initial ISR size is $initialISR")
 
     /**
      * Produce 1 message to trigger a mismatch of log end offset between the leader and followers.
      * This should further trigger an AlterISRRequest from the leader to the controller
      */
-    val producer = TestUtils.createProducer(TestUtils.getBrokerListStrFromServers(servers))
+    val producer = TestUtils.createProducer(TestUtils.getBrokerListStrFromServers(servers), acks=1)
     produceRecord(producer, topic, partition)
 
-    Thread.sleep(60000)
-    /*
     TestUtils.waitUntilTrue(() => {
       adminClient.moveController(new MoveControllerOptions())
       val secondController = TestUtils.waitUntilControllerElected(zkClient)
+      info(s"Elected new controller $secondController")
       secondController != firstControllerId
     }, "unable to elect a different controller")
-
-    info(s"Elected new controller ${zkClient.getControllerId.get}")
 
 
     // Ensure that the AlterISR request can go through with the new controller
     TestUtils.waitUntilTrue(() => {
-      getISR(adminClient, tp).size() == 2
-    }, "Unable to update the ISR despite a new controller")
-     */
+      val currentISR = getISR(adminClient, tp)
+      info(s"current isr $currentISR")
+      currentISR.size() == 1
+    }, "Unable to update the ISR despite a new controller", pause = 2000)
+
+
+    producer.close()
+    adminClient.close()
+    servers.foreach(_.shutdown())
   }
 
   private def getISR(adminClient: Admin, tp: TopicPartition): util.List[Node] = {

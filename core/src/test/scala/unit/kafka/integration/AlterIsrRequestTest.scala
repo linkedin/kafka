@@ -34,6 +34,7 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     // start servers in reverse order to ensure the last broker becomes the controller
     val servers = serverConfigs.reverseMap(s => TestUtils.createServer(s))
     val firstControllerId = TestUtils.waitUntilControllerElected(zkClient)
+    val firstControllerEpoch = zkClient.getControllerEpoch.get._1
     assertTrue(firstControllerId == totalBrokers - 1)
     info(s"First elected controller is $firstControllerId")
 
@@ -57,13 +58,7 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     val producer = TestUtils.createProducer(TestUtils.getBrokerListStrFromServers(servers), acks=1)
     produceRecord(producer, topic, partition)
 
-    adminClient.moveController(new MoveControllerOptions())
-    TestUtils.waitUntilTrue(() => {
-      val secondController = TestUtils.waitUntilControllerElected(zkClient)
-      info(s"Elected new controller $secondController")
-      secondController != firstControllerId
-    }, "unable to elect a different controller")
-
+    waitForDifferentController(adminClient, firstControllerId, firstControllerEpoch)
 
     // Ensure that the AlterISR request can go through with the new controller
     TestUtils.waitUntilTrue(() => {
@@ -71,7 +66,6 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
       info(s"current isr $currentISR")
       currentISR.size() == 1
     }, "Unable to update the ISR despite a new controller", pause = 2000)
-
 
     info("Test has finished, shutting down the clients and servers")
     producer.close()
@@ -90,4 +84,17 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     producer.send(record).get()
   }
 
+  def waitForDifferentController(adminClient: Admin, firstControllerId: Int, firstControllerEpoch: Int) = {
+    var latestController = firstControllerId
+    while (latestController == firstControllerId) {
+      adminClient.moveController(new MoveControllerOptions())
+
+      TestUtils.waitUntilTrue(() => {
+        zkClient.getControllerEpoch.get._1 != firstControllerEpoch
+      }, "The controller epoch does not change after a controller move")
+
+      latestController = zkClient.getControllerId.get
+    }
+    info(s"Elected new controller $latestController")
+  }
 }

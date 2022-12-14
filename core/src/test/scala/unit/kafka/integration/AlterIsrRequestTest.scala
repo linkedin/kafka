@@ -57,8 +57,8 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     val producer = TestUtils.createProducer(TestUtils.getBrokerListStrFromServers(servers), acks=1)
     produceRecord(producer, topic, partition)
 
+    adminClient.moveController(new MoveControllerOptions())
     TestUtils.waitUntilTrue(() => {
-      adminClient.moveController(new MoveControllerOptions())
       val secondController = TestUtils.waitUntilControllerElected(zkClient)
       info(s"Elected new controller $secondController")
       secondController != firstControllerId
@@ -73,6 +73,7 @@ class AlterIsrRequestTest extends ZooKeeperTestHarness {
     }, "Unable to update the ISR despite a new controller", pause = 2000)
 
 
+    info("Test has finished, shutting down the clients and servers")
     producer.close()
     adminClient.close()
     servers.foreach(_.shutdown())

@@ -18,8 +18,6 @@
 package kafka.server
 
 import java.util.concurrent.LinkedBlockingDeque
-import java.util.concurrent.atomic.AtomicReference
-
 import kafka.common.{InterBrokerSendThread, RequestAndCompletionHandler}
 import kafka.raft.RaftManager
 import kafka.utils.Logging
@@ -224,7 +222,6 @@ class BrokerToControllerChannelManagerImpl(
 
     new BrokerToControllerRequestThread(
       networkClient,
-      manualMetadataUpdater,
       controllerNodeProvider,
       config,
       time,
@@ -276,7 +273,6 @@ case class BrokerToControllerQueueItem(
 
 class BrokerToControllerRequestThread(
   networkClient: KafkaClient,
-  metadataUpdater: ManualMetadataUpdater,
   controllerNodeProvider: ControllerNodeProvider,
   config: KafkaConfig,
   time: Time,

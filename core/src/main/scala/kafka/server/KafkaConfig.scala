@@ -329,7 +329,6 @@ object Defaults {
   val LiDenyAlterIsr = false
   val LiAsyncFetcherEnabled = false
   val LiNumControllerInitThreads = 1
-  val LiForceAuthorizationFailure = false
   val LiLogCleanerFineGrainedLockEnabled = true
   val LiDropCorruptedFilesEnabled = false
   val LiConsumerFetchSampleRatio = 0.01
@@ -449,7 +448,6 @@ object KafkaConfig {
   val LiDropFetchFollowerEnableProp = "li.stop.replication.enable"
   val LiDenyAlterIsrProp = "li.deny.alter.isr"
   val LiNumControllerInitThreadsProp = "li.num.controller.init.threads"
-  val LiForceAuthorizationFailure = "li.force.authorization.failure"
   val LiLogCleanerFineGrainedLockEnableProp = "li.log.cleaner.fine.grained.lock.enable"
   val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
   val LiConsumerFetchSampleRatioProp = "li.consumer.fetch.sample.ratio"
@@ -795,7 +793,6 @@ object KafkaConfig {
   val LiDropFetchFollowerEnableDoc = "Specifies whether a leader should drop Fetch requests from followers. This config is used to simulate a slow leader and test the leader initiated leadership transfer"
   val LiDenyAlterIsrDoc = "Test only config, and never enable this in a real cluster. Specifies whether controller should deny the AlterISRRequest."
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."
-  val LiForceAuthorizationFailureDoc = "Test only config. Whether or not the authorizer should always return an authorization failure error"
   val LiLogCleanerFineGrainedLockEnableDoc = "Specifies whether the log cleaner should use fine grained locks when calculating the filthiest log to clean"
   // Although AllowPreferredControllerFallback is expected to be configured dynamically at per cluster level, providing a static configuration entry
   // here allows its value to be obtained without holding the dynamic broker configuration lock.

@@ -30,7 +30,7 @@ import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.security.authenticator.DefaultKafkaPrincipalBuilder
 import org.apache.kafka.common.utils.MockTime
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 import org.mockito.Mockito._
 
 
@@ -109,6 +109,7 @@ class BrokerToControllerRequestThreadTest {
   }
 
   @Test
+  @Disabled // after changing the logic to always query the NodeProvider, this test is no longer applicable
   def testControllerChanged(): Unit = {
     // in this test the current broker is 1, and the controller changes from 2 -> 3 then back: 3 -> 2
     val time = new MockTime()
@@ -156,6 +157,7 @@ class BrokerToControllerRequestThreadTest {
   }
 
   @Test
+  @Disabled // after changing the logic to always query the NodeProvider, this test is no longer applicable
   def testNotController(): Unit = {
     val time = new MockTime()
     val config = new KafkaConfig(TestUtils.createBrokerConfig(1, "localhost:2181"))
@@ -214,6 +216,7 @@ class BrokerToControllerRequestThreadTest {
   }
 
   @Test
+  @Disabled // after changing the logic to always query the NodeProvider, this test is no longer applicable
   def testEnvelopeResponseWithNotControllerError(): Unit = {
     val time = new MockTime()
     val config = new KafkaConfig(TestUtils.createBrokerConfig(1, "localhost:2181"))
@@ -284,6 +287,7 @@ class BrokerToControllerRequestThreadTest {
   }
 
   @Test
+  @Disabled // after changing the logic to always query the NodeProvider, this test is no longer applicable
   def testRetryTimeout(): Unit = {
     val time = new MockTime()
     val config = new KafkaConfig(TestUtils.createBrokerConfig(1, "localhost:2181"))

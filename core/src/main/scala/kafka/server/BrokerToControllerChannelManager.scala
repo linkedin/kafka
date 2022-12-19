@@ -351,10 +351,6 @@ class BrokerToControllerRequestThread(
     }
   }
 
-  override def doWork(): Unit = {
-    super.pollOnce(maxTimeoutMs = 30000)
-  }
-
   override def start(): Unit = {
     super.start()
     started = true

@@ -351,6 +351,14 @@ class BrokerToControllerRequestThread(
     }
   }
 
+  override def doWork(): Unit = {
+    /**
+     * Poll with a timeout long enough to make sure the controller has enough time to process the request.
+     * If it takes longer than 600s for a single poll operation, most likely something has gone wrong.
+     */
+    super.pollOnce(maxTimeoutMs = 600000)
+  }
+
   override def start(): Unit = {
     super.start()
     started = true

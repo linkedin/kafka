@@ -2967,20 +2967,24 @@ class KafkaController(val config: KafkaConfig,
       return
     }
     val corruptedBrokers = zkClient.getCorruptedBrokers.mapValues(_.clearedFromIsrs)
+    info(s"Received corrupted brokers change = $corruptedBrokers")
     if (corruptedBrokers == controllerContext.corruptedBrokers) {
       return
     }
+    info("Cleaning from ISR")
     maybeCleanIsrsForCorruptedBrokers(corruptedBrokers)
   }
 
   private def maybeCleanIsrsForCorruptedBrokers(originalCorruptedBrokers: Map[Int, Boolean]): Unit = {
     def updateCorruptedBrokerToCleanedInZk(brokerId: Int): Try[Unit] = Try {
+      info(s"Updating zk node for corrupted broker $brokerId to cleaned")
       val corruptedBroker = CorruptedBroker(brokerId, clearedFromIsrs = true)
       zkClient.updateCorruptedBroker(corruptedBroker)
     }
 
     val corruptedBrokersToClearFromIsr = originalCorruptedBrokers
       .filterNot { case (_, isrCleared) => isrCleared }.keys
+    info(s"Clearing corrupted brokers $corruptedBrokersToClearFromIsr from ISR")
     val corruptedBrokersIsrClearResults = corruptedBrokersToClearFromIsr.map { corruptedBrokerId =>
       val tryResult = removeBrokerIdFromPartitionsIsrs(corruptedBrokerId).flatMap { _ =>
         updateCorruptedBrokerToCleanedInZk(corruptedBrokerId)

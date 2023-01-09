@@ -83,7 +83,10 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   def initBrokerResponseSensors(): Unit = {
-    Array(ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA, ApiKeys.LI_COMBINED_CONTROL).foreach { k: ApiKeys =>
+    Array(
+      ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA,
+      ApiKeys.LI_COMBINED_CONTROL, ApiKeys.LIST_OFFSETS
+    ).foreach { k: ApiKeys =>
       brokerResponseSensors.put(k, new BrokerResponseTimeStats(k))
     }
   }
@@ -389,7 +392,7 @@ class RequestSendThread(val controllerId: Int,
         val requestHeader = clientResponse.requestHeader
         val api = requestHeader.apiKey
         if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA &&
-          api != ApiKeys.LI_COMBINED_CONTROL)
+          api != ApiKeys.LI_COMBINED_CONTROL && api != ApiKeys.LIST_OFFSETS)
           throw new KafkaException(s"Unexpected apiKey received: $api")
 
 

@@ -92,7 +92,6 @@ object CorruptedBrokersZNode {
 object CorruptedBroker {
   def apply(brokerId: Int, clearedFromIsrs: Boolean = false): CorruptedBroker = {
     val version = 0
-    val clearedFromIsrs = false
     new CorruptedBroker(brokerId, version, clearedFromIsrs)
   }
 }
@@ -1054,6 +1053,7 @@ object ZkData {
     BrokerIdsZNode.path,
     BrokerShutdownNode.path,
     PreferredControllersZNode.path,
+    CorruptedBrokersZNode.path,
     TopicsZNode.path,
     ConfigEntityChangeNotificationZNode.path,
     DeleteTopicsZNode.path,

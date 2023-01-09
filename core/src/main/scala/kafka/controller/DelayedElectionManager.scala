@@ -17,15 +17,15 @@
 package kafka.controller
 
 import kafka.server.{KafkaConfig, OffsetAndEpoch}
-import kafka.utils.KafkaScheduler
+import kafka.utils.{KafkaScheduler, Logging}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.message.ListOffsetsRequestData.{ListOffsetsPartition, ListOffsetsTopic}
-import org.apache.kafka.common.protocol.ApiKeys
+import org.apache.kafka.common.protocol.{ApiKeys, Errors}
 import org.apache.kafka.common.requests.{AbstractResponse, ListOffsetsRequest, ListOffsetsResponse}
 
 import java.util
-import java.util.concurrent.ScheduledFuture
-import scala.collection.{Set, mutable, concurrent}
+import java.util.concurrent.{ScheduledFuture, TimeUnit}
+import scala.collection.{Set, concurrent, mutable}
 
 object DelayedElectionManager {
   def apply(
@@ -35,13 +35,15 @@ object DelayedElectionManager {
     channelManager: ControllerChannelManager,
   ): DelayedElectionManager = {
     val kafkaScheduler = new KafkaScheduler(threads = 1, threadNamePrefix = "delayed-election-")
-    new DelayedElectionManager(
+    val electionManager = new DelayedElectionManager(
       config,
       controllerContext,
       eventManager,
       channelManager,
       kafkaScheduler
     )
+    kafkaScheduler.startup()
+    electionManager
   }
 }
 
@@ -51,12 +53,13 @@ private[controller] class DelayedElectionManager(
   val eventManager: ControllerEventManager,
   val channelManager: ControllerChannelManager,
   val kafkaScheduler: KafkaScheduler,
-) {
+) extends Logging {
   private val partitionToDelayedTaskMap: concurrent.Map[TopicPartition, DelayedElectionTask]
     = concurrent.TrieMap[TopicPartition, DelayedElectionTask]()
   private val electionWaitMs = config.liLeaderElectionOnCorruptionWaitMs
 
   private def onDelayedElectionDone(delayedElectionTask: DelayedElectionTask): Unit = {
+    info(s"Delayed election done, offsetMap = ${delayedElectionTask.brokerIdToOffsetAndEpochMap}")
     partitionToDelayedTaskMap.remove(delayedElectionTask.partition)
     if (!delayedElectionTask.isCancelled) {
       eventManager.put(DelayedElectionSuccess(
@@ -74,25 +77,37 @@ private[controller] class DelayedElectionManager(
   }
 
   def onListOffsetsResponse(brokerId: Int, listOffsetsResponse: ListOffsetsResponse): Unit = {
-    val topics = listOffsetsResponse.topics()
+    val responseTopics = listOffsetsResponse.topics()
+    info(s"onListOffsetsResponse received from $brokerId, $responseTopics")
     val partitionToOffsetAndEpochMap = mutable.Map[TopicPartition, OffsetAndEpoch]()
 
-    topics.forEach(topic => {
-      val partitions = topic.partitions()
-      partitions.forEach(partition => {
-        val topicPartition = new TopicPartition(topic.name(), partition.partitionIndex())
-        val offsetAndEpoch = OffsetAndEpoch(partition.offset(), partition.leaderEpoch())
-        partitionToOffsetAndEpochMap += topicPartition -> offsetAndEpoch
+    responseTopics.forEach(responseTopic => {
+      val partitions = responseTopic.partitions()
+      partitions.forEach(responsePartition => {
+        if (Errors.forCode(responsePartition.errorCode) == Errors.NONE) {
+          val topicPartition = new TopicPartition(responseTopic.name(), responsePartition.partitionIndex())
+          val offsetAndEpoch = OffsetAndEpoch(responsePartition.offset(), responsePartition.leaderEpoch())
+          partitionToOffsetAndEpochMap += topicPartition -> offsetAndEpoch
+        }
       })
     })
 
     partitionToOffsetAndEpochMap.filterKeys(partitionToDelayedTaskMap.contains).foreach {
-      case (partition, offsetAndEpoch) =>
-        partitionToDelayedTaskMap(partition).addBrokerOffsetAndEpoch(brokerId, offsetAndEpoch)
+      case (partition, offsetAndEpoch) => {
+        val delayedElectionTask = partitionToDelayedTaskMap(partition)
+        delayedElectionTask.addBrokerOffsetAndEpoch(brokerId, offsetAndEpoch)
+        val allReplicasForPartition = controllerContext.partitionReplicaAssignment(partition).toSet
+        val currentReplicasForPartition = delayedElectionTask.brokerIdToOffsetAndEpochMap.keySet
+        if (currentReplicasForPartition == allReplicasForPartition) {
+          info(s"All replicas returned offsets for partition $partition. Skipping wait for delayed election.")
+          delayedElectionTask.complete()
+        }
+      }
     }
   }
 
   def startDelayedElectionsForPartitions(partitionsWithCorruptedLeaders: Seq[TopicPartition]): Unit = {
+    info(s"Starting delayed elections for partitions $partitionsWithCorruptedLeaders")
     val corruptedPartitionsToAdd = partitionsWithCorruptedLeaders.toSet -- partitionToDelayedTaskMap.keySet
     val corruptedPartitionsToRemove = partitionToDelayedTaskMap.keySet -- partitionsWithCorruptedLeaders.toSet
 
@@ -174,7 +189,7 @@ private[controller] class DelayedElectionManager(
     }
 
     val listOffsetsRequestBuilder = ListOffsetsRequest.Builder
-      .forReplica(ApiKeys.LIST_OFFSETS.latestVersion(), config.brokerId)
+      .forController(ApiKeys.LIST_OFFSETS.latestVersion())
       .setTargetTimes(listOffsetsTopics)
     listOffsetsRequestBuilder
   }
@@ -185,7 +200,7 @@ private class DelayedElectionTask(
   val electionWaitMs: Long,
   val partition: TopicPartition,
   val onComplete: (DelayedElectionTask) => Unit
-) {
+) extends Logging {
   var isCancelled = false
   val brokerIdToOffsetAndEpochMap: mutable.Map[Int, OffsetAndEpoch] = mutable.Map[Int, OffsetAndEpoch]()
   private var electionFuture: Option[ScheduledFuture[_]] = None
@@ -195,7 +210,9 @@ private class DelayedElectionTask(
   }
 
   def start(): Unit = {
-    electionFuture = Some(kafkaScheduler.schedule(s"delayed-election-$partition", done, delay=electionWaitMs))
+    electionFuture = Some(kafkaScheduler.schedule(s"delayed-election-$partition", complete,
+      delay = electionWaitMs, period = -1L, unit = TimeUnit.MILLISECONDS))
+    info(s"Started election task with delay = $electionWaitMs ms")
   }
 
   def cancel(): Unit = {
@@ -204,7 +221,15 @@ private class DelayedElectionTask(
     onComplete(this)
   }
 
-  def done(): Unit = {
+  def complete(): Unit = {
+    info("Completed election task")
+    electionFuture.foreach(future => {
+      if (!future.isDone) {
+        future.cancel(false)
+      }
+    })
+
+    electionFuture.foreach(_.cancel(false))
     onComplete(this)
   }
 }

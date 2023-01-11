@@ -283,8 +283,7 @@ class RequestSendThread(val controllerId: Int,
     if (controllerRequestMerger.hasPendingRequests() ||
       (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1 &&
         config.liCombinedControlRequestEnable &&
-        firstUpdateMetadataWithPartitionsSent &&
-        config.interBrokerProtocolVersion < KAFKA_2_8_IV1)) {
+        firstUpdateMetadataWithPartitionsSent)) {
       // Only start the merging logic after the first UpdateMetadata request with partitions,
       // since the first UpdateMetadata request with partitions may contain hundreds of thousands of partitions,
       // and thus needs to be cached and shared by all brokers in order to prevent OOM

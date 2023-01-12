@@ -295,11 +295,11 @@ class RequestSendThread(val controllerId: Int,
       // case 4: queue empty, merger empty {action: block and wait until queue becomes non-empty, then transition to case 1 or 3}
 
       // handle case 4 first
-      var shouldStopMerging = false
+      var shouldContinueMerging = true
       if (!controllerRequestMerger.hasPendingRequests()) {
         val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
         latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
-        shouldStopMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
+        shouldContinueMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
       }
 
       // now we are guaranteed that the controllerRequestMerger is not empty (case 1 or 3)
@@ -307,9 +307,9 @@ class RequestSendThread(val controllerId: Int,
       // one concurrent access case considering the producer of the queue:
       // an item is put to the queue right after the condition check below.
       // That behavior does not change correctness since the inserted item will be picked up in the next round
-      while (!queue.isEmpty && !shouldStopMerging) {
+      while (!queue.isEmpty && shouldContinueMerging) {
         val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-        shouldStopMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
+        shouldContinueMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
       }
 
       val requestBuilder = controllerRequestMerger.pollLatestRequest()

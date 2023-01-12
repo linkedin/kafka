@@ -119,6 +119,9 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     aggregateTopicIds.putAll(topicIds)
   }
 
+  /**
+   *@return This method should return true if the merging should continue, and false otherwise.
+   */
   private def addLeaderAndIsrRequest(request: LeaderAndIsrRequest.Builder,
                                      callback: AbstractResponse => Unit): Boolean = {
     mergeTopicIds(request.topicIds())
@@ -156,6 +159,9 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     leaderAndIsrPartitionStates.remove(topicIdPartition)
   }
 
+  /**
+   *@return This method should return true if the merging should continue, and false otherwise.
+   */
   private def addUpdateMetadataRequest(request: UpdateMetadataRequest.Builder): Boolean = {
     mergeTopicIds(request.topicIds())
 
@@ -191,6 +197,9 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     }
   }
 
+  /**
+   *@return This method should return true if the merging should continue, and false otherwise.
+   */
   private def addStopReplicaRequest(request: StopReplicaRequest.Builder,
                                     callback: AbstractResponse => Unit): Boolean = {
     request.topicStates().forEach{topicState => {

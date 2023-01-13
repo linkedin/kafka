@@ -129,8 +129,8 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     if (request.`type`().equals(LeaderAndIsrRequestType.FULL)) {
       // There should be no other LeaderAndISR partitions in the merger when a full LeaderAndISR request is sent
       if (!leaderAndIsrPartitionStates.isEmpty) {
-        throw new IllegalStateException("A Full LeaderAndISR request is received while some LeaderAndISR partitions are already " +
-        "ControllerRequest merger")
+        throw new IllegalStateException("A Full LeaderAndISR request is received " +
+          "while some LeaderAndISR partitions are already in the ControllerRequest merger")
       }
       isFullLeaderAndIsr = true
     }

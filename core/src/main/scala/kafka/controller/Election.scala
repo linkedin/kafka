@@ -28,10 +28,16 @@ case class ElectionResult(topicPartition: TopicPartition, leaderAndIsr: Option[L
 
 object Election extends Logging {
 
+  /**
+   * @param allowUncleanCorruptedLeaders If enabled, allow an unclean corrupted broker to be elected leader.
+   *                                     This is set to true when delayed election is turned off.
+   * @return an election result, along with a flag indicating
+   * whether a delayed election for a corrupt leader needs to be triggered.
+   */
   private def leaderForOffline(partition: TopicPartition,
                                leaderAndIsrOpt: Option[LeaderAndIsr],
                                uncleanLeaderElectionEnabled: Boolean,
-                               allowUncleanCorruptedBrokers: Boolean,
+                               allowUncleanCorruptedLeaders: Boolean,
                                controllerContext: ControllerContext): (ElectionResult, Boolean) = {
     val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
     val assignment = controllerContext.partitionReplicaAssignment(partition)
@@ -39,11 +45,8 @@ object Election extends Logging {
     leaderAndIsrOpt match {
       case Some(leaderAndIsr) =>
         val isr = leaderAndIsr.isr
-        val electionResult: OfflineElectionResult = PartitionLeaderElectionAlgorithms.offlinePartitionLeaderElection(
-          assignment, isr, liveReplicas.toSet,
-          controllerContext.corruptedBrokers.keys.toSet, uncleanLeaderElectionEnabled)
 
-        def getIsrForLeader(leader: Int, uncleanElection: Boolean): (ElectionResult, Boolean) = {
+        def getIsrForLeader(leader: Int, uncleanElection: Boolean): ElectionResult = {
           if (uncleanElection) {
             controllerContext.stats.uncleanLeaderElectionRate.mark()
             warn(s"Unclean leader election. Partition $partition has been assigned leader $leader from deposed " +
@@ -54,18 +57,23 @@ object Election extends Logging {
           else
             List(leader)
           val newLeaderAndIsr = leaderAndIsr.newLeaderAndIsr(leader, newIsr)
-          (ElectionResult(partition, Some(newLeaderAndIsr), liveReplicas), false)
+          ElectionResult(partition, Some(newLeaderAndIsr), liveReplicas)
         }
 
+        val electionResult: OfflineElectionResult = PartitionLeaderElectionAlgorithms.offlinePartitionLeaderElection(
+          assignment, isr, liveReplicas.toSet,
+          controllerContext.corruptedBrokers.keys.toSet, uncleanLeaderElectionEnabled)
+
         electionResult match {
-          case OfflineElectionResult.Leader(leader, uncleanElection) => getIsrForLeader(leader, uncleanElection)
-          case OfflineElectionResult.CorruptedBrokerLeader(leader) =>
-            if (allowUncleanCorruptedBrokers) {
-              getIsrForLeader(leader, uncleanElection = true)
-            } else {
-              (ElectionResult(partition, None, liveReplicas), true)
-            }
-          case OfflineElectionResult.NoLeader => (ElectionResult(partition, None, liveReplicas), false)
+          case OfflineElectionResult.CleanLeader(leader) =>
+            (getIsrForLeader(leader, uncleanElection = false), false)
+          case OfflineElectionResult.UncleanLeader(leader) =>
+            (getIsrForLeader(leader, uncleanElection = true), false)
+          case OfflineElectionResult.CorruptedUncleanLeader(leader) =>
+            if (allowUncleanCorruptedLeaders) (getIsrForLeader(leader, uncleanElection = true), false)
+            else (ElectionResult(partition, None, liveReplicas), true)
+          case OfflineElectionResult.NoLeader =>
+            (ElectionResult(partition, None, liveReplicas), false)
         }
       case None =>
         (ElectionResult(partition, None, liveReplicas), false)
@@ -85,12 +93,12 @@ object Election extends Logging {
   def leaderForOffline(
     controllerContext: ControllerContext,
     partitionsWithUncleanLeaderElectionState: Seq[(TopicPartition, Option[LeaderAndIsr], Boolean)],
-    allowUncleanCorruptedBrokers: Boolean,
+    allowUncleanCorruptedLeaders: Boolean,
   ): Seq[(ElectionResult, Boolean)] = {
     partitionsWithUncleanLeaderElectionState.map {
       case (partition, leaderAndIsrOpt, uncleanLeaderElectionEnabled) =>
         leaderForOffline(partition, leaderAndIsrOpt, uncleanLeaderElectionEnabled,
-          allowUncleanCorruptedBrokers, controllerContext)
+          allowUncleanCorruptedLeaders, controllerContext)
     }
   }
 

@@ -34,7 +34,7 @@ class PartitionLeaderElectionAlgorithmsTest {
       liveReplicas,
       corruptedReplicas,
       uncleanLeaderElectionEnabled = false)
-    assertEquals(OfflineElectionResult.Leader(4, isUncleanElection = false), result)
+    assertEquals(OfflineElectionResult.CleanLeader(4), result)
   }
 
   @Test
@@ -62,7 +62,7 @@ class PartitionLeaderElectionAlgorithmsTest {
       liveReplicas,
       corruptedReplicas,
       uncleanLeaderElectionEnabled = true)
-    assertEquals(OfflineElectionResult.Leader(4, isUncleanElection = true), result)
+    assertEquals(OfflineElectionResult.UncleanLeader(4), result)
   }
 
   @Test
@@ -76,7 +76,7 @@ class PartitionLeaderElectionAlgorithmsTest {
       liveReplicas,
       corruptedReplicas,
       uncleanLeaderElectionEnabled = true)
-    assertEquals(OfflineElectionResult.Leader(6, isUncleanElection = true), result)
+    assertEquals(OfflineElectionResult.UncleanLeader(6), result)
   }
 
   @Test
@@ -90,7 +90,7 @@ class PartitionLeaderElectionAlgorithmsTest {
       liveReplicas,
       corruptedReplicas,
       uncleanLeaderElectionEnabled = true)
-    assertEquals(OfflineElectionResult.CorruptedBrokerLeader(4), result)
+    assertEquals(OfflineElectionResult.CorruptedUncleanLeader(4), result)
   }
 
   @Test

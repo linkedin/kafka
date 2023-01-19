@@ -107,7 +107,7 @@ private[controller] class DelayedElectionManager(
   }
 
   def startDelayedElectionsForPartitions(partitionsWithCorruptedLeaders: Seq[TopicPartition]): Unit = {
-    info(s"Starting delayed elections for partitions $partitionsWithCorruptedLeaders")
+    info(s"Starting / Updating delayed elections for partitions $partitionsWithCorruptedLeaders")
     val corruptedPartitionsToAdd = partitionsWithCorruptedLeaders.toSet -- partitionToDelayedTaskMap.keySet
     val corruptedPartitionsToRemove = partitionToDelayedTaskMap.keySet -- partitionsWithCorruptedLeaders.toSet
 

@@ -17,8 +17,7 @@
 package kafka.controller
 
 import java.net.SocketTimeoutException
-import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
-
+import java.util.concurrent.{BlockingDeque, LinkedBlockingDeque, TimeUnit}
 import com.yammer.metrics.core.{Gauge, Timer}
 import kafka.api._
 import kafka.cluster.Broker
@@ -41,7 +40,7 @@ import org.apache.kafka.common.{KafkaException, Node, Reconfigurable, TopicParti
 
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable.HashMap
-import scala.collection.{Seq, Map, Set, mutable}
+import scala.collection.{Map, Seq, Set, mutable}
 
 object ControllerChannelManager {
   val QueueSizeMetricName = "QueueSize"
@@ -84,7 +83,10 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   def initBrokerResponseSensors(): Unit = {
-    Array(ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA, ApiKeys.LI_COMBINED_CONTROL).foreach { k: ApiKeys =>
+    Array(
+      ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA,
+      ApiKeys.LI_COMBINED_CONTROL, ApiKeys.LIST_OFFSETS
+    ).foreach { k: ApiKeys =>
       brokerResponseSensors.put(k, new BrokerResponseTimeStats(k))
     }
   }
@@ -96,7 +98,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
     }
   }
 
-  def sendRequest(brokerId: Int, request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+  def sendRequest(brokerId: Int, request: AbstractRequest.Builder[_ <: AbstractRequest],
                   callback: AbstractResponse => Unit = null): Unit = {
     brokerLock synchronized {
       val stateInfoOpt = brokerStateInfo.get(brokerId)
@@ -126,7 +128,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   private def addNewBroker(broker: Broker): Unit = {
-    val messageQueue = new LinkedBlockingQueue[QueueItem]
+    val messageQueue = new LinkedBlockingDeque[QueueItem]
     debug(s"Controller ${config.brokerId} trying to connect to broker ${broker.id}")
     val controllerToBrokerListenerName = config.controlPlaneListenerName.getOrElse(config.interBrokerListenerName)
     val controllerToBrokerSecurityProtocol = config.controlPlaneSecurityProtocol.getOrElse(config.interBrokerSecurityProtocol)
@@ -225,14 +227,14 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 }
 
-case class QueueItem(apiKey: ApiKeys, request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+case class QueueItem(apiKey: ApiKeys, request: AbstractRequest.Builder[_ <: AbstractRequest],
                      callback: AbstractResponse => Unit, enqueueTimeMs: Long)
 
 case class LatestRequestStatus(isInFlight: Boolean, isInQueue: Boolean, enqueueTimeMs: Long)
 
 class RequestSendThread(val controllerId: Int,
                         val controllerContext: ControllerContext,
-                        val queue: BlockingQueue[QueueItem],
+                        val queue: BlockingDeque[QueueItem],
                         val networkClient: NetworkClient,
                         val brokerNode: Node,
                         val config: KafkaConfig,
@@ -279,7 +281,27 @@ class RequestSendThread(val controllerId: Int,
     sendAndReceive(requestBuilder, callback)
   }
 
-  private def nextRequestAndCallback(): (AbstractControlRequest.Builder[_ <: AbstractControlRequest], AbstractResponse => Unit) = {
+  private def takeFromQueueAndMerge(): Option[(Long, Boolean)] = {
+    val queueItem = queue.take()
+    val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queueItem
+    requestBuilder match {
+      case controlRequestBuilder: AbstractControlRequest.Builder[AbstractControlRequest] =>
+        val continueMerge = mergeControlRequest(enqueueTimeMs, apiKey, controlRequestBuilder, callback)
+        Some(enqueueTimeMs, continueMerge)
+      case _ =>
+        queue.putFirst(queueItem)
+        None
+    }
+  }
+
+  private def takeSingleItemFromQueue(): (AbstractRequest.Builder[_ <: AbstractRequest], AbstractResponse => Unit) = {
+    val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
+    latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
+    updateMetrics(apiKey, enqueueTimeMs)
+    (requestBuilder, callback)
+  }
+
+  private def nextRequestAndCallback(): (AbstractRequest.Builder[_ <: AbstractRequest], AbstractResponse => Unit) = {
     if (controllerRequestMerger.hasPendingRequests() ||
       (config.interBrokerProtocolVersion >= KAFKA_2_4_IV1 &&
         config.liCombinedControlRequestEnable &&
@@ -297,9 +319,15 @@ class RequestSendThread(val controllerId: Int,
       // handle case 4 first
       var shouldContinueMerging = true
       if (!controllerRequestMerger.hasPendingRequests()) {
-        val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-        latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
-        shouldContinueMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
+        takeFromQueueAndMerge() match {
+          case Some((enqueueTimeMs, continueMerge)) =>
+            latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
+            shouldContinueMerging = continueMerge
+          case None =>
+            // This line doesn't have any effect since we return immediately. It is there for completeness.
+            shouldContinueMerging = false
+            return takeSingleItemFromQueue()
+        }
       }
 
       // now we are guaranteed that the controllerRequestMerger is not empty (case 1 or 3)
@@ -308,22 +336,18 @@ class RequestSendThread(val controllerId: Int,
       // an item is put to the queue right after the condition check below.
       // That behavior does not change correctness since the inserted item will be picked up in the next round
       while (!queue.isEmpty && shouldContinueMerging) {
-        val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-        shouldContinueMerging = mergeControlRequest(enqueueTimeMs, apiKey, requestBuilder, callback)
+        shouldContinueMerging = takeFromQueueAndMerge().exists(_._2)
       }
 
       val requestBuilder = controllerRequestMerger.pollLatestRequest()
       (requestBuilder, controllerRequestMerger.triggerCallback _)
     } else {
       // use the old behavior of sending each item in the queue as a separate request
-      val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queue.take()
-      latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
-      updateMetrics(apiKey, enqueueTimeMs)
-      (requestBuilder, callback)
+      takeSingleItemFromQueue()
     }
   }
 
-  private def sendAndReceive(requestBuilder: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
+  private def sendAndReceive(requestBuilder: AbstractRequest.Builder[_ <: AbstractRequest],
     callback: AbstractResponse => Unit): Unit = {
     var remoteTimeMs: Long = 0
 
@@ -368,7 +392,7 @@ class RequestSendThread(val controllerId: Int,
         val requestHeader = clientResponse.requestHeader
         val api = requestHeader.apiKey
         if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA &&
-          api != ApiKeys.LI_COMBINED_CONTROL)
+          api != ApiKeys.LI_COMBINED_CONTROL && api != ApiKeys.LIST_OFFSETS)
           throw new KafkaException(s"Unexpected apiKey received: $api")
 
 
@@ -863,7 +887,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
 case class ControllerBrokerStateInfo(networkClient: NetworkClient,
                                      brokerNode: Node,
-                                     messageQueue: BlockingQueue[QueueItem],
+                                     messageQueue: BlockingDeque[QueueItem],
                                      requestSendThread: RequestSendThread,
                                      queueSizeGauge: Gauge[Int],
                                      requestRateAndTimeMetrics: Timer,

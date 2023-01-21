@@ -332,7 +332,7 @@ object Defaults {
   val LiLogCleanerFineGrainedLockEnabled = true
   val LiDropCorruptedFilesEnabled = false
   val LiConsumerFetchSampleRatio = 0.01
-  val LiLeaderElectionOnCorruptionWaitMs = 60 * 60 * 1000L
+  val LiLeaderElectionOnCorruptionWaitMs = 0L
 }
 
 object KafkaConfig {

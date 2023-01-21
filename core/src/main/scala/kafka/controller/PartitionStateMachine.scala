@@ -423,7 +423,9 @@ class ZkPartitionStateMachine(config: KafkaConfig,
         }.map {
           case (electionResult, _) => electionResult.topicPartition
         }
-        delayedElectionManager.startDelayedElectionsForPartitions(partitionsWithCorruptedLeaders)
+        if (partitionsWithCorruptedLeaders.nonEmpty) {
+          delayedElectionManager.startDelayedElectionsForPartitions(partitionsWithCorruptedLeaders)
+        }
 
         results.map(_._1).partition(_.leaderAndIsr.isEmpty)
       case ReassignPartitionLeaderElectionStrategy =>

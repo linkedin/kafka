@@ -89,7 +89,7 @@ class DelayedElectionManagerTest {
 
   private def expectListOffsetsToBroker(brokerId: Int): Unit = {
     val expectedRequest = ListOffsetsRequest.Builder
-      .forReplica(ApiKeys.LIST_OFFSETS.latestVersion(), controllerBrokerId)
+      .forReplica(ApiKeys.LIST_OFFSETS.latestVersion(), ListOffsetsRequest.CONTROLLER_REPLICA_ID)
       .setTargetTimes(Collections.singletonList(
         new ListOffsetsTopic()
           .setName(partition.topic())
@@ -121,7 +121,7 @@ class DelayedElectionManagerTest {
     EasyMock.verify(eventManager, channelManager, kafkaScheduler)
   }
 
-  private def expectElectionScheduled(): Capture[() => Unit] = {
+  private def expectElectionScheduled(): (ScheduledFuture[Void], Capture[() => Unit]) = {
     val scheduledFuture: ScheduledFuture[Void] = EasyMock.createMock(classOf[ScheduledFuture[Void]])
     val callbackCapture = Capture.newInstance[() => Unit]()
 
@@ -131,7 +131,7 @@ class DelayedElectionManagerTest {
       .asInstanceOf[ScheduledFuture[Void]])
       .andReturn(scheduledFuture)
 
-    callbackCapture
+    (scheduledFuture, callbackCapture)
   }
 
   @Test
@@ -185,7 +185,7 @@ class DelayedElectionManagerTest {
   def testDelayedElection(): Unit = {
     // Part 1: delayed election started; broker 0 and 1 are live
     Seq(0, 1).foreach(expectListOffsetsToBroker)
-    val callbackCapture = expectElectionScheduled()
+    val (scheduledFuture, callbackCapture) = expectElectionScheduled()
 
     EasyMock.replay(eventManager, channelManager, kafkaScheduler)
 
@@ -223,9 +223,10 @@ class DelayedElectionManagerTest {
     val captureEvent = Capture.newInstance[DelayedElectionSuccess]()
     EasyMock.expect(eventManager.put(EasyMock.capture(captureEvent)))
       .andReturn(EasyMock.createMock(classOf[QueuedEvent]))
-    EasyMock.replay(eventManager, channelManager, kafkaScheduler)
+    EasyMock.expect(scheduledFuture.isDone).andReturn(true)
+    EasyMock.replay(eventManager, channelManager, kafkaScheduler, scheduledFuture)
     callback()
-    EasyMock.verify(eventManager, channelManager, kafkaScheduler)
+    EasyMock.verify(eventManager, channelManager, kafkaScheduler, scheduledFuture)
 
     val event = captureEvent.getValue
     assertEquals(partition, event.partition)

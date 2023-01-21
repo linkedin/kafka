@@ -43,10 +43,16 @@ class PartitionStateMachineTest {
   private var partitionStateMachine: PartitionStateMachine = null
 
   private val brokerId = 5
-  private val config = KafkaConfig.fromProps(TestUtils.createBrokerConfig(brokerId, "zkConnect"))
+  private val config = buildConfig
   private val controllerEpoch = 50
   private val partition = new TopicPartition("t", 0)
   private val partitions = Seq(partition)
+
+  private def buildConfig: KafkaConfig = {
+    val cfg = TestUtils.createBrokerConfig(brokerId, "zkConnect")
+    cfg.put(KafkaConfig.LiLeaderElectionOnCorruptionWaitMsProp, "1")
+    KafkaConfig.fromProps(cfg)
+  }
 
   @BeforeEach
   def setUp(): Unit = {
@@ -377,8 +383,7 @@ class PartitionStateMachineTest {
   @Test
   def testOfflinePartitionToOnlinePartitionTransitionFailureOnCorruptedBroker(): Unit = {
     /* Starting scenario: Leader: X, Isr: [X], Replicas: [X, Y], LiveBrokers: [Y]
-     * Ending scenario: Leader: -1, Isr: [], Replicas: [X, Y], LiverBrokers: [Y]
-     *
+     * Ending scenario: Leader: -1, Isr: [], Replicas: [X, Y], LiveBrokers: [Y]
      */
     val leaderBrokerId = brokerId + 1
     controllerContext.setLiveBrokers(Map(TestUtils.createBrokerAndEpoch(brokerId, "host", 0)))

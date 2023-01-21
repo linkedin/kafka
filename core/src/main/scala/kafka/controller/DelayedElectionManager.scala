@@ -228,8 +228,6 @@ private class DelayedElectionTask(
         future.cancel(false)
       }
     })
-
-    electionFuture.foreach(_.cancel(false))
     onComplete(this)
   }
 }

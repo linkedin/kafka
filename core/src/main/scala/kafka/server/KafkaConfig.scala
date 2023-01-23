@@ -332,6 +332,7 @@ object Defaults {
   val LiLogCleanerFineGrainedLockEnabled = true
   val LiDropCorruptedFilesEnabled = false
   val LiConsumerFetchSampleRatio = 0.01
+  val LiLeaderElectionOnCorruptionWaitMs = 0L
 }
 
 object KafkaConfig {
@@ -451,6 +452,7 @@ object KafkaConfig {
   val LiLogCleanerFineGrainedLockEnableProp = "li.log.cleaner.fine.grained.lock.enable"
   val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
   val LiConsumerFetchSampleRatioProp = "li.consumer.fetch.sample.ratio"
+  val LiLeaderElectionOnCorruptionWaitMsProp = "li.leader.election.on.corruption.wait.ms"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
   val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
@@ -790,6 +792,7 @@ object KafkaConfig {
   val LiUpdateMetadataDelayMsDoc = "Specifies how long a UpdateMetadata request with partitions should be delayed before its processing can start. This config is purely for testing the LiCombinedControl feature and should not be enabled in a production environment."
   val LiDropCorruptedFilesEnableDoc = "Specifies whether the broker should delete corrupted files during startup."
   val LiConsumerFetchSampleRatioDoc = "Specifies the ratio of consumer Fetch requests to sample, which must be a number in the range [0.0, 1.0]. For now, the sampling is used to derive the age of consumed data."
+  val LiLeaderElectionOnCorruptionWaitMsDoc = "Specifies how long (in milliseconds) the controller should wait for other replicas to come up before electing a broker that has data corruption as leader."
   val LiDropFetchFollowerEnableDoc = "Specifies whether a leader should drop Fetch requests from followers. This config is used to simulate a slow leader and test the leader initiated leadership transfer"
   val LiDenyAlterIsrDoc = "Test only config, and never enable this in a real cluster. Specifies whether controller should deny the AlterISRRequest."
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."
@@ -1240,6 +1243,7 @@ object KafkaConfig {
       .define(LiLogCleanerFineGrainedLockEnableProp, BOOLEAN, Defaults.LiLogCleanerFineGrainedLockEnabled, LOW, LiLogCleanerFineGrainedLockEnableDoc)
       .define(LiDropCorruptedFilesEnableProp, BOOLEAN, Defaults.LiDropCorruptedFilesEnabled, HIGH, LiDropCorruptedFilesEnableDoc)
       .define(LiConsumerFetchSampleRatioProp, DOUBLE, Defaults.LiConsumerFetchSampleRatio, between(0.0, 1.0), LOW, LiConsumerFetchSampleRatioDoc)
+      .define(LiLeaderElectionOnCorruptionWaitMsProp, LONG, Defaults.LiLeaderElectionOnCorruptionWaitMs, atLeast(0), HIGH, LiLeaderElectionOnCorruptionWaitMsDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
@@ -1784,6 +1788,8 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   def liLogCleanerFineGrainedLockEnable = getBoolean(KafkaConfig.LiLogCleanerFineGrainedLockEnableProp)
   val liDropCorruptedFilesEnable = getBoolean(KafkaConfig.LiDropCorruptedFilesEnableProp)
   val liConsumerFetchSampleRatio = getDouble(KafkaConfig.LiConsumerFetchSampleRatioProp)
+  val liLeaderElectionOnCorruptionWaitMs = getLong(KafkaConfig.LiLeaderElectionOnCorruptionWaitMsProp)
+
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)
   def unofficialClientCacheTtl = getLong(KafkaConfig.UnofficialClientCacheTtlProp)
   def expectedClientSoftwareNames = getList(KafkaConfig.ExpectedClientSoftwareNamesProp)
@@ -2146,6 +2152,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   def usesTopicId: Boolean =
     usesSelfManagedQuorum || interBrokerProtocolVersion >= KAFKA_2_8_IV0
 
+  def isDelayedElectionEnabled: Boolean = liLeaderElectionOnCorruptionWaitMs > 0
   def isRemoteLogStorageEnabled: Boolean =
     getBoolean(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP)
 

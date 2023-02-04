@@ -91,6 +91,45 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
   }
 
   @Test
+  def testLiCombinedControlRequestAddBroker(): Unit = {
+    // This test is to verify that commit 8c5b1ec033577cb6ca2b445a70e7347581d5b7c6 would fix the bug described below.
+    // https://github.com/linkedin/kafka/commit/8c5b1ec033577cb6ca2b445a70e7347581d5b7c6
+    // This commit fixes a bug that would happen when the following sequences happen:
+    // (1) A broker is added to a cluster without any assigned partitions, and the cluster has
+    // liCombinedControlRequestEnable enabled and has some partitions.
+    // (2) The controller sends a raw full UpdateMetadataWithPartitions request to this broker.
+    //  (firstUpdateMetadataWithPartitionsSent becomes true).
+    // (3) Subsequent requests from controller to the broker would be as LiCombinedControllerRequest, including
+    //     LeaderAndIsr requests.
+    // (4) Some partitions are added to the broker.
+    // Without the fix, the bug is that all subsequent controller requests to this broker would be raw requests,
+    // not LiCombinedControllerRequest.
+
+
+    // turn on the feature by setting the /li_combined_control_request_flag to true
+    val props = new Properties
+    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "true")
+    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "true"))
+
+    // Create 1 partition on broker 0. Broker 1 will receive a UpdateMetadata request containing partitions,
+    // have firstUpdateMetadataWithPartitionsSent be true, and have LiCombinedControl enabled.
+    // At this time, broker 1 should have no partition.
+    createTopic("topic2", Map(0 -> Seq(0)))
+    createTopic("topic3", Map(0 -> Seq(0)))
+
+    // Create 1 partition on broker 1.
+    createTopic("topic4", Map(0 -> Seq(1)))
+
+    // check the subsequent controller requests are not sent through raw requests
+    val rawUpdateMetadataRequestsSent1 = getUpdateMetadataRequestCount()
+    createTopic("topic5")
+    createTopic("topic6")
+    val rawUpdateMetadataRequestsSent2 = getUpdateMetadataRequestCount()
+    // check no raw UpdateMetadata requests are sent.
+    assertTrue(rawUpdateMetadataRequestsSent1 == rawUpdateMetadataRequestsSent2)
+  }
+
+  @Test
   def testLiCombinedControlResponseV1(): Unit = {
     val topic1Uuid = Uuid.randomUuid()
     val leaderAndIsrPartitionStates = new util.ArrayList[LiCombinedControlRequestData.LeaderAndIsrPartitionState]()
@@ -163,8 +202,16 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
       createTopic(topic, 1, 1)
     }
 
+    getRequestCount("LI_COMBINED_CONTROL")
+  }
+
+  def getUpdateMetadataRequestCount() = {
+    getRequestCount("UPDATE_METADATA")
+  }
+
+  def getRequestCount(requestName: String): Long = {
     val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics.asScala.filter { case (n, metric) =>
-      n.getMBeanName.contains("name=brokerRequestRemoteTimeMs,request=LI_COMBINED_CONTROL")
+      n.getMBeanName.contains("name=brokerRequestRemoteTimeMs,request=" + requestName)
     }
 
     if (metrics.nonEmpty) {

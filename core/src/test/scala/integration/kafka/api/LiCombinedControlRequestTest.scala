@@ -91,7 +91,7 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
   }
 
   @Test
-  def testLiCombinedControlRequestAddBroker(): Unit = {
+  def testLiCombinedControlRequestNoPartitionBroker(): Unit = {
     // This test is to verify that commit 8c5b1ec033577cb6ca2b445a70e7347581d5b7c6 would fix the bug described below.
     // https://github.com/linkedin/kafka/commit/8c5b1ec033577cb6ca2b445a70e7347581d5b7c6
     // This commit fixes a bug that would happen when the following sequences happen:

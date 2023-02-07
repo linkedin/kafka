@@ -25,7 +25,7 @@ import kafka.utils.{Logging, TestUtils}
 import org.apache.kafka.clients.admin.{Admin, AdminClient, AdminClientConfig}
 import org.apache.kafka.common.errors.StaleBrokerEpochException
 import org.apache.kafka.common.{Node, Uuid}
-import org.apache.kafka.common.message.LiCombinedControlRequestData
+import org.apache.kafka.common.message.{ApiMessageType, LiCombinedControlRequestData}
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.LiCombinedControlRequest
@@ -202,11 +202,11 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
       createTopic(topic, 1, 1)
     }
 
-    getRequestCount("LI_COMBINED_CONTROL")
+    getRequestCount(ApiMessageType.LI_COMBINED_CONTROL.name())
   }
 
   def getUpdateMetadataRequestCount() = {
-    getRequestCount("UPDATE_METADATA")
+    getRequestCount(ApiMessageType.UPDATE_METADATA.name())
   }
 
   def getRequestCount(requestName: String): Long = {

@@ -48,7 +48,7 @@ class EmbeddedZookeeper() extends Logging {
   val logDir = TestUtils.tempDir()
   val tickTime = 800 // allow a maxSessionTimeout of 20 * 800ms = 16 secs
 
-  System.setProperty("zookeeper.forceSync", "no")  // disable fsync to ZK txn log in tests to avoid timeout
+  System.setProperty("zookeeper.forceSync", "no")  //disable fsync to ZK txn log in tests to avoid timeout
   System.setProperty("jute.maxbuffer", EmbeddedZookeeper.JUTE_MAXBUFFER_VALUE)  // configure realistic response-buffer size
   val zookeeper = new ZooKeeperServer(snapshotDir, logDir, tickTime)
   val factory = new NIOServerCnxnFactory()

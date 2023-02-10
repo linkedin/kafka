@@ -1081,11 +1081,15 @@ class KafkaZkClientTest extends ZooKeeperTestHarness {
 
     assertTrue(zkClient.getAllTopicsInCluster().isEmpty)
 
+    val superLongTopicNamePrefix =
+      "topic-name-of-super-excessive-length-so-as-to-minimize-total-number-of-topics-to-be-created--just-how-lengthy-is-it-I-wonder--here-comes-the-indexing-value-woohoo--"
     val numTopics = 8000
+    // total size of all topics names we're creating, plus their ZK overhead (i.e., what getChildren() on
+    // /brokers/topics should return):
     var sumOfInputTopicNameLengths = 0
     (0 until numTopics).foreach { j =>
       if (((j+1) % 1000) == 0) info(s"creating very long topic-name #${j+1}")
-      val name = s"topic-name-of-super-excessive-length-so-as-to-minimize-total-number-of-topics-to-be-created--just-how-lengthy-is-it-I-wonder--here-comes-the-indexing-value-woohoo--${j}"
+      val name = s"${superLongTopicNamePrefix}${j}"
       sumOfInputTopicNameLengths += name.length + 4  // 4 = measured ZK overhead per znode
       zkClient.createRecursive(TopicZNode.path(name))
     }
@@ -1095,11 +1099,16 @@ class KafkaZkClientTest extends ZooKeeperTestHarness {
     debug(s"got back list of ${topicsList.size} topics")
     assertEquals(numTopics, topicsList.size)
 
-    assertTrue(sumOfInputTopicNameLengths > (1024*1024))
+    // the whole point of our 8000 long-named topics is to exceed EmbeddedZookeeper's (and real ZK's) 1 MB
+    // jute.maxbuffer size:
+    assertTrue(sumOfInputTopicNameLengths > Integer.valueOf(EmbeddedZookeeper.JUTE_MAXBUFFER_VALUE))
     // can't just do topicsList.map here since map of a Set is also a Set, and the _lengths_ of our
     // topic names are NOT globally unique:
     val sumOfOutputTopicNameLengths = topicsList.toSeq.map(_.length + 4).sum
     assertEquals(sumOfInputTopicNameLengths, sumOfOutputTopicNameLengths)
+    // spot-check that the first and last topic names are present:
+    assertTrue(topicsList.contains(s"${superLongTopicNamePrefix}0"))
+    assertTrue(topicsList.contains(s"${superLongTopicNamePrefix}${numTopics - 1}"))
   }
 
   @Test

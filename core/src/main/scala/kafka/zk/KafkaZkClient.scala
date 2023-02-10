@@ -51,8 +51,10 @@ import scala.collection.{Map, Seq, mutable}
  * easier to migrate away from `ZkUtils` (since removed). We should revisit this. We should also consider whether a
  * monolithic [[kafka.zk.ZkData]] is the way to go.
  */
-class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boolean, time: Time, paginateTopics: Boolean)
-  extends AutoCloseable with Logging with KafkaMetricsGroup {
+class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
+                                 isSecure: Boolean,
+                                 time: Time,
+                                 paginateTopics: Boolean) extends AutoCloseable with Logging with KafkaMetricsGroup {
 
   override def metricName(name: String, metricTags: scala.collection.Map[String, String]): MetricName = {
     explicitMetricName("kafka.server", "ZooKeeperClientMetrics", name, metricTags)
@@ -546,8 +548,8 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
    */
   def getAllTopicsInCluster(registerWatch: Boolean = false): Set[String] = {
     val getChildrenResponse = retryRequestUntilConnected(
-      if (paginateTopics) GetChildrenPaginatedRequest(TopicsZNode.path, registerWatch) else
-        GetChildrenRequest(TopicsZNode.path, registerWatch))
+      if (paginateTopics) GetChildrenPaginatedRequest(TopicsZNode.path, registerWatch)
+        else GetChildrenRequest(TopicsZNode.path, registerWatch))
     getChildrenResponse.resultCode match {
       case Code.OK => getChildrenResponse.children.toSet
       case Code.NONODE => Set.empty

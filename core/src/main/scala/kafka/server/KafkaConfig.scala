@@ -49,7 +49,6 @@ import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
 import org.apache.zookeeper.client.ZKClientConfig
 
-import scala.annotation.nowarn
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq}
 
@@ -1161,7 +1160,6 @@ object KafkaConfig {
     "zero. When closing/shutting down an observer, most time is spent on flushing the observed stats. The reasonable timeout should be close to " +
     "the time it takes to flush the stats."
 
-  //@nowarn("cat=deprecation")
   private[server] val configDef = {
     import ConfigDef.Importance._
     import ConfigDef.Range._
@@ -1871,7 +1869,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   // We keep the user-provided String as `ApiVersion.apply` can choose a slightly different version (eg if `0.10.0`
   // is passed, `0.10.0-IV0` may be picked)
-  //@nowarn("cat=deprecation")
   private val logMessageFormatVersionString = getString(KafkaConfig.LogMessageFormatVersionProp)
 
   /* See `TopicConfig.MESSAGE_FORMAT_VERSION_CONFIG` for details */
@@ -2156,7 +2153,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   validateValues()
 
-  //@nowarn("cat=deprecation")
   private def validateValues(): Unit = {
     if (requiresZookeeper) {
       if (zkConnect == null) {

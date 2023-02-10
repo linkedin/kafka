@@ -79,9 +79,9 @@ class ZooKeeperClient(connectString: String,
   private[zookeeper] val reinitializeScheduler = new KafkaScheduler(threads = 1, s"zk-client-${threadPrefix}reinit-")
   private var isFirstConnectionEstablished = false
 
-  // There should never be more than one controller-failover call at a time, but no
-  // guarantees for end-user listTopics() calls, and zookeeper.max.in.flight.requests
-  // appears to be either 10 (default) or infinite, so go with 10 as safe bet:          
+  // There should never be more than one controller-failover call at a time, but there are no guarantees
+  // for end-user listTopics() calls, and zookeeper.max.in.flight.requests defaults to 10 (and apparently
+  // is not overridden), so go with 10 threads as a safe bet:
   private val zkPaginationExecutor = Executors.newFixedThreadPool(10)
 
   private val metricNames = Set[String]()

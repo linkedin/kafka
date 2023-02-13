@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
 
 import java.util.Properties
-import scala.collection.Seq
 import scala.jdk.CollectionConverters.mapAsScalaMapConverter
 
 class PartitionLoggingTest extends IntegrationTestHarness{

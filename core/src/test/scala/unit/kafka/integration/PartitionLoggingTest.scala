@@ -73,7 +73,7 @@ class PartitionLoggingTest extends IntegrationTestHarness{
     val topicName = "test_3replicas"
     createTopic(topicName, Map(0 -> nonControllerBrokerIds), topicConfig)
     val tp = new TopicPartition(topicName, 0)
-    checkPartitionOfflineStatus(false, tp)
+    checkPartitionOfflineExists(false, tp)
 
     // get the brokers that have the replicas
     val partitionStateOpt = zkClient.getTopicPartitionState(tp)
@@ -89,12 +89,12 @@ class PartitionLoggingTest extends IntegrationTestHarness{
     brokersToShutdown(0).shutdown()
     waitForPartitionUnderMinISRState(tp, false)
     brokersToShutdown.takeRight(2).foreach(_.shutdown())
-    checkPartitionOfflineStatus(true, tp)
+    checkPartitionOfflineExists(true, tp)
 
     // bring up the brokers and check replicas are alive
     brokersToShutdown.foreach(_.startup())
     waitForPartitionUnderMinISRState(tp, false)
-    checkPartitionOfflineStatus(false, tp)
+    checkPartitionOfflineExists(false, tp)
   }
 
   private def waitForPartitionUnderMinISRState(tp: TopicPartition, shouldBeUnderMinISR: Boolean): Unit = {
@@ -111,7 +111,7 @@ class PartitionLoggingTest extends IntegrationTestHarness{
     }, "the partition's UnderMinISR state should be " + shouldBeUnderMinISR)
   }
 
-  private def checkPartitionOfflineStatus(offlinePartitionExist: Boolean, tp: TopicPartition): Unit = {
+  private def checkPartitionOfflineExists(offlinePartitionExist: Boolean, tp: TopicPartition): Unit = {
     TestUtils.waitUntilTrue(() => {
       val partitionStateOpt = zkClient.getTopicPartitionState(tp)
       offlinePartitionExist == (partitionStateOpt.get.leaderAndIsr.leader == -1)

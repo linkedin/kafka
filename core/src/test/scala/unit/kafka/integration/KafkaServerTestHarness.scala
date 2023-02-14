@@ -141,7 +141,7 @@ abstract class KafkaServerTestHarness extends ZooKeeperTestHarness {
     TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment, servers)
 
   def createTopic(topic: String, partitionReplicaAssignment: collection.Map[Int, Seq[Int]],topicConfig: Properties): scala.collection.immutable.Map[Int, Int] =
-    TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment, servers)
+    TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment, servers, topicConfig)
 
 
   /**

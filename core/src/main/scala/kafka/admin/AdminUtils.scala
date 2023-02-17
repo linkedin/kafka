@@ -105,7 +105,7 @@ object AdminUtils extends Logging {
                               replicationFactor: Int,
                               fixedStartIndex: Int = -1,
                               startPartitionId: Int = -1,
-                              rackIdMapperForBrokerAssignment: String => String = identity): Map[Int, Seq[Int]] = {
+                              rackIdMapperForBrokerAssignment: RackAwareReplicaAssignmentRackIdMapper = identity): Map[Int, Seq[Int]] = {
     if (nPartitions <= 0)
       throw new InvalidPartitionsException("Number of partitions must be larger than 0.")
     if (replicationFactor <= 0)
@@ -151,7 +151,7 @@ object AdminUtils extends Logging {
                                                brokerMetadatas: Iterable[BrokerMetadata],
                                                fixedStartIndex: Int,
                                                startPartitionId: Int,
-                                               rackIdMapperForBrokerAssignment: String => String): Map[Int, Seq[Int]] = {
+                                               rackIdMapperForBrokerAssignment: RackAwareReplicaAssignmentRackIdMapper): Map[Int, Seq[Int]] = {
     val brokerRackMap = brokerMetadatas.collect { case BrokerMetadata(id, Some(rack)) =>
       id -> rackIdMapperForBrokerAssignment.apply(rack)
     }.toMap

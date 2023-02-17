@@ -17,8 +17,7 @@
 package kafka.zk
 
 import java.util.Properties
-
-import kafka.admin.{AdminOperationException, AdminUtils, BrokerMetadata, RackAwareMode}
+import kafka.admin.{AdminOperationException, AdminUtils, BrokerMetadata, RackAwareMode, RackAwareReplicaAssignmentRackIdMapper}
 import kafka.common.TopicAlreadyMarkedForDeletionException
 import kafka.controller.ReplicaAssignment
 import kafka.log.LogConfig
@@ -48,9 +47,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
    * @param topicConfig  topic configs
    * @param rackAwareMode rack aware mode for replica assignment
    * @param usesTopicId Boolean indicating whether the topic ID will be created
-   * @param rackIdMapperForRackAwareReplicaAssignment This is to be used to customize rack Id interpretation for extra encoding,
-   *                                                  specifically should be used on broker side's partition assignment code path.
-   *                                                  For other code path like Commands invoked from kafka-*.sh, it would require extra effort for injection.
+   * @param rackIdMapperForRackAwareReplicaAssignment A transformer for mapping rack ID to different values.  This is for customized interpretation of rack ID.
    */
   def createTopic(topic: String,
                   partitions: Int,
@@ -58,7 +55,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced,
                   usesTopicId: Boolean = false,
-                  rackIdMapperForRackAwareReplicaAssignment: String => String = identity): Unit = {
+                  rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = identity): Unit = {
     val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
     val noNewPartitionBrokerIds = getMaintenanceBrokerList()
     val replicaAssignment = assignReplicasToAvailableBrokers(brokerMetadatas, noNewPartitionBrokerIds.toSet, partitions, replicationFactor,
@@ -232,7 +229,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                                        replicationFactor: Int,
                                        fixedStartIndex: Int = -1,
                                        startPartitionId: Int = -1,
-                                       rackIdMapperForRackAwareReplicaAssignment: String => String): Map[Int, Seq[Int]] = {
+                                       rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper): Map[Int, Seq[Int]] = {
 
     val availableBrokerMetadata = brokerMetadatas.filter {
       brokerMetadata => !noNewPartitionBrokerIds.contains(brokerMetadata.id)
@@ -269,7 +266,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                     numPartitions: Int = 1,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                     validateOnly: Boolean = false,
-                    rackIdMapperForRackAwareReplicaAssignment: String => String = identity): Map[Int, Seq[Int]] = {
+                    rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = identity): Map[Int, Seq[Int]] = {
 
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,
@@ -310,7 +307,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                                     numPartitions: Int = 1,
                                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                                     noNewPartitionBrokerIds: Set[Int] = Set.empty[Int],
-                                    rackIdMapperForRackAwareReplicaAssignment: String => String): Map[Int, ReplicaAssignment] = {
+                                    rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper): Map[Int, ReplicaAssignment] = {
     val existingAssignmentPartition0 = existingAssignment.getOrElse(0,
       throw new AdminOperationException(
         s"Unexpected existing replica assignment for topic '$topic', partition id 0 is missing. " +

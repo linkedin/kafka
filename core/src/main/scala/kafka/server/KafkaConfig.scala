@@ -17,6 +17,8 @@
 
 package kafka.server
 
+import kafka.admin.RackAwareReplicaAssignmentRackIdMapper
+
 import java.io.File
 import java.util
 import java.util.{Collections, Locale, Properties}
@@ -51,7 +53,7 @@ import org.apache.zookeeper.client.ZKClientConfig
 
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq}
-import scala.compat.java8.FunctionConverters.enrichAsScalaFromFunction
+import scala.compat.java8.FunctionConverters.asJavaFunction
 
 object Defaults {
   /** ********* Zookeeper Configuration ***********/
@@ -799,7 +801,7 @@ object KafkaConfig {
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."
   val LiLogCleanerFineGrainedLockEnableDoc = "Specifies whether the log cleaner should use fine grained locks when calculating the filthiest log to clean"
   val LiZookeeperPaginationEnableDoc = "Specifies whether Zookeeper pagination should be used when listing the /brokers/topics znode. Required when sum of all topic-name lengths in the cluster exceeds ZK response-size limit (1 MB by default)."
-  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc = "The mapper class name to translate rack ID for the use of assigning replicas to brokers in a rack-aware manner.  The class should conform as a `java.util.function.Function<String, String>`."
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc = "The mapper class name to translate rack ID for the use of assigning replicas to brokers in a rack-aware manner.  The class should implement kafka.admin.RackAwareReplicaAssignmentRackIdMapper."
   // Although AllowPreferredControllerFallback is expected to be configured dynamically at per cluster level, providing a static configuration entry
   // here allows its value to be obtained without holding the dynamic broker configuration lock.
   val AllowPreferredControllerFallbackDoc = "Specifies whether a non-preferred controller node (broker) is allowed to become the controller." +
@@ -1836,10 +1838,10 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   /***************** rack configuration **************/
   val rack = Option(getString(KafkaConfig.RackProp))
   val replicaSelectorClassName = Option(getString(KafkaConfig.ReplicaSelectorClassProp))
-  val rackIdMapperForRackAwareReplicaAssignment: String => String =
+  val rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper =
     Option(getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp))
-      .map(className => CoreUtils.createObject[java.util.function.Function[String, String]](className).asScala)
-      .getOrElse(_ -> identity)
+      .map(className => CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](className))
+      .getOrElse((rackId: String) => rackId)
 
   /** ********* Log Configuration ***********/
   def autoCreateTopicsEnable: java.lang.Boolean = getBoolean(KafkaConfig.AutoCreateTopicsEnableProp)

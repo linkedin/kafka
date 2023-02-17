@@ -16,7 +16,7 @@
  */
 package kafka.admin
 
-import kafka.utils.Logging
+import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.errors.InvalidReplicationFactorException
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
@@ -69,12 +69,12 @@ class AdminRackAwareTest extends RackAwareTest with Logging {
   def testAssignmentWithRackAwareWithExtraRackIdMapper(): Unit = {
     // Custom case: now the rack is prefixed with some extra info, and the mapper should "ignore" the prefix
     // This is to simulate the case that we want to a) encode datacenter cages and b) group racks across cages
-    val ignorePrefix = (rackId: String) => rackId.split("::", 2).toList.last
+    val ignorePrefix = CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](classOf[IgnorePrefixRackIdMapper].getCanonicalName)
     val brokerRackMapping = Map(0 -> "A::rack1", 1 -> "A::rack2", 2 -> "B::rack2", 3 -> "C::rack3", 4 -> "rack3", 5 -> "rack1")
     val numPartitions = 6
     val replicationFactor = 3
     val assignment = AdminUtils.assignReplicasToBrokers(toBrokerMetadata(brokerRackMapping), numPartitions,
-      replicationFactor, rackIdMapperForBrokerAssignment = Some(ignorePrefix))
+                                                        replicationFactor, rackIdMapperForBrokerAssignment = ignorePrefix)
     checkReplicaDistribution(assignment, brokerRackMapping, brokerRackMapping.size, numPartitions,
       replicationFactor)
     assignment.foreach { case (_, replicas) =>

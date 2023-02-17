@@ -48,16 +48,21 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
    * @param topicConfig  topic configs
    * @param rackAwareMode rack aware mode for replica assignment
    * @param usesTopicId Boolean indicating whether the topic ID will be created
+   * @param rackIdMapperForRackAwareReplicaAssignment This is to be used to customize rack Id interpretation for extra encoding,
+   *                                                  specifically should be used on broker side's partition assignment code path.
+   *                                                  For other code path like Commands invoked from kafka-*.sh, it would require extra effort for injection.
    */
   def createTopic(topic: String,
                   partitions: Int,
                   replicationFactor: Int,
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced,
-                  usesTopicId: Boolean = false): Unit = {
+                  usesTopicId: Boolean = false,
+                  rackIdMapperForRackAwareReplicaAssignment: String => String = identity): Unit = {
     val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
     val noNewPartitionBrokerIds = getMaintenanceBrokerList()
-    val replicaAssignment = assignReplicasToAvailableBrokers(brokerMetadatas, noNewPartitionBrokerIds.toSet, partitions, replicationFactor)
+    val replicaAssignment = assignReplicasToAvailableBrokers(brokerMetadatas, noNewPartitionBrokerIds.toSet, partitions, replicationFactor,
+                                                             rackIdMapperForRackAwareReplicaAssignment = rackIdMapperForRackAwareReplicaAssignment)
     createTopicWithAssignment(topic, topicConfig, replicaAssignment, usesTopicId = usesTopicId)
   }
 
@@ -216,6 +221,9 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
    * @param replicationFactor
    * @param fixedStartIndex
    * @param startPartitionId
+   * @param rackIdMapperForRackAwareReplicaAssignment A transformer for mapping rack ID to different values.
+   *                                                  This is to be used to customize rack Id interpretation for extra encoding,
+   *                                                  specifically should be used on broker side's partition assignment code path.
    * @return
    */
   def assignReplicasToAvailableBrokers(brokerMetadatas: Iterable[BrokerMetadata],
@@ -223,20 +231,23 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                                        nPartitions: Int,
                                        replicationFactor: Int,
                                        fixedStartIndex: Int = -1,
-                                       startPartitionId: Int = -1): Map[Int, Seq[Int]] = {
+                                       startPartitionId: Int = -1,
+                                       rackIdMapperForRackAwareReplicaAssignment: String => String): Map[Int, Seq[Int]] = {
 
     val availableBrokerMetadata = brokerMetadatas.filter {
-      brokerMetadata =>
-        if (noNewPartitionBrokerIds.contains(brokerMetadata.id)) false
-        else true
+      brokerMetadata => !noNewPartitionBrokerIds.contains(brokerMetadata.id)
     }
 
-    if (replicationFactor > availableBrokerMetadata.size) {
+    val shouldOnlyUseAvailableBrokers: Boolean = replicationFactor <= availableBrokerMetadata.size
+    if (!shouldOnlyUseAvailableBrokers) {
       info(s"Using all brokers for replica assignment since replicationFactor[$replicationFactor] " +
         s"is larger than the number of nonMaintenanceBroker[${availableBrokerMetadata.size}]")
-      AdminUtils.assignReplicasToBrokers(brokerMetadatas, nPartitions, replicationFactor, fixedStartIndex, startPartitionId)
-    } else
-      AdminUtils.assignReplicasToBrokers(availableBrokerMetadata, nPartitions, replicationFactor, fixedStartIndex, startPartitionId)
+    }
+    AdminUtils.assignReplicasToBrokers(
+      if (shouldOnlyUseAvailableBrokers) availableBrokerMetadata else brokerMetadatas,
+      nPartitions, replicationFactor, fixedStartIndex, startPartitionId,
+      rackIdMapperForRackAwareReplicaAssignment
+    )
   }
 
   /**
@@ -249,6 +260,7 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
    * @param numPartitions Number of partitions to be set
    * @param replicaAssignment Manual replica assignment, or none
    * @param validateOnly If true, validate the parameters without actually adding the partitions
+   * @param rackIdMapperForRackAwareReplicaAssignment A transformer for mapping rack ID to different values.  This is for customized interpretation of rack ID.
    * @return the updated replica assignment
    */
   def addPartitions(topic: String,
@@ -256,7 +268,8 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                     allBrokers: Seq[BrokerMetadata],
                     numPartitions: Int = 1,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
-                    validateOnly: Boolean = false): Map[Int, Seq[Int]] = {
+                    validateOnly: Boolean = false,
+                    rackIdMapperForRackAwareReplicaAssignment: String => String = identity): Map[Int, Seq[Int]] = {
 
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,
@@ -264,7 +277,8 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
       allBrokers,
       numPartitions,
       replicaAssignment,
-      getMaintenanceBrokerList().toSet
+      getMaintenanceBrokerList().toSet,
+      rackIdMapperForRackAwareReplicaAssignment
     )
 
     if (validateOnly) {
@@ -286,6 +300,8 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
    * @param numPartitions Number of partitions to be set
    * @param replicaAssignment Manual replica assignment, or none
    * @param noNewPartitionBrokerIds Brokers that do not take new partitions
+   * @param rackIdMapperForRackAwareReplicaAssignment A transformer for mapping rack ID to different values.  This is for customized interpretation of rack ID.
+   *
    * @return the assignment for the new partitions
    */
   def createNewPartitionsAssignment(topic: String,
@@ -293,7 +309,8 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
                                     allBrokers: Seq[BrokerMetadata],
                                     numPartitions: Int = 1,
                                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
-                                    noNewPartitionBrokerIds: Set[Int] = Set.empty[Int]): Map[Int, ReplicaAssignment] = {
+                                    noNewPartitionBrokerIds: Set[Int] = Set.empty[Int],
+                                    rackIdMapperForRackAwareReplicaAssignment: String => String): Map[Int, ReplicaAssignment] = {
     val existingAssignmentPartition0 = existingAssignment.getOrElse(0,
       throw new AdminOperationException(
         s"Unexpected existing replica assignment for topic '$topic', partition id 0 is missing. " +
@@ -314,7 +331,8 @@ class AdminZkClient(zkClient: KafkaZkClient) extends Logging {
     val proposedAssignmentForNewPartitions = replicaAssignment.getOrElse {
       val startIndex = math.max(0, allBrokers.indexWhere(_.id >= existingAssignmentPartition0.head))
       assignReplicasToAvailableBrokers(allBrokers, noNewPartitionBrokerIds, partitionsToAdd,
-        existingAssignmentPartition0.size, startIndex, existingAssignment.size)
+        existingAssignmentPartition0.size, startIndex, existingAssignment.size,
+        rackIdMapperForRackAwareReplicaAssignment = rackIdMapperForRackAwareReplicaAssignment)
     }
 
     proposedAssignmentForNewPartitions.map { case (tp, replicas) =>

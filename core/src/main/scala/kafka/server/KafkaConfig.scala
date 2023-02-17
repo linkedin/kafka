@@ -51,6 +51,7 @@ import org.apache.zookeeper.client.ZKClientConfig
 
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq}
+import scala.compat.java8.FunctionConverters.enrichAsScalaFromFunction
 
 object Defaults {
   /** ********* Zookeeper Configuration ***********/
@@ -332,6 +333,7 @@ object Defaults {
   val LiDropCorruptedFilesEnabled = false
   val LiConsumerFetchSampleRatio = 0.01
   val LiZookeeperPaginationEnable = false
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignment: String = null
 }
 
 object KafkaConfig {
@@ -452,6 +454,7 @@ object KafkaConfig {
   val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
   val LiConsumerFetchSampleRatioProp = "li.consumer.fetch.sample.ratio"
   val LiZookeeperPaginationEnableProp = "li.zookeeper.pagination.enable"
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp = "li.rack.aware.assignment.rack.id.mapper.class"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
   val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
@@ -796,6 +799,7 @@ object KafkaConfig {
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."
   val LiLogCleanerFineGrainedLockEnableDoc = "Specifies whether the log cleaner should use fine grained locks when calculating the filthiest log to clean"
   val LiZookeeperPaginationEnableDoc = "Specifies whether Zookeeper pagination should be used when listing the /brokers/topics znode. Required when sum of all topic-name lengths in the cluster exceeds ZK response-size limit (1 MB by default)."
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc = "The mapper class name to translate rack ID for the use of assigning replicas to brokers in a rack-aware manner.  The class should conform as a `java.util.function.Function<String, String>`."
   // Although AllowPreferredControllerFallback is expected to be configured dynamically at per cluster level, providing a static configuration entry
   // here allows its value to be obtained without holding the dynamic broker configuration lock.
   val AllowPreferredControllerFallbackDoc = "Specifies whether a non-preferred controller node (broker) is allowed to become the controller." +
@@ -1242,6 +1246,7 @@ object KafkaConfig {
       .define(LiDropCorruptedFilesEnableProp, BOOLEAN, Defaults.LiDropCorruptedFilesEnabled, HIGH, LiDropCorruptedFilesEnableDoc)
       .define(LiConsumerFetchSampleRatioProp, DOUBLE, Defaults.LiConsumerFetchSampleRatio, between(0.0, 1.0), LOW, LiConsumerFetchSampleRatioDoc)
       .define(LiZookeeperPaginationEnableProp, BOOLEAN, Defaults.LiZookeeperPaginationEnable, LOW, LiZookeeperPaginationEnableDoc)
+      .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, STRING, Defaults.LiRackIdMapperClassNameForRackAwareReplicaAssignment, LOW, LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
@@ -1831,6 +1836,10 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   /***************** rack configuration **************/
   val rack = Option(getString(KafkaConfig.RackProp))
   val replicaSelectorClassName = Option(getString(KafkaConfig.ReplicaSelectorClassProp))
+  val rackIdMapperForRackAwareReplicaAssignment: String => String =
+    Option(getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp))
+      .map(className => CoreUtils.createObject[java.util.function.Function[String, String]](className).asScala)
+      .getOrElse(_ -> identity)
 
   /** ********* Log Configuration ***********/
   def autoCreateTopicsEnable: java.lang.Boolean = getBoolean(KafkaConfig.AutoCreateTopicsEnableProp)

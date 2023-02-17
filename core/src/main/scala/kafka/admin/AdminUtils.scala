@@ -105,7 +105,7 @@ object AdminUtils extends Logging {
                               replicationFactor: Int,
                               fixedStartIndex: Int = -1,
                               startPartitionId: Int = -1,
-                              rackIdMapperForBrokerAssignment: Option[String => String] = None): Map[Int, Seq[Int]] = {
+                              rackIdMapperForBrokerAssignment: String => String = identity): Map[Int, Seq[Int]] = {
     if (nPartitions <= 0)
       throw new InvalidPartitionsException("Number of partitions must be larger than 0.")
     if (replicationFactor <= 0)
@@ -119,7 +119,7 @@ object AdminUtils extends Logging {
       if (brokerMetadatas.exists(_.rack.isEmpty))
         throw new AdminOperationException("Not all brokers have rack information for replica rack aware assignment.")
       assignReplicasToBrokersRackAware(nPartitions, replicationFactor, brokerMetadatas, fixedStartIndex,
-        startPartitionId, rackIdMapperForBrokerAssignment.getOrElse(s => s))
+        startPartitionId, rackIdMapperForBrokerAssignment)
     }
   }
 

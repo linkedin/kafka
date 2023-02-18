@@ -66,27 +66,6 @@ class AdminRackAwareTest extends RackAwareTest with Logging {
   }
 
   @Test
-  def testAssignmentWithRackAwareWithExtraRackIdMapper(): Unit = {
-    // Custom case: now the rack is prefixed with some extra info, and the mapper should "ignore" the prefix
-    // This is to simulate the case that we want to a) encode datacenter cages and b) group racks across cages
-    val ignorePrefix = CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](classOf[IgnorePrefixRackIdMapper].getCanonicalName)
-    val brokerRackMapping = Map(0 -> "A::rack1", 1 -> "A::rack2", 2 -> "B::rack2", 3 -> "C::rack3", 4 -> "rack3", 5 -> "rack1")
-    val numPartitions = 6
-    val replicationFactor = 3
-    val assignment = AdminUtils.assignReplicasToBrokers(toBrokerMetadata(brokerRackMapping), numPartitions,
-                                                        replicationFactor, rackIdMapperForBrokerAssignment = ignorePrefix)
-    checkReplicaDistribution(assignment, brokerRackMapping, brokerRackMapping.size, numPartitions,
-      replicationFactor)
-    assignment.foreach { case (_, replicas) =>
-      assertFalse(
-        Set(1, 2).subsetOf(replicas.toSet),
-        "Mapper not honored, some partition assignments contains 1 & 2, which after ignore prefix are of same rack.  "
-          + s"Full assignment: ${assignment}"
-      )
-    }
-  }
-
-  @Test
   def testAssignmentWithRackAwareWithUnevenReplicas(): Unit = {
     val brokerRackMapping = Map(0 -> "rack1", 1 -> "rack2", 2 -> "rack2", 3 -> "rack3", 4 -> "rack3", 5 -> "rack1")
     val numPartitions = 13

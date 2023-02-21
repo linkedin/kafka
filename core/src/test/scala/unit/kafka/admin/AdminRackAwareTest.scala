@@ -16,7 +16,7 @@
  */
 package kafka.admin
 
-import kafka.utils.{CoreUtils, Logging}
+import kafka.utils.Logging
 import org.apache.kafka.common.errors.InvalidReplicationFactorException
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test

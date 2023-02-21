@@ -107,13 +107,14 @@ class RackAwareReplicaAssignmentRackIdMapperTest extends IntegrationTestHarness 
         .partitions().asScala
         // Flatten each replica node in every partition as (Node -> Partition)
         .flatMap(tp => tp.replicas().asScala.map(_ -> tp.partition()))
-        // Group by mapped rack.id, now we have mappedRackedId -> partitionsOnTheRack
+        // Group by mapped rack.id, now we have mappedRackedId -> [<Node, partitions> on the rack]
         .groupBy(x => rackIdMapper(x._1.rack))
 
-    for ((mappedRack, placementOnRack) <- assignment) {
+
+    for ((mappedRack, placementOnRack) <- assignment) { // For each rack
       Assertions.assertEquals(
-        placementOnRack.size,                   // Should remain the same size for the placement
-        placementOnRack.map(_._2) .toSet.size,  // after extracting the partition of that placement and deduplicate by partition
+        placementOnRack.size,                           // should remain the same size for the placement
+        placementOnRack.map(_._2) .toSet.size,          // after extracting the partition of that placement and deduplicate by partition
         s"Mapped rack ${mappedRack} holds multiple replica of the same partitions.  Mapper not honored or assignment logic flaw.\n"
           + s"On rack: ${placementOnRack}\n"
           + s"Full assignment: ${assignment}"

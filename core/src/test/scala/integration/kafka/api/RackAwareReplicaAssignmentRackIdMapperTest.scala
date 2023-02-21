@@ -19,14 +19,11 @@ import kafka.server.KafkaConfig
 import kafka.utils.CoreUtils
 import kafka.utils.TestUtils.{adminClientSecurityConfigs, waitUntilTrue}
 import org.apache.kafka.clients.admin.{Admin, AdminClientConfig, NewTopic}
-import org.apache.kafka.common.Node
 import org.apache.kafka.common.utils.Utils
 import org.junit.jupiter.api.{AfterEach, Assertions, Test}
 
 import java.util.Properties
 import scala.collection.JavaConverters._
-import scala.collection.{TraversableLike, mutable}
-import scala.util.Using
 
 class RackAwareReplicaAssignmentRackIdMapperTest extends IntegrationTestHarness {
   val rackIdMapperClassName = classOf[IgnorePrefixRackIdMapper].getCanonicalName

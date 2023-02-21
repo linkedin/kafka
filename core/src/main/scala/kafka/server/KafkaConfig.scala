@@ -53,7 +53,6 @@ import org.apache.zookeeper.client.ZKClientConfig
 
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq}
-import scala.compat.java8.FunctionConverters.asJavaFunction
 
 object Defaults {
   /** ********* Zookeeper Configuration ***********/

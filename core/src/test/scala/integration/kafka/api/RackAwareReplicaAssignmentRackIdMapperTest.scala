@@ -119,7 +119,6 @@ class RackAwareReplicaAssignmentRackIdMapperTest extends IntegrationTestHarness 
           + s"Full assignment: ${assignment}"
       )
     }
-    println(assignment)
   }
 
 }

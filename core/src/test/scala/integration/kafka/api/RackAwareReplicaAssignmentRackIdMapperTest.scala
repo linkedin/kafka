@@ -97,7 +97,7 @@ class RackAwareReplicaAssignmentRackIdMapperTest extends IntegrationTestHarness 
     client = Admin.create(createConfig)
 
     client.createTopics(newTopics.asJava).all.get()
-    waitForTopics(client, Seq(topicName), List())
+    waitForTopics(client, Seq(topicName), Seq())
 
     val assignment =
       client.describeTopics(Seq(topicName).asJava).values().get(topicName).get()

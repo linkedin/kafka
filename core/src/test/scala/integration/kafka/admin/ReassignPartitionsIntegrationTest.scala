@@ -403,7 +403,7 @@ class ReassignPartitionsIntegrationTest extends ZooKeeperTestHarness {
     cluster.servers.find(_.config.brokerId == 2).get.shutdown()
 
     // Canceling the reassignment should be okay because
-    // there are enough replicas alive in the original list = {0, 1}
+    // there are enough replicas alive in the original list. {0, 1} are alive.
     assertTrue(() => {
       runCancelAssignment(cluster.adminClient, assignment, true)
       true
@@ -412,15 +412,15 @@ class ReassignPartitionsIntegrationTest extends ZooKeeperTestHarness {
 
   @Test
   def testBelowMinISRCancellationFails(): Unit = {
-    cluster = new ReassignPartitionsTestCluster(zkConnect)
+    cluster = new ReassignPartitionsTestCluster(zkConnect, Map(KafkaConfig.LiMinOriginalAliveReplicasProp -> "2"))
     val assignment = setupPartitionMovementBeforeCancellation(cluster)
 
-    // shutdown two of the original replicas. Cancellation would cause ISR to drop below minISR
+    // shutdown two of the original replicas.
     cluster.servers.find(_.config.brokerId == 1).get.shutdown()
     cluster.servers.find(_.config.brokerId == 2).get.shutdown()
 
     // Cancel the reassignment should result in an exception because
-    // there are not enough alive replicas in the original list {0}
+    // there are not enough alive replicas in the original list. Only {0} is alive.
     assertThrows(classOf[TerseReassignmentFailureException], () => runCancelAssignment(cluster.adminClient, assignment, true))
   }
 

@@ -567,7 +567,7 @@ object KafkaConfig {
   val InterBrokerProtocolVersionProp = "inter.broker.protocol.version"
   val InterBrokerListenerNameProp = "inter.broker.listener.name"
   val ReplicaSelectorClassProp = "replica.selector.class"
-  val LiNumMinOriginalAliveReplicasProp = "li.num.min.original.alive.replicas"
+  val LiMinOriginalAliveReplicasProp = "li.min.original.alive.replicas"
   /** ********* Controlled shutdown configuration ***********/
   val ControlledShutdownMaxRetriesProp = "controlled.shutdown.max.retries"
   val ControlledShutdownRetryBackoffMsProp = "controlled.shutdown.retry.backoff.ms"
@@ -1044,7 +1044,7 @@ object KafkaConfig {
   val TransactionsTopicSegmentBytesDoc = "The transaction topic segment bytes should be kept relatively small in order to facilitate faster log compaction and cache loads"
   val TransactionsAbortTimedOutTransactionsIntervalMsDoc = "The interval at which to rollback transactions that have timed out"
   val TransactionsRemoveExpiredTransactionsIntervalMsDoc = "The interval at which to remove transactions that have expired due to <code>transactional.id.expiration.ms</code> passing"
-  val liNumMinOriginalAliveReplicasDoc = "The minimum number of alive replicas in the original replica set as a precondition to cancellation of a partition reassignment (which restores the original replica set)"
+  val liMinOriginalAliveReplicasDoc = "The minimum number of alive replicas in the original replica set as a precondition to cancellation of a partition reassignment (which restores the original replica set)"
 
   /** ********* Fetch Configuration **************/
   val MaxIncrementalFetchSessionCacheSlotsDoc = "The maximum number of incremental fetch sessions that we will maintain."
@@ -1358,7 +1358,7 @@ object KafkaConfig {
       .define(InterBrokerProtocolVersionProp, STRING, Defaults.InterBrokerProtocolVersion, ApiVersionValidator, MEDIUM, InterBrokerProtocolVersionDoc)
       .define(InterBrokerListenerNameProp, STRING, null, MEDIUM, InterBrokerListenerNameDoc)
       .define(ReplicaSelectorClassProp, STRING, null, MEDIUM, ReplicaSelectorClassDoc)
-      .define(LiNumMinOriginalAliveReplicasProp, INT, Defaults.MinInSyncReplicas, LOW, liNumMinOriginalAliveReplicasDoc)
+      .define(LiMinOriginalAliveReplicasProp, INT, Defaults.MinInSyncReplicas, LOW, liMinOriginalAliveReplicasDoc)
 
       /** ********* Controlled shutdown configuration ***********/
       .define(ControlledShutdownMaxRetriesProp, INT, Defaults.ControlledShutdownMaxRetries, MEDIUM, ControlledShutdownMaxRetriesDoc)
@@ -1915,7 +1915,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val autoLeaderRebalanceEnable = getBoolean(KafkaConfig.AutoLeaderRebalanceEnableProp)
   val leaderImbalancePerBrokerPercentage = getInt(KafkaConfig.LeaderImbalancePerBrokerPercentageProp)
   val leaderImbalanceCheckIntervalSeconds = getLong(KafkaConfig.LeaderImbalanceCheckIntervalSecondsProp)
-  val liNumMinOriginalAliveReplicas = getInt(KafkaConfig.LiNumMinOriginalAliveReplicasProp)
+  val liMinOriginalAliveReplicas = getInt(KafkaConfig.LiMinOriginalAliveReplicasProp)
   def uncleanLeaderElectionEnable: java.lang.Boolean = getBoolean(KafkaConfig.UncleanLeaderElectionEnableProp)
 
   // We keep the user-provided String as `ApiVersion.apply` can choose a slightly different version (eg if `0.10.0`
@@ -2292,6 +2292,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
     require(principalBuilderClass != null, s"${KafkaConfig.PrincipalBuilderClassProp} must be non-null")
     require(classOf[KafkaPrincipalSerde].isAssignableFrom(principalBuilderClass),
       s"${KafkaConfig.PrincipalBuilderClassProp} must implement KafkaPrincipalSerde")
-    require(liNumMinOriginalAliveReplicas >= Defaults.MinInSyncReplicas, KafkaConfig.liNumMinOriginalAliveReplicasDoc)
+    require(liMinOriginalAliveReplicas >= Defaults.MinInSyncReplicas, KafkaConfig.liMinOriginalAliveReplicasDoc)
   }
 }

@@ -2325,7 +2325,9 @@ class KafkaController(val config: KafkaConfig,
               // If there are not enough alive replicas in the original set, we don't allow the cancellation to go though.
               Left(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
                 s"Replica assignment cancellation precondition failed. Don't have enough alive replicas in the original replica set: " +
-                  "Replica list: " + s"${replicaAssignment.originReplicas}, live broker list: ${controllerContext.liveBrokerIds}"))
+                  s"replica list: ${replicaAssignment.originReplicas}, " +
+                  s"live broker list: ${controllerContext.liveBrokerIds}, " +
+                  s"${KafkaConfig.LiMinOriginalAliveReplicasProp}: ${config.liMinOriginalAliveReplicas}"))
             }
           }
         } else {

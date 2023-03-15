@@ -900,8 +900,10 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
       if (shouldPaginate(path)) {
         debug(s"upgrading GetChildrenRequest to GetChildrenPaginatedRequest for '${path}'")
         GetChildrenPaginatedRequest(path, registerWatch = true)
-      } else
-        GetChildrenRequest(path, registerWatch = true))
+      } else {
+        GetChildrenRequest(path, registerWatch = true)
+      }
+    )
     getChildrenResponse.resultCode match {
       case Code.OK => getChildrenResponse.children
       case Code.NONODE => Seq.empty

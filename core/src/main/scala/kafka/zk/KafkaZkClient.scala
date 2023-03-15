@@ -551,8 +551,10 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
       if (paginateTopics) {
         debug(s"upgrading GetChildrenRequest to GetChildrenPaginatedRequest for '${TopicsZNode.path}'")
         GetChildrenPaginatedRequest(TopicsZNode.path, registerWatch)
-      } else
-        GetChildrenRequest(TopicsZNode.path, registerWatch))
+      } else {
+        GetChildrenRequest(TopicsZNode.path, registerWatch)
+      }
+    )
     getChildrenResponse.resultCode match {
       case Code.OK => getChildrenResponse.children.toSet
       case Code.NONODE => Set.empty

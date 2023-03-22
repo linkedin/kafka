@@ -792,7 +792,10 @@ object KafkaConfig {
   val LiUpdateMetadataDelayMsDoc = "Specifies how long a UpdateMetadata request with partitions should be delayed before its processing can start. This config is purely for testing the LiCombinedControl feature and should not be enabled in a production environment."
   val LiDropCorruptedFilesEnableDoc = "Specifies whether the broker should delete corrupted files during startup."
   val LiConsumerFetchSampleRatioDoc = "Specifies the ratio of consumer Fetch requests to sample, which must be a number in the range [0.0, 1.0]. For now, the sampling is used to derive the age of consumed data."
-  val LiLeaderElectionOnCorruptionWaitMsDoc = "Specifies how long (in milliseconds) the controller should wait for other replicas to come up before electing a broker that has data corruption as leader."
+  val LiLeaderElectionOnCorruptionWaitMsDoc =
+    """Specifies how long (in milliseconds) the controller should wait for other replicas to come up before electing a broker that has data corruption as leader.
+      |Setting this value to 0 disables delayed leader election on corruption.
+      |Increasing this number increases the unavailability of impacted topics during corruption broker startup, so operators should be careful about configuring it to a high number.""".stripMargin
   val LiDropFetchFollowerEnableDoc = "Specifies whether a leader should drop Fetch requests from followers. This config is used to simulate a slow leader and test the leader initiated leadership transfer"
   val LiDenyAlterIsrDoc = "Test only config, and never enable this in a real cluster. Specifies whether controller should deny the AlterISRRequest."
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."

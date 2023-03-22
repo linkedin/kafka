@@ -1096,7 +1096,9 @@ class KafkaController(val config: KafkaConfig,
     info(s"Finished recursing ${allPartitions.size} partitions in ZK and setting up LAI cache ${KafkaController.timing(taskStartMs, failoverStartMs, time)}")
 
     // Load corrupted brokers list from ZK
+    taskStartMs = time.milliseconds()
     controllerContext.setCorruptedBrokers(zkClient.getCorruptedBrokers.mapValues(_.clearedFromIsrs))
+    info(s"Finished loading corrupted partitions from ZK into context ${KafkaController.timing(taskStartMs, failoverStartMs, time)}")
 
     // start the channel manager
     controllerChannelManager.startup()
@@ -2949,7 +2951,6 @@ class KafkaController(val config: KafkaConfig,
     if (corruptedBrokers == controllerContext.corruptedBrokers) {
       return
     }
-    info("Cleaning from ISR")
     maybeCleanIsrsForCorruptedBrokers(corruptedBrokers)
   }
 
@@ -2977,7 +2978,7 @@ class KafkaController(val config: KafkaConfig,
     }
 
     val (isrCleanSuccessful, isrCleanUnsuccessful) = corruptedBrokersIsrClearResults.partition(_._2.isSuccess)
-    // TODO: log isrCleanUnsuccessful as ERROR
+    error(s"Could not clear corrupted brokers $isrCleanUnsuccessful from ISR")
 
     val modifiedCorruptedBrokers = isrCleanSuccessful
       .map{ case (brokerId, tryResult) => brokerId -> true }
@@ -3019,11 +3020,12 @@ class KafkaController(val config: KafkaConfig,
 
     val updatedLeaderAndIsrs = leaderAndIsrs.map { case(tp, leaderAndIsr) =>
       // Validate that brokerId is not present in ISR for any partition that has a leader
+      // The two checks below are like assertions, and they are never expected to occur.
       if (leaderAndIsr.leader != LeaderAndIsr.NoLeader) {
-        logger.warn(s"Unexpected entry $brokerId in ISR for partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(s"Corruption-recovery: Unexpected entry $brokerId in ISR for partition $tp, leaderAndIsr = $leaderAndIsr")
       }
       else if (leaderAndIsr.isr.length > 1) {
-        logger.warn(s"Unexpected multiple entries in ISR for leaderless partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(s"Corruption-recovery: Unexpected multiple entries in ISR for leaderless partition $tp, leaderAndIsr = $leaderAndIsr")
       }
 
       val newLeader = if (brokerId == leaderAndIsr.leader) LeaderAndIsr.NoLeader else leaderAndIsr.leader

@@ -39,14 +39,14 @@ class CorruptedBrokersTest extends IntegrationTestHarness {
   val partition = 0
   val topicPartition = new TopicPartition(topic, partition)
 
-  serverConfig.setProperty(KafkaConfig.LiDropCorruptedFilesEnableProp, true.toString)
-  serverConfig.setProperty(KafkaConfig.LiLeaderElectionOnCorruptionWaitMsProp, 30000.toString)
-  serverConfig.setProperty(KafkaConfig.ControlledShutdownEnableProp, false.toString)
-  serverConfig.setProperty(KafkaConfig.MinInSyncReplicasProp, 1.toString)
-  serverConfig.setProperty(KafkaConfig.UncleanLeaderElectionEnableProp, true.toString)
+  serverConfig.setProperty(KafkaConfig.LiDropCorruptedFilesEnableProp, "true")
+  serverConfig.setProperty(KafkaConfig.LiLeaderElectionOnCorruptionWaitMsProp, "30000")
+  serverConfig.setProperty(KafkaConfig.ControlledShutdownEnableProp, "false")
+  serverConfig.setProperty(KafkaConfig.MinInSyncReplicasProp, "1")
+  serverConfig.setProperty(KafkaConfig.UncleanLeaderElectionEnableProp, "true")
 
-  producerConfig.setProperty(ProducerConfig.LINGER_MS_CONFIG, 0.toString)
-  producerConfig.setProperty(ProducerConfig.BATCH_SIZE_CONFIG, 0.toString)
+  producerConfig.setProperty(ProducerConfig.LINGER_MS_CONFIG, "0")
+  producerConfig.setProperty(ProducerConfig.BATCH_SIZE_CONFIG, "0")
   producerConfig.setProperty(ProducerConfig.ACKS_CONFIG, "all")
 
   override def modifyConfigs(props: Seq[Properties]): Unit = {

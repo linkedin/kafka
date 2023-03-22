@@ -17,6 +17,8 @@
 
 package kafka.server
 
+import kafka.admin.RackAwareReplicaAssignmentRackIdMapper
+
 import java.io.File
 import java.util
 import java.util.{Collections, Locale, Properties}
@@ -49,7 +51,6 @@ import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
 import org.apache.zookeeper.client.ZKClientConfig
 
-import scala.annotation.nowarn
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq}
 
@@ -333,6 +334,8 @@ object Defaults {
   val LiDropCorruptedFilesEnabled = false
   val LiConsumerFetchSampleRatio = 0.01
   val LiLeaderElectionOnCorruptionWaitMs = 0L
+  val LiZookeeperPaginationEnable = false
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignment: String = null
 }
 
 object KafkaConfig {
@@ -453,6 +456,8 @@ object KafkaConfig {
   val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
   val LiConsumerFetchSampleRatioProp = "li.consumer.fetch.sample.ratio"
   val LiLeaderElectionOnCorruptionWaitMsProp = "li.leader.election.on.corruption.wait.ms"
+  val LiZookeeperPaginationEnableProp = "li.zookeeper.pagination.enable"
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp = "li.rack.aware.assignment.rack.id.mapper.class"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val UnofficialClientLoggingEnableProp = "unofficial.client.logging.enable"
   val UnofficialClientCacheTtlProp = "unofficial.client.cache.ttl"
@@ -563,6 +568,7 @@ object KafkaConfig {
   val InterBrokerProtocolVersionProp = "inter.broker.protocol.version"
   val InterBrokerListenerNameProp = "inter.broker.listener.name"
   val ReplicaSelectorClassProp = "replica.selector.class"
+  val LiMinOriginalAliveReplicasProp = "li.min.original.alive.replicas"
   /** ********* Controlled shutdown configuration ***********/
   val ControlledShutdownMaxRetriesProp = "controlled.shutdown.max.retries"
   val ControlledShutdownRetryBackoffMsProp = "controlled.shutdown.retry.backoff.ms"
@@ -800,6 +806,8 @@ object KafkaConfig {
   val LiDenyAlterIsrDoc = "Test only config, and never enable this in a real cluster. Specifies whether controller should deny the AlterISRRequest."
   val LiNumControllerInitThreadsDoc = "Number of threads (and Zookeeper clients + connections) to be used while recursing the topic-partitions tree in Zookeeper during controller startup/failover."
   val LiLogCleanerFineGrainedLockEnableDoc = "Specifies whether the log cleaner should use fine grained locks when calculating the filthiest log to clean"
+  val LiZookeeperPaginationEnableDoc = "Specifies whether Zookeeper pagination should be used when listing the /brokers/topics znode. Required when sum of all topic-name lengths in the cluster exceeds ZK response-size limit (1 MB by default)."
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc = "The mapper class name to translate rack ID for the use of assigning replicas to brokers in a rack-aware manner.  The class should implement kafka.admin.RackAwareReplicaAssignmentRackIdMapper."
   // Although AllowPreferredControllerFallback is expected to be configured dynamically at per cluster level, providing a static configuration entry
   // here allows its value to be obtained without holding the dynamic broker configuration lock.
   val AllowPreferredControllerFallbackDoc = "Specifies whether a non-preferred controller node (broker) is allowed to become the controller." +
@@ -1041,6 +1049,7 @@ object KafkaConfig {
   val TransactionsTopicSegmentBytesDoc = "The transaction topic segment bytes should be kept relatively small in order to facilitate faster log compaction and cache loads"
   val TransactionsAbortTimedOutTransactionsIntervalMsDoc = "The interval at which to rollback transactions that have timed out"
   val TransactionsRemoveExpiredTransactionsIntervalMsDoc = "The interval at which to remove transactions that have expired due to <code>transactional.id.expiration.ms</code> passing"
+  val liMinOriginalAliveReplicasDoc = "The minimum number of alive replicas in the original replica set as a precondition to cancellation of a partition reassignment (which restores the original replica set)"
 
   /** ********* Fetch Configuration **************/
   val MaxIncrementalFetchSessionCacheSlotsDoc = "The maximum number of incremental fetch sessions that we will maintain."
@@ -1164,7 +1173,6 @@ object KafkaConfig {
     "zero. When closing/shutting down an observer, most time is spent on flushing the observed stats. The reasonable timeout should be close to " +
     "the time it takes to flush the stats."
 
-  @nowarn("cat=deprecation")
   private[server] val configDef = {
     import ConfigDef.Importance._
     import ConfigDef.Range._
@@ -1247,6 +1255,8 @@ object KafkaConfig {
       .define(LiDropCorruptedFilesEnableProp, BOOLEAN, Defaults.LiDropCorruptedFilesEnabled, HIGH, LiDropCorruptedFilesEnableDoc)
       .define(LiConsumerFetchSampleRatioProp, DOUBLE, Defaults.LiConsumerFetchSampleRatio, between(0.0, 1.0), LOW, LiConsumerFetchSampleRatioDoc)
       .define(LiLeaderElectionOnCorruptionWaitMsProp, LONG, Defaults.LiLeaderElectionOnCorruptionWaitMs, atLeast(0), HIGH, LiLeaderElectionOnCorruptionWaitMsDoc)
+      .define(LiZookeeperPaginationEnableProp, BOOLEAN, Defaults.LiZookeeperPaginationEnable, LOW, LiZookeeperPaginationEnableDoc)
+      .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, STRING, Defaults.LiRackIdMapperClassNameForRackAwareReplicaAssignment, LOW, LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)
       .define(UnofficialClientCacheTtlProp, LONG, Defaults.UnofficialClientCacheTtl, LOW, UnofficialClientCacheTtlDoc)
@@ -1354,6 +1364,7 @@ object KafkaConfig {
       .define(InterBrokerProtocolVersionProp, STRING, Defaults.InterBrokerProtocolVersion, ApiVersionValidator, MEDIUM, InterBrokerProtocolVersionDoc)
       .define(InterBrokerListenerNameProp, STRING, null, MEDIUM, InterBrokerListenerNameDoc)
       .define(ReplicaSelectorClassProp, STRING, null, MEDIUM, ReplicaSelectorClassDoc)
+      .define(LiMinOriginalAliveReplicasProp, INT, Defaults.MinInSyncReplicas, LOW, liMinOriginalAliveReplicasDoc)
 
       /** ********* Controlled shutdown configuration ***********/
       .define(ControlledShutdownMaxRetriesProp, INT, Defaults.ControlledShutdownMaxRetries, MEDIUM, ControlledShutdownMaxRetriesDoc)
@@ -1793,6 +1804,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val liConsumerFetchSampleRatio = getDouble(KafkaConfig.LiConsumerFetchSampleRatioProp)
   val liLeaderElectionOnCorruptionWaitMs = getLong(KafkaConfig.LiLeaderElectionOnCorruptionWaitMsProp)
 
+  def liZookeeperPaginationEnable = getBoolean(KafkaConfig.LiZookeeperPaginationEnableProp)
   def unofficialClientLoggingEnable = getBoolean(KafkaConfig.UnofficialClientLoggingEnableProp)
   def unofficialClientCacheTtl = getLong(KafkaConfig.UnofficialClientCacheTtlProp)
   def expectedClientSoftwareNames = getList(KafkaConfig.ExpectedClientSoftwareNamesProp)
@@ -1837,6 +1849,10 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   /***************** rack configuration **************/
   val rack = Option(getString(KafkaConfig.RackProp))
   val replicaSelectorClassName = Option(getString(KafkaConfig.ReplicaSelectorClassProp))
+  val rackIdMapperForRackAwareReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper =
+    Option(getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp))
+      .map(className => CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](className))
+      .getOrElse((rackId: String) => rackId)
 
   /** ********* Log Configuration ***********/
   def autoCreateTopicsEnable: java.lang.Boolean = getBoolean(KafkaConfig.AutoCreateTopicsEnableProp)
@@ -1875,7 +1891,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   // We keep the user-provided String as `ApiVersion.apply` can choose a slightly different version (eg if `0.10.0`
   // is passed, `0.10.0-IV0` may be picked)
-  @nowarn("cat=deprecation")
   private val logMessageFormatVersionString = getString(KafkaConfig.LogMessageFormatVersionProp)
 
   /* See `TopicConfig.MESSAGE_FORMAT_VERSION_CONFIG` for details */
@@ -1908,6 +1923,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val autoLeaderRebalanceEnable = getBoolean(KafkaConfig.AutoLeaderRebalanceEnableProp)
   val leaderImbalancePerBrokerPercentage = getInt(KafkaConfig.LeaderImbalancePerBrokerPercentageProp)
   val leaderImbalanceCheckIntervalSeconds = getLong(KafkaConfig.LeaderImbalanceCheckIntervalSecondsProp)
+  val liMinOriginalAliveReplicas = getInt(KafkaConfig.LiMinOriginalAliveReplicasProp)
   def uncleanLeaderElectionEnable: java.lang.Boolean = getBoolean(KafkaConfig.UncleanLeaderElectionEnableProp)
 
   // We keep the user-provided String as `ApiVersion.apply` can choose a slightly different version (eg if `0.10.0`
@@ -2161,7 +2177,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   validateValues()
 
-  @nowarn("cat=deprecation")
   private def validateValues(): Unit = {
     if (requiresZookeeper) {
       if (zkConnect == null) {
@@ -2286,5 +2301,6 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
     require(principalBuilderClass != null, s"${KafkaConfig.PrincipalBuilderClassProp} must be non-null")
     require(classOf[KafkaPrincipalSerde].isAssignableFrom(principalBuilderClass),
       s"${KafkaConfig.PrincipalBuilderClassProp} must implement KafkaPrincipalSerde")
+    require(liMinOriginalAliveReplicas >= Defaults.MinInSyncReplicas, KafkaConfig.liMinOriginalAliveReplicasDoc)
   }
 }

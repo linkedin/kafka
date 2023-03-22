@@ -1299,7 +1299,7 @@ object ConnectionQuotas {
   }
 }
 
-class ConnectionQuotas(config: KafkaConfig, time: Time, metrics: Metrics) extends Logging with AutoCloseable {
+class ConnectionQuotas(config: KafkaConfig, time: Time, metrics: Metrics) extends Logging with KafkaMetricsGroup with AutoCloseable {
 
   @volatile private var defaultMaxConnectionsPerIp: Int = config.maxConnectionsPerIp
   @volatile private var maxConnectionsPerIpOverrides = config.maxConnectionsPerIpOverrides.map { case (host, count) => (InetAddress.getByName(host), count) }
@@ -1310,6 +1310,7 @@ class ConnectionQuotas(config: KafkaConfig, time: Time, metrics: Metrics) extend
   // Listener counts and configs are synchronized on `counts`
   private val listenerCounts = mutable.Map[ListenerName, Int]()
   private[network] val maxConnectionsPerListener = mutable.Map[ListenerName, ListenerConnectionQuota]()
+  private val TotalConnectionCountMetricName = "TotalConnectionCount"
   @volatile private var totalCount = 0
   // updates to defaultConnectionRatePerIp or connectionRatePerIp must be synchronized on `counts`
   @volatile private var defaultConnectionRatePerIp = QuotaConfigs.IP_CONNECTION_RATE_DEFAULT.intValue()
@@ -1317,6 +1318,9 @@ class ConnectionQuotas(config: KafkaConfig, time: Time, metrics: Metrics) extend
   // sensor that tracks broker-wide connection creation rate and limit (quota)
   private val brokerConnectionRateSensor = getOrCreateConnectionRateQuotaSensor(config.maxConnectionCreationRate, BrokerQuotaEntity)
   private val maxThrottleTimeMs = TimeUnit.SECONDS.toMillis(config.quotaWindowSizeSeconds.toLong)
+
+  // sensor that emits the total broker connection count including external, admin, and replication connections
+  val totalConnectionCountGauge = newGauge(TotalConnectionCountMetricName, () => totalCount)
 
   def inc(listenerName: ListenerName, address: InetAddress, acceptorBlockedPercentMeter: com.yammer.metrics.core.Meter): Unit = {
     counts.synchronized {

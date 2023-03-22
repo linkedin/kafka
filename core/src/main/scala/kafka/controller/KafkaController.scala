@@ -1277,7 +1277,9 @@ class KafkaController(val config: KafkaConfig,
             val numReplica = partitionMap.head._2.replicas.size
             val brokers = controllerContext.liveOrShuttingDownBrokers.map { b => kafka.admin.BrokerMetadata(b.id, b.rack) }.toSeq
 
-            val replicaAssignment = adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds.toSet, numPartitions, numReplica)
+            val replicaAssignment =
+              adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds.toSet, numPartitions, numReplica,
+                                                             rackIdMapperForRackAwareReplicaAssignment = config.rackIdMapperForRackAwareReplicaAssignment)
             adminZkClient.writeTopicPartitionAssignment(topic, replicaAssignment.mapValues(ReplicaAssignment(_)).toMap, true)
             info(s"Rearrange partition and replica assignment for topic [$topic]")
         }
@@ -2288,14 +2290,14 @@ class KafkaController(val config: KafkaConfig,
       val partitionsToReassign = mutable.Map.empty[TopicPartition, ReplicaAssignment]
 
       reassignments.forKeyValue { (tp, targetReplicas) =>
-        val maybeApiError = validateReplicas(tp, targetReplicas)
-        maybeApiError match {
-          case None =>
-            maybeBuildReassignment(tp, targetReplicas) match {
+        val apiErrorOrNewTargetReplicas = validateReplicas(tp, targetReplicas)
+        apiErrorOrNewTargetReplicas match {
+          case Right(newTargetReplicas) =>
+            maybeBuildReassignment(tp, Some(newTargetReplicas)) match {
               case Some(context) => partitionsToReassign.put(tp, context)
               case None => reassignmentResults.put(tp, new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
             }
-          case Some(err) =>
+          case Left(err) =>
             reassignmentResults.put(tp, err)
         }
       }
@@ -2309,21 +2311,38 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
-  private def validateReplicas(topicPartition: TopicPartition, replicas: Option[Seq[Int]]): Option[ApiError] = {
+  private def validateReplicas(topicPartition: TopicPartition, replicas: Option[Seq[Int]]): Either[ApiError, Seq[Int]] = {
     replicas match {
-      case Some(targetReplicas) => validateTargetReplicas(topicPartition, targetReplicas)
+      case Some(targetReplicas) => {
+        validateTargetReplicas(topicPartition, targetReplicas) match {
+          case Some(apiError) => Left(apiError)
+          case None => Right(targetReplicas)
+        }
+      }
       case None => {
         // this is trying to cancel an existing replica reassignment
         val replicaAssignment = controllerContext.partitionFullReplicaAssignment(topicPartition)
         if (replicaAssignment.isBeingReassigned) {
-          val originalReplicasAlive = replicaAssignment.originReplicas.toSet.subsetOf(controllerContext.liveBrokerIds)
-          if (!originalReplicasAlive)
-            Some(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
-              s"Replica assignment cancellation has original brokers that are not alive. " +
-                "Replica list: " + s"${replicaAssignment.originReplicas}, live broker list: ${controllerContext.liveBrokerIds}"))
-          else None
+          val allOriginalReplicasAlive = replicaAssignment.originReplicas.toSet.subsetOf(controllerContext.liveBrokerIds)
+          if (allOriginalReplicasAlive) {
+            // Simply fallback to the original set of replicas
+            Right(replicaAssignment.originReplicas)
+          } else {
+            val aliveOriginalReplicas = replicaAssignment.originReplicas.toSet.intersect(controllerContext.liveBrokerIds);
+            if (aliveOriginalReplicas.size >= config.liMinOriginalAliveReplicas) {
+              // If there are enough original replicas alive (to maintain minISR), we allow the cancellation to go through
+              Right(replicaAssignment.originReplicas)
+            } else {
+              // If there are not enough alive replicas in the original set, we don't allow the cancellation to go though.
+              Left(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
+                s"Replica assignment cancellation precondition failed. Don't have enough alive replicas in the original replica set: " +
+                  s"replica list: ${replicaAssignment.originReplicas}, " +
+                  s"live broker list: ${controllerContext.liveBrokerIds}, " +
+                  s"${KafkaConfig.LiMinOriginalAliveReplicasProp}: ${config.liMinOriginalAliveReplicas}"))
+            }
+          }
         } else {
-          Some(new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
+          Left(new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
         }
       }
     }
@@ -3116,8 +3135,10 @@ class KafkaController(val config: KafkaConfig,
       val topicId = topicsIdReplicaAssignment.topicId
       val numPartitions = topicsIdReplicaAssignment.assignment.size
       val assignment =
-        adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds, numPartitions, replicationFactor)
-          .map { case(partition, replicas) => (new TopicPartition(topic, partition), ReplicaAssignment(replicas))}
+        adminZkClient
+          .assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds, numPartitions, replicationFactor,
+                                            rackIdMapperForRackAwareReplicaAssignment = config.rackIdMapperForRackAwareReplicaAssignment)
+          .map { case(partition, replicas) => (new TopicPartition(topic, partition), ReplicaAssignment(replicas)) }
       zkClient.setTopicAssignment(topic, topicId, assignment, controllerContext.epochZkVersion)
       info(s"Updated topic [$topic] with $assignment for replica assignment")
     }

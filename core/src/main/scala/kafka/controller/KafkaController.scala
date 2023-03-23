@@ -2997,7 +2997,10 @@ class KafkaController(val config: KafkaConfig,
     }
 
     val (isrCleanSuccessful, isrCleanUnsuccessful) = corruptedBrokersIsrClearResults.partition(_._2.isSuccess)
-    error(s"Could not clear corrupted brokers $isrCleanUnsuccessful from ISR")
+    val corruptedBrokersWithUnsuccessfulClean = isrCleanUnsuccessful.map(isrAndTryResult => isrAndTryResult._1)
+    if (corruptedBrokersWithUnsuccessfulClean.nonEmpty) {
+      error(s"Could not clear corrupted brokers $corruptedBrokersWithUnsuccessfulClean from ISR")
+    }
 
     val modifiedCorruptedBrokers = isrCleanSuccessful
       .map{ case (brokerId, tryResult) => brokerId -> true }
@@ -3041,10 +3044,14 @@ class KafkaController(val config: KafkaConfig,
       // Validate that brokerId is not present in ISR for any partition that has a leader
       // The two checks below are like assertions, and they are never expected to occur.
       if (leaderAndIsr.leader != LeaderAndIsr.NoLeader) {
-        logger.warn(s"Corruption-recovery: Unexpected entry $brokerId in ISR for partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(
+          s"""Corruption-recovery: Unexpected entry $brokerId in ISR for partition
+             | $tp, leaderAndIsr = $leaderAndIsr. This should never happen, please investigate.""".stripMargin)
       }
       else if (leaderAndIsr.isr.length > 1) {
-        logger.warn(s"Corruption-recovery: Unexpected multiple entries in ISR for leaderless partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(
+          s"""Corruption-recovery: Unexpected multiple entries in ISR for leaderless partition
+             | $tp, leaderAndIsr = $leaderAndIsr. This should never happen, please investigate.""".stripMargin)
       }
 
       val newLeader = if (brokerId == leaderAndIsr.leader) LeaderAndIsr.NoLeader else leaderAndIsr.leader

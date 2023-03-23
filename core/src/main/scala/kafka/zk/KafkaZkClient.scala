@@ -123,7 +123,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     val setDataRequest = SetDataRequest(path, corruptedBroker.toJsonBytes, ZkVersion.MatchAnyVersion)
     val response = retryRequestUntilConnected(setDataRequest)
     response.maybeThrow()
-    info(s"Updated corrupted broker ${corruptedBroker.brokerId} at path $path")
+    info(s"Updated corrupted broker ${corruptedBroker.brokerId} at path $path, clearedFromIsrs = ${corruptedBroker.clearedFromIsrs}")
   }
 
   def getCorruptedBrokers: Map[Int, CorruptedBroker] = {

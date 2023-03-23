@@ -140,6 +140,10 @@ abstract class KafkaServerTestHarness extends ZooKeeperTestHarness {
   def createTopic(topic: String, partitionReplicaAssignment: collection.Map[Int, Seq[Int]]): scala.collection.immutable.Map[Int, Int] =
     TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment, servers)
 
+  def createTopic(topic: String, partitionReplicaAssignment: collection.Map[Int, Seq[Int]],topicConfig: Properties): scala.collection.immutable.Map[Int, Int] =
+    TestUtils.createTopic(zkClient, topic, partitionReplicaAssignment, servers, topicConfig)
+
+
   /**
    * Pick a broker at random and kill it if it isn't already dead
    * Return the id of the broker killed
@@ -166,17 +170,21 @@ abstract class KafkaServerTestHarness extends ZooKeeperTestHarness {
       instanceConfigs = null
     }
     for(i <- servers.indices if !alive(i)) {
-      if (reconfigure) {
-        servers(i) = TestUtils.createServer(
-          configs(i),
-          time = brokerTime(configs(i).brokerId),
-          threadNamePrefix = None,
-          enableForwarding
-        )
-      }
-      servers(i).startup()
-      alive(i) = true
+      restartDeadBroker(i, reconfigure)
     }
+  }
+
+  def restartDeadBroker(brokerIndex: Int, reconfigure: Boolean = false): Unit = {
+    if (reconfigure) {
+      servers(brokerIndex) = TestUtils.createServer(
+        configs(brokerIndex),
+        time = brokerTime(configs(brokerIndex).brokerId),
+        threadNamePrefix = None,
+        enableForwarding
+      )
+    }
+    servers(brokerIndex).startup()
+    alive(brokerIndex) = true
   }
 
   def waitForUserScramCredentialToAppearOnAllBrokers(clientPrincipal: String, mechanismName: String): Unit = {

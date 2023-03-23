@@ -1120,7 +1120,9 @@ class KafkaController(val config: KafkaConfig,
     info(s"Finished recursing ${allPartitions.size} partitions in ZK and setting up LAI cache ${KafkaController.timing(taskStartMs, failoverStartMs, time)}")
 
     // Load corrupted brokers list from ZK
+    taskStartMs = time.milliseconds()
     controllerContext.setCorruptedBrokers(zkClient.getCorruptedBrokers.mapValues(_.clearedFromIsrs))
+    info(s"Finished loading corrupted partitions from ZK into context ${KafkaController.timing(taskStartMs, failoverStartMs, time)}")
 
     // start the channel manager
     controllerChannelManager.startup()
@@ -1299,7 +1301,9 @@ class KafkaController(val config: KafkaConfig,
             val numReplica = partitionMap.head._2.replicas.size
             val brokers = controllerContext.liveOrShuttingDownBrokers.map { b => kafka.admin.BrokerMetadata(b.id, b.rack) }.toSeq
 
-            val replicaAssignment = adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds.toSet, numPartitions, numReplica)
+            val replicaAssignment =
+              adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds.toSet, numPartitions, numReplica,
+                                                             rackIdMapperForRackAwareReplicaAssignment = config.rackIdMapperForRackAwareReplicaAssignment)
             adminZkClient.writeTopicPartitionAssignment(topic, replicaAssignment.mapValues(ReplicaAssignment(_)).toMap, true)
             info(s"Rearrange partition and replica assignment for topic [$topic]")
         }
@@ -2310,14 +2314,14 @@ class KafkaController(val config: KafkaConfig,
       val partitionsToReassign = mutable.Map.empty[TopicPartition, ReplicaAssignment]
 
       reassignments.forKeyValue { (tp, targetReplicas) =>
-        val maybeApiError = validateReplicas(tp, targetReplicas)
-        maybeApiError match {
-          case None =>
-            maybeBuildReassignment(tp, targetReplicas) match {
+        val apiErrorOrNewTargetReplicas = validateReplicas(tp, targetReplicas)
+        apiErrorOrNewTargetReplicas match {
+          case Right(newTargetReplicas) =>
+            maybeBuildReassignment(tp, Some(newTargetReplicas)) match {
               case Some(context) => partitionsToReassign.put(tp, context)
               case None => reassignmentResults.put(tp, new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
             }
-          case Some(err) =>
+          case Left(err) =>
             reassignmentResults.put(tp, err)
         }
       }
@@ -2331,21 +2335,38 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
-  private def validateReplicas(topicPartition: TopicPartition, replicas: Option[Seq[Int]]): Option[ApiError] = {
+  private def validateReplicas(topicPartition: TopicPartition, replicas: Option[Seq[Int]]): Either[ApiError, Seq[Int]] = {
     replicas match {
-      case Some(targetReplicas) => validateTargetReplicas(topicPartition, targetReplicas)
+      case Some(targetReplicas) => {
+        validateTargetReplicas(topicPartition, targetReplicas) match {
+          case Some(apiError) => Left(apiError)
+          case None => Right(targetReplicas)
+        }
+      }
       case None => {
         // this is trying to cancel an existing replica reassignment
         val replicaAssignment = controllerContext.partitionFullReplicaAssignment(topicPartition)
         if (replicaAssignment.isBeingReassigned) {
-          val originalReplicasAlive = replicaAssignment.originReplicas.toSet.subsetOf(controllerContext.liveBrokerIds)
-          if (!originalReplicasAlive)
-            Some(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
-              s"Replica assignment cancellation has original brokers that are not alive. " +
-                "Replica list: " + s"${replicaAssignment.originReplicas}, live broker list: ${controllerContext.liveBrokerIds}"))
-          else None
+          val allOriginalReplicasAlive = replicaAssignment.originReplicas.toSet.subsetOf(controllerContext.liveBrokerIds)
+          if (allOriginalReplicasAlive) {
+            // Simply fallback to the original set of replicas
+            Right(replicaAssignment.originReplicas)
+          } else {
+            val aliveOriginalReplicas = replicaAssignment.originReplicas.toSet.intersect(controllerContext.liveBrokerIds);
+            if (aliveOriginalReplicas.size >= config.liMinOriginalAliveReplicas) {
+              // If there are enough original replicas alive (to maintain minISR), we allow the cancellation to go through
+              Right(replicaAssignment.originReplicas)
+            } else {
+              // If there are not enough alive replicas in the original set, we don't allow the cancellation to go though.
+              Left(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
+                s"Replica assignment cancellation precondition failed. Don't have enough alive replicas in the original replica set: " +
+                  s"replica list: ${replicaAssignment.originReplicas}, " +
+                  s"live broker list: ${controllerContext.liveBrokerIds}, " +
+                  s"${KafkaConfig.LiMinOriginalAliveReplicasProp}: ${config.liMinOriginalAliveReplicas}"))
+            }
+          }
         } else {
-          Some(new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
+          Left(new ApiError(Errors.NO_REASSIGNMENT_IN_PROGRESS))
         }
       }
     }
@@ -2973,11 +2994,16 @@ class KafkaController(val config: KafkaConfig,
     if (corruptedBrokers == controllerContext.corruptedBrokers) {
       return
     }
-    info("Cleaning from ISR")
     maybeCleanIsrsForCorruptedBrokers(corruptedBrokers)
   }
 
   private def maybeCleanIsrsForCorruptedBrokers(originalCorruptedBrokers: Map[Int, Boolean]): Unit = {
+    // If delayed election is not enabled, do not clear corrupted broker from ISR. If it is removed, it
+    // may cause problems with elections when unclean leader election is disabled.
+    if (!config.isDelayedElectionEnabled) {
+      return
+    }
+
     def updateCorruptedBrokerToCleanedInZk(brokerId: Int): Try[Unit] = Try {
       info(s"Updating zk node for corrupted broker $brokerId to cleaned")
       val corruptedBroker = CorruptedBroker(brokerId, clearedFromIsrs = true)
@@ -2995,7 +3021,10 @@ class KafkaController(val config: KafkaConfig,
     }
 
     val (isrCleanSuccessful, isrCleanUnsuccessful) = corruptedBrokersIsrClearResults.partition(_._2.isSuccess)
-    // TODO: log isrCleanUnsuccessful as ERROR
+    val corruptedBrokersWithUnsuccessfulClean = isrCleanUnsuccessful.map(isrAndTryResult => isrAndTryResult._1)
+    if (corruptedBrokersWithUnsuccessfulClean.nonEmpty) {
+      error(s"Could not clear corrupted brokers $corruptedBrokersWithUnsuccessfulClean from ISR")
+    }
 
     val modifiedCorruptedBrokers = isrCleanSuccessful
       .map{ case (brokerId, tryResult) => brokerId -> true }
@@ -3037,11 +3066,16 @@ class KafkaController(val config: KafkaConfig,
 
     val updatedLeaderAndIsrs = leaderAndIsrs.map { case(tp, leaderAndIsr) =>
       // Validate that brokerId is not present in ISR for any partition that has a leader
+      // The two checks below are like assertions, and they are never expected to occur.
       if (leaderAndIsr.leader != LeaderAndIsr.NoLeader) {
-        logger.warn(s"Unexpected entry $brokerId in ISR for partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(
+          s"""Corruption-recovery: Unexpected entry $brokerId in ISR for partition
+             | $tp, leaderAndIsr = $leaderAndIsr. This should never happen, please investigate.""".stripMargin)
       }
       else if (leaderAndIsr.isr.length > 1) {
-        logger.warn(s"Unexpected multiple entries in ISR for leaderless partition $tp, leaderAndIsr = $leaderAndIsr")
+        logger.warn(
+          s"""Corruption-recovery: Unexpected multiple entries in ISR for leaderless partition
+             | $tp, leaderAndIsr = $leaderAndIsr. This should never happen, please investigate.""".stripMargin)
       }
 
       val newLeader = if (brokerId == leaderAndIsr.leader) LeaderAndIsr.NoLeader else leaderAndIsr.leader
@@ -3132,8 +3166,10 @@ class KafkaController(val config: KafkaConfig,
       val topicId = topicsIdReplicaAssignment.topicId
       val numPartitions = topicsIdReplicaAssignment.assignment.size
       val assignment =
-        adminZkClient.assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds, numPartitions, replicationFactor)
-          .map { case(partition, replicas) => (new TopicPartition(topic, partition), ReplicaAssignment(replicas))}
+        adminZkClient
+          .assignReplicasToAvailableBrokers(brokers, noNewPartitionBrokerIds, numPartitions, replicationFactor,
+                                            rackIdMapperForRackAwareReplicaAssignment = config.rackIdMapperForRackAwareReplicaAssignment)
+          .map { case(partition, replicas) => (new TopicPartition(topic, partition), ReplicaAssignment(replicas)) }
       zkClient.setTopicAssignment(topic, topicId, assignment, controllerContext.epochZkVersion)
       info(s"Updated topic [$topic] with $assignment for replica assignment")
     }

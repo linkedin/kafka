@@ -47,6 +47,9 @@ object DelayedElectionManager {
   }
 }
 
+/**
+ * This class manages the delayed elections for partitions that are only present on corrupted brokers.
+ */
 private[controller] class DelayedElectionManager(
   val config: KafkaConfig,
   val controllerContext: ControllerContext,
@@ -195,6 +198,9 @@ private[controller] class DelayedElectionManager(
   }
 }
 
+/**
+ * This class encapsulates the task of a single delayed election for a specific partition.
+ */
 private class DelayedElectionTask(
   val kafkaScheduler: KafkaScheduler,
   val electionWaitMs: Long,

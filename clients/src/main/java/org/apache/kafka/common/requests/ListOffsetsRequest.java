@@ -54,7 +54,7 @@ public class ListOffsetsRequest extends AbstractRequest {
 
     public static final int CONSUMER_REPLICA_ID = -1;
     public static final int DEBUGGING_REPLICA_ID = -2;
-    public static final int CONTROLLER_REPLICA_ID = -3;
+    public static final int CONTROLLER_REPLICA_ID = -100;
 
     private final ListOffsetsRequestData data;
     private final Set<TopicPartition> duplicatePartitions;

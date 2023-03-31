@@ -45,6 +45,13 @@ import scala.collection.{Map, Seq, Set, mutable}
 object ControllerChannelManager {
   val QueueSizeMetricName = "QueueSize"
   val RequestRateAndQueueTimeMetricName = "RequestRateAndQueueTimeMs"
+  val SupportedRequestApiKeys: Set[ApiKeys] = Set(
+    ApiKeys.STOP_REPLICA,
+    ApiKeys.LEADER_AND_ISR,
+    ApiKeys.UPDATE_METADATA,
+    ApiKeys.LI_COMBINED_CONTROL,
+    ApiKeys.LIST_OFFSETS
+  )
 }
 
 class ControllerChannelManager(controllerContext: ControllerContext,
@@ -83,10 +90,7 @@ class ControllerChannelManager(controllerContext: ControllerContext,
   }
 
   def initBrokerResponseSensors(): Unit = {
-    Array(
-      ApiKeys.STOP_REPLICA, ApiKeys.LEADER_AND_ISR, ApiKeys.UPDATE_METADATA,
-      ApiKeys.LI_COMBINED_CONTROL, ApiKeys.LIST_OFFSETS
-    ).foreach { k: ApiKeys =>
+    SupportedRequestApiKeys.foreach { k: ApiKeys =>
       brokerResponseSensors.put(k, new BrokerResponseTimeStats(k))
     }
   }
@@ -281,14 +285,30 @@ class RequestSendThread(val controllerId: Int,
     sendAndReceive(requestBuilder, callback)
   }
 
+  /**
+   * This method blocks for an item to be available in the request queue. Once an item is available, it takes
+   * that item from the queue and checks if it is a control request.
+   *
+   * If it is, then this method merges the control request into the controllerRequestMerger.
+   * If it is not a control request, it puts the item back into the queue.
+   *
+   * @return If the request taken from the queue is a control request, return the enqueue
+   *         time and whether to continue merging requests further.
+   *         If the request taken from the queue is found to be a non-control request, return None.
+   */
   private def takeFromQueueAndMerge(): Option[(Long, Boolean)] = {
     val queueItem = queue.take()
     val QueueItem(apiKey, requestBuilder, callback, enqueueTimeMs) = queueItem
+    // Request can either be a control request (that can be sent only from a controller to a broker), or a
+    // generic Kafka request (like ListOffsetsRequest).
     requestBuilder match {
+      // In case of a control request, merge the request to the accumulated list of control requests
       case controlRequestBuilder: AbstractControlRequest.Builder[AbstractControlRequest] =>
         val continueMerge = mergeControlRequest(enqueueTimeMs, apiKey, controlRequestBuilder, callback)
         Some(enqueueTimeMs, continueMerge)
       case _ =>
+        // In case of a non-control request, put the popped item back into the queue and stop merging. It will be
+        // read back from the queue in a subsequent call to takeSingleItemFromQueue.
         queue.putFirst(queueItem)
         None
     }
@@ -320,22 +340,27 @@ class RequestSendThread(val controllerId: Int,
       var shouldContinueMerging = true
       if (!controllerRequestMerger.hasPendingRequests()) {
         takeFromQueueAndMerge() match {
+          // Control request taken from queue and merged
           case Some((enqueueTimeMs, continueMerge)) =>
             latestRequestStatus = LatestRequestStatus(isInFlight = true, isInQueue = false, enqueueTimeMs)
             shouldContinueMerging = continueMerge
           case None =>
-            // This line doesn't have any effect since we return immediately. It is there for completeness.
+            // Non-control request was spotted in the queue. We should simply return this request.
             shouldContinueMerging = false
             return takeSingleItemFromQueue()
         }
       }
 
       // now we are guaranteed that the controllerRequestMerger is not empty (case 1 or 3)
-      // drain the queue until the queue is empty
+      // drain the queue until the queue is empty. If we encounter a non-control request,
+      // halt and send requests accumulated so far.
+
       // one concurrent access case considering the producer of the queue:
       // an item is put to the queue right after the condition check below.
       // That behavior does not change correctness since the inserted item will be picked up in the next round
       while (!queue.isEmpty && shouldContinueMerging) {
+        // Continue merging if the item taken from the queue is a
+        // control request and has set `shouldContinueMerging` to true
         shouldContinueMerging = takeFromQueueAndMerge().exists(_._2)
       }
 
@@ -391,9 +416,9 @@ class RequestSendThread(val controllerId: Int,
       if (clientResponse != null) {
         val requestHeader = clientResponse.requestHeader
         val api = requestHeader.apiKey
-        if (api != ApiKeys.LEADER_AND_ISR && api != ApiKeys.STOP_REPLICA && api != ApiKeys.UPDATE_METADATA &&
-          api != ApiKeys.LI_COMBINED_CONTROL && api != ApiKeys.LIST_OFFSETS)
+        if (!ControllerChannelManager.SupportedRequestApiKeys.contains(api)) {
           throw new KafkaException(s"Unexpected apiKey received: $api")
+        }
 
 
         if (api == ApiKeys.UPDATE_METADATA && !requestBuilder.asInstanceOf[UpdateMetadataRequest.Builder].partitionStates().isEmpty) {

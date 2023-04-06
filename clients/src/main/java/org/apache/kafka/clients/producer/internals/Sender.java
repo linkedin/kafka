@@ -704,8 +704,8 @@ public class Sender implements Runnable {
      * e.g "NETWORK_EXCEPTION. Error Message: Disconnected from node 0"
      */
     private String formatErrMsg(ProduceResponse.PartitionResponse response) {
-    String errorMessageSuffix = (response.errorMessage == null || response.errorMessage.isEmpty()) ?
-        "" : String.format(". Error Message: %s", response.errorMessage);
+        String errorMessageSuffix = (response.errorMessage == null || response.errorMessage.isEmpty()) ?
+            "" : String.format(". Error Message: %s", response.errorMessage);
         return String.format("%s%s", response.error, errorMessageSuffix);
     }
 

@@ -199,6 +199,7 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   private val quotaCallback = clientQuotaCallback.getOrElse(new DefaultQuotaCallback)
   private val staticConfigClientIdQuota = Quota.upperBound(config.quotaDefault.toDouble)
   private val clientQuotaType = QuotaType.toClientQuotaType(quotaType)
+  private val quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]();
 
   @volatile
   private var quotaTypesEnabled = clientQuotaCallback match {
@@ -220,6 +221,7 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     schedulerOpt match {
       case Some(scheduler) =>
         scheduler.schedule("quota-metrics-logger-%s".format(quotaType), logQuotaMetrics, 60, 60, TimeUnit.SECONDS)
+        scheduler.schedule("quota-violation-logger", logQuotaViolations, 60, 60, TimeUnit.SECONDS)
       case _ =>
     }
   }
@@ -270,6 +272,14 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     }
   }
 
+  def logQuotaViolations(): Unit = {
+    quotaViolationStatBySensorId.forEach {
+      case (quotaSensorName, (violateCount, violateTime)) =>
+        info((s"Quota violated ${violateCount} times for sensor (${quotaSensorName}) for ${violateTime} milliseconds"))
+    }
+    quotaViolationStatBySensorId.clear()
+  }
+
   /**
    * Returns true if any quotas are enabled for this quota manager. This is used
    * to determine if quota related metrics should be created.
@@ -311,13 +321,16 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
    */
   def recordAndGetThrottleTimeMs(session: Session, clientId: String, value: Double, timeMs: Long): Int = {
     val clientSensors = getOrCreateQuotaSensors(session, clientId)
+    val quotaSensor = clientSensors.quotaSensor
     try {
-      clientSensors.quotaSensor.record(value, timeMs, true)
+      quotaSensor.record(value, timeMs, true)
       0
     } catch {
       case e: QuotaViolationException =>
         val throttleTimeMs = throttleTime(e, timeMs).toInt
-        debug(s"Quota violated for sensor (${clientSensors.quotaSensor.name}). Delay time: ($throttleTimeMs)")
+        val quotaViolationStat = quotaViolationStatBySensorId.getOrDefault(quotaSensor.name(), (0, 0))
+        val updatedStat = (quotaViolationStat._1 + 1, quotaViolationStat._2 + throttleTimeMs)
+        quotaViolationStatBySensorId.put(quotaSensor.name(), updatedStat)
         throttleTimeMs
     }
   }

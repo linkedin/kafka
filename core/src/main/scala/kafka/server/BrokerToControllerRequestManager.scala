@@ -63,6 +63,15 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: BrokerToControll
   // Used to allow only one in-flight request at a time
   private val inflightRequest: AtomicBoolean = new AtomicBoolean(false)
 
+  // Additional observability into the internal states
+  private val baseMetricTags = Map("class" -> getClass.getName)
+  @volatile private var lastInflightRequestLockTimeMs = time.milliseconds()
+  newGauge("unsentItemQueueSize", () => unsentItemQueue.size, baseMetricTags)
+  newGauge("inflightRequest", () => if (inflightRequest.get()) 1 else 0)
+  // This is to indicate how long the latest request is waiting for response (either completed, timeout, error, or retried)
+  newGauge("currentInflightRequestElapsedTimeMs",
+           () => if (!inflightRequest.get()) 0 else time.milliseconds() - lastInflightRequestLockTimeMs)
+
   override def start(): Unit = {
     controllerChannelManager.start()
   }
@@ -80,6 +89,8 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: BrokerToControll
   private[server] def maybeSendRequest(): Unit = {
     // Send all pending items if there is not already a request in-flight.
     if ((!unsentItemQueue.isEmpty || !inflightItems.isEmpty) && inflightRequest.compareAndSet(false, true)) {
+      lastInflightRequestLockTimeMs = time.milliseconds()
+
       // Copy current unsent ISRs but don't remove from the map, they get cleared in the response handler
       while (!unsentItemQueue.isEmpty) {
         val item = unsentItemQueue.poll()

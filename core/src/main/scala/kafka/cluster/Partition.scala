@@ -266,6 +266,15 @@ class Partition(val topicPartition: TopicPartition,
   newGauge("AtMinIsr", () => if (isAtMinIsr) 1 else 0, tags)
   newGauge("ReplicasCount", () => if (isLeader) assignmentState.replicationFactor else 0, tags)
   newGauge("LastStableOffsetLag", () => log.map(_.lastStableOffsetLag).getOrElse(0), tags)
+  Seq(
+    classOf[PendingExpandIsr],
+    classOf[PendingShrinkIsr],
+    classOf[CommittedIsr],
+  ).foreach((c: Class[_ <: IsrState]) =>
+    newGauge(s"${c.getName}", () => if (isrStateClass.equals(c)) 1 else 0, tags)
+  )
+
+  def isrStateClass: Class[_ <: IsrState] = isrState.getClass
 
   def isUnderReplicated: Boolean = isLeader && (assignmentState.replicationFactor - isrState.isr.size) > 0
 

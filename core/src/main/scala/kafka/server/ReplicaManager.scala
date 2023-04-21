@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import java.util.concurrent.locks.Lock
 import com.yammer.metrics.core.Meter
 import kafka.api._
-import kafka.cluster.{BrokerEndPoint, Partition}
+import kafka.cluster.{BrokerEndPoint, CommittedIsr, IsrState, Partition, PendingExpandIsr, PendingShrinkIsr}
 import kafka.common.RecordValidationException
 import kafka.controller.{KafkaController, StateChangeLogger}
 import kafka.log._
@@ -61,6 +61,7 @@ import org.apache.kafka.common.requests._
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.image.{LocalReplicaChanges, MetadataImage, TopicsDelta}
 
+import scala.collection.generic.Shrinkable
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, Seq, Set, mutable}
 import scala.compat.java8.OptionConverters._
@@ -283,6 +284,13 @@ class ReplicaManager(val config: KafkaConfig,
   newGauge("AtMinIsrPartitionCount", () => leaderPartitionsIterator.count(_.isAtMinIsr))
   newGauge("OneAboveMinIsrPartitionCount", () => leaderPartitionsIterator.count(_.isOneAboveMinIsr))
   newGauge("ReassigningPartitions", () => reassigningPartitionsCount)
+  Seq(
+    classOf[PendingExpandIsr],
+    classOf[PendingShrinkIsr],
+    classOf[CommittedIsr],
+  ).foreach((c: Class[_ <: IsrState]) =>
+    newGauge(s"${c.getName}PartitionCount", () => leaderPartitionsIterator.count(_.isrStateClass.equals(c)))
+  )
 
   def reassigningPartitionsCount: Int = leaderPartitionsIterator.count(_.isReassigning)
 

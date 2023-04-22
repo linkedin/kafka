@@ -71,8 +71,9 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: BrokerToControll
   @VisibleForTesting private[server] val inflightRequestGauge = newGauge("inflightRequest", () => if (inflightRequest.get()) 1 else 0)
   // This is to indicate how long the latest request is waiting for response (either completed, timeout, error, or retried)
   @VisibleForTesting private[server] val currentInflightRequestElapsedTimeGauge =
-    newGauge("currentInflightRequestElapsedTimeMs", () => if (!inflightRequest.get()) 0
-                                                                 else time.milliseconds() - lastInflightRequestLockTimeMs)
+    newGauge("currentInflightRequestElapsedTimeMs",
+             () => if (!inflightRequest.get()) 0
+                   else time.milliseconds() - lastInflightRequestLockTimeMs)
 
   override def start(): Unit = {
     controllerChannelManager.start()

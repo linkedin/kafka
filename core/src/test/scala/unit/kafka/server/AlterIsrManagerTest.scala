@@ -19,6 +19,7 @@ package kafka.server
 
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+
 import kafka.api.LeaderAndIsr
 import kafka.utils.{MockScheduler, MockTime}
 import kafka.zk.KafkaZkClient
@@ -34,7 +35,6 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{BeforeEach, Test}
 import org.mockito.ArgumentMatchers.{any, anyString}
 import org.mockito.{ArgumentMatchers, Mockito}
-
 
 class AlterIsrManagerTest {
 

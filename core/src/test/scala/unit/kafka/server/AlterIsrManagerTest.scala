@@ -59,7 +59,7 @@ class AlterIsrManagerTest {
     // The metrics created in previous tests (via newGauge(), etc.) would be created and cached, gauging the DefaultAlterIsrManager
     // in the previous test case.  So need to clear everything after each round.
     KafkaYammerMetrics.defaultRegistry().allMetrics().forEach((name, _) => {
-     KafkaYammerMetrics.defaultRegistry().removeMetric(name)
+      KafkaYammerMetrics.defaultRegistry().removeMetric(name)
     })
   }
 

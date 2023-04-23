@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import java.util.concurrent.locks.Lock
 import com.yammer.metrics.core.Meter
 import kafka.api._
-import kafka.cluster.{BrokerEndPoint, CommittedIsr, IsrState, Partition, PendingExpandIsr, PendingShrinkIsr}
+import kafka.cluster.{BrokerEndPoint, Partition}
 import kafka.common.RecordValidationException
 import kafka.controller.{KafkaController, StateChangeLogger}
 import kafka.log._
@@ -283,11 +283,7 @@ class ReplicaManager(val config: KafkaConfig,
   newGauge("AtMinIsrPartitionCount", () => leaderPartitionsIterator.count(_.isAtMinIsr))
   newGauge("OneAboveMinIsrPartitionCount", () => leaderPartitionsIterator.count(_.isOneAboveMinIsr))
   newGauge("ReassigningPartitions", () => reassigningPartitionsCount)
-  Seq(
-    classOf[PendingExpandIsr],
-    classOf[PendingShrinkIsr],
-    classOf[CommittedIsr],
-  ).foreach((c: Class[_ <: IsrState]) =>
+  Partition.ISR_STATES_TO_CREATE_METRICS.foreach(c =>
     newGauge(s"${c.getSimpleName}PartitionCount", () => leaderPartitionsIterator.count(_.isrStateClass.equals(c)))
   )
 

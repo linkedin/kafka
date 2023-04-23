@@ -68,12 +68,13 @@ abstract class AbstractBrokerToControllerRequestManager[Item <: BrokerToControll
   private val baseMetricTags = Map("class" -> getClass.getName)
   @volatile private var lastInflightRequestLockTimeMs = time.milliseconds()
   @VisibleForTesting private[server] val unsentItemQueueSizeGauge = newGauge("unsentItemQueueSize", () => unsentItemQueue.size, baseMetricTags)
-  @VisibleForTesting private[server] val inflightRequestGauge = newGauge("inflightRequest", () => if (inflightRequest.get()) 1 else 0)
+  @VisibleForTesting private[server] val inflightRequestGauge = newGauge("inflightRequest", () => if (inflightRequest.get()) 1 else 0, baseMetricTags)
   // This is to indicate how long the latest request is waiting for response (either completed, timeout, error, or retried)
   @VisibleForTesting private[server] val currentInflightRequestElapsedTimeGauge =
     newGauge("currentInflightRequestElapsedTimeMs",
              () => if (!inflightRequest.get()) 0
-                   else time.milliseconds() - lastInflightRequestLockTimeMs)
+                   else time.milliseconds() - lastInflightRequestLockTimeMs,
+             baseMetricTags)
 
   override def start(): Unit = {
     controllerChannelManager.start()

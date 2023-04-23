@@ -288,7 +288,7 @@ class ReplicaManager(val config: KafkaConfig,
     classOf[PendingShrinkIsr],
     classOf[CommittedIsr],
   ).foreach((c: Class[_ <: IsrState]) =>
-    newGauge(s"${c.getName}PartitionCount", () => leaderPartitionsIterator.count(_.isrStateClass.equals(c)))
+    newGauge(s"${c.getSimpleName}PartitionCount", () => leaderPartitionsIterator.count(_.isrStateClass.equals(c)))
   )
 
   def reassigningPartitionsCount: Int = leaderPartitionsIterator.count(_.isReassigning)

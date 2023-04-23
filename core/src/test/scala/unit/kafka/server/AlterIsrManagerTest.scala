@@ -19,8 +19,8 @@ package kafka.server
 
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
-
 import kafka.api.LeaderAndIsr
+import kafka.metrics.KafkaYammerMetrics
 import kafka.utils.{MockScheduler, MockTime}
 import kafka.zk.KafkaZkClient
 import org.apache.kafka.clients.ClientResponse
@@ -32,7 +32,7 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractRequest, AlterIsrRequest, AlterIsrResponse}
 import org.easymock.EasyMock
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{BeforeEach, Test}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
 import org.mockito.ArgumentMatchers.{any, anyString}
 import org.mockito.{ArgumentMatchers, Mockito}
 
@@ -52,6 +52,15 @@ class AlterIsrManagerTest {
   @BeforeEach
   def setup(): Unit = {
     brokerToController = EasyMock.createMock(classOf[BrokerToControllerChannelManager])
+  }
+
+  @AfterEach
+  def tearDown(): Unit = {
+    // The metrics created in previous tests (via newGauge(), etc.) would be created and cached, gauging the DefaultAlterIsrManager
+    // in the previous test case.  So need to clear everything after each round.
+    KafkaYammerMetrics.defaultRegistry().allMetrics().forEach((name, _) => {
+     KafkaYammerMetrics.defaultRegistry().removeMetric(name)
+    })
   }
 
   @Test

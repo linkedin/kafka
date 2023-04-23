@@ -271,7 +271,7 @@ class Partition(val topicPartition: TopicPartition,
     classOf[PendingShrinkIsr],
     classOf[CommittedIsr],
   ).foreach((c: Class[_ <: IsrState]) =>
-    newGauge(s"${c.getName}", () => if (isrStateClass.equals(c)) 1 else 0, tags)
+    newGauge(s"${c.getSimpleName}", () => if (isrStateClass.equals(c)) 1 else 0, tags)
   )
 
   def isrStateClass: Class[_ <: IsrState] = isrState.getClass

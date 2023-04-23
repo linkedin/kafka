@@ -267,11 +267,6 @@ class Partition(val topicPartition: TopicPartition,
 
   private val tags = Map("topic" -> topic, "partition" -> partitionId.toString)
 
-//  val isrStatesToCreateMetrics: Set[Class[_ <: IsrState]] = Set(
-//    classOf[PendingExpandIsr],
-//    classOf[PendingShrinkIsr],
-//    classOf[CommittedIsr],
-//  )
   newGauge("UnderReplicated", () => if (isUnderReplicated) 1 else 0, tags)
   newGauge("InSyncReplicasCount", () => if (isLeader) isrState.isr.size else 0, tags)
   newGauge("UnderMinIsr", () => if (isUnderMinIsr) 1 else 0, tags)

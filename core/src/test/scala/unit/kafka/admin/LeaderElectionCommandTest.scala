@@ -248,6 +248,44 @@ final class LeaderElectionCommandTest extends ZooKeeperTestHarness {
   }
 
   @Test
+  def testRecommendedElectionTopicAndPartitionWithoutLeader(): Unit = {
+    val e = assertThrows(classOf[Throwable], () => RecommendedLeaderElectionCommand.main(
+      Array(
+        "--bootstrap-server", bootstrapServers(servers),
+        "--topic", "some-topic",
+        "--partition", "0"
+      )
+    ))
+    assertTrue(e.getMessage.startsWith("Exactly one of the following combinations is required"))
+  }
+
+  @Test
+  def testRecommendedElectionTopicAndLeaderWithoutPartition(): Unit = {
+    val e = assertThrows(classOf[Throwable], () => RecommendedLeaderElectionCommand.main(
+      Array(
+        "--bootstrap-server", bootstrapServers(servers),
+        "--topic", "some-topic",
+        "--leader", "2"
+      )
+    ))
+    assertTrue(e.getMessage.startsWith("Exactly one of the following combinations is required"))
+  }
+
+  @Test
+  def testRecommendedElectionBothJsonAndTopic(): Unit = {
+    //val fakeJsonString = "{\"partitions\":[{\"topic\": \"foo\", \"partition\": 1, \"leader\": 8001, \"in-sync\": [6221, 1309, 8001]}, {\"topic\": \"foobar\", \"partition\": 2, \"leader\": 7911, \"in-sync\": [5577, 7911, 7174]}]}"
+    val fakeJsonFile = "/tmp/fakeTopicPartitions.json"
+    val e = assertThrows(classOf[Throwable], () => RecommendedLeaderElectionCommand.main(
+      Array(
+        "--bootstrap-server", bootstrapServers(servers),
+        "--path-to-json-file", fakeJsonFile,
+        "--topic", "some-topic"
+      )
+    ))
+    assertTrue(e.getMessage.startsWith("Exactly one of the following combinations is required"))
+  }
+
+  @Test
   def testMissingTopicPartitionSelection(): Unit = {
     val e = assertThrows(classOf[Throwable], () => LeaderElectionCommand.main(
       Array(

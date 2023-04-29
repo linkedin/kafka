@@ -18,7 +18,6 @@ package kafka.admin
 
 import java.util.{Optional, Properties}
 import java.util.concurrent.ExecutionException
-import joptsimple.util.EnumConverter
 import kafka.common.AdminCommandFailedException
 import kafka.utils.CommandDefaultOptions
 import kafka.utils.CommandLineUtils
@@ -27,7 +26,6 @@ import kafka.utils.Implicits._
 import kafka.utils.Json
 import kafka.utils.Logging
 import org.apache.kafka.clients.admin.{Admin, AdminClientConfig}
-import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.ClusterAuthorizationException
 import org.apache.kafka.common.errors.ElectionNotNeededException
@@ -40,10 +38,6 @@ import scala.concurrent.duration._
 
 object RecommendedLeaderElectionCommand extends Logging {
   val PREFERRED_BROKER_ENV = "PREFERRED_BROKERS"
-  val BACK_OFF_DURATION: Duration =  // FIXME? should this be a command-line option instead?
-    sys.env.get("BACK_OFF_DURATION")
-      .map(s => Duration(s.toInt, SECONDS))
-      .getOrElse(Duration(60, SECONDS))
 
   var preferredBrokers: Set[Int] = _
 
@@ -61,11 +55,28 @@ object RecommendedLeaderElectionCommand extends Logging {
 
     validate(commandOptions)
 
-    // This defines the healthy leaders from which to choose; it must exist. Comma-separated list of broker IDs.
-    preferredBrokers = sys.env.get(PREFERRED_BROKER_ENV)
+    // This (comma-separated) list of broker IDs defines the healthy leaders from which to choose. It is required.
+    val preferredBrokersOpt = 
+      if (commandOptions.options.has(commandOptions.preferredBrokers))
+        Option(commandOptions.options.valueOf(commandOptions.preferredBrokers))
+      else
+        sys.env.get(PREFERRED_BROKER_ENV)  // fall back to environment variable if flag is not defined
+
+    preferredBrokers = preferredBrokersOpt
       .map(_.split(",").toList.map(_.trim.toInt))
       .map(_.toSet)
-      .getOrElse(throw new IllegalArgumentException(s"Cannot parse env ${PREFERRED_BROKER_ENV}"))
+      .getOrElse(throw new IllegalArgumentException(
+        if (commandOptions.options.has(commandOptions.preferredBrokers))
+          s"Cannot parse option ${commandOptions.preferredBrokers.options().get(0)}"
+        else
+          s"Option ${commandOptions.preferredBrokers.options().get(0)} was not specified, and cannot parse env ${PREFERRED_BROKER_ENV}"
+      ))
+
+    val backoffDuration =
+      if (commandOptions.options.has(commandOptions.backoffSeconds))
+        Duration(commandOptions.options.valueOf(commandOptions.backoffSeconds), SECONDS)
+      else
+        Duration(60, SECONDS)
 
     val jsonFileTopicPartitions: Option[Map[TopicPartition, Integer]] =
       Option(commandOptions.options.valueOf(commandOptions.pathToJsonFile)).map { path  =>
@@ -104,14 +115,14 @@ object RecommendedLeaderElectionCommand extends Logging {
           val total = topicPartitions.size
           var processed = 0
           topicPartitions.grouped(100).foreach(partitionSubset => {
-            print(partitionSubset)
+            println(s"Processing ${partitionSubset} ...")
             electRecommendedLeaders(adminClient, partitionSubset)
             processed += partitionSubset.size
             if (processed == total) {
-              info(s"Finished processing $processed partitions.")
+              println(s"Finished processing $processed partitions.")
             } else {
-              info(s"Processed $processed/$total partitions. Sleeping ${BACK_OFF_DURATION.toSeconds} secs to avoid flooding...\n")
-              Thread.sleep(BACK_OFF_DURATION.toMillis)
+              print(s"Processed $processed/$total partitions. Sleeping ${backoffDuration.toSeconds} secs to avoid flooding...")
+              Thread.sleep(backoffDuration.toMillis)
               println(" done")
             }
           })
@@ -129,15 +140,16 @@ object RecommendedLeaderElectionCommand extends Logging {
   private[this] def parseReplicaElectionData(jsonString: String): Map[TopicPartition, Integer] = {
     Json.parseFull(jsonString) match {
       case Some(js) =>
-        js.asJsonObject.get("KafkaPartitionState").get.asJsonObject.get("urp") match {
+        //js.asJsonObject.get("KafkaPartitionState").get.asJsonObject.get("urp") match {
+        js.asJsonObject.get("partitions") match {
           case Some(partitionsList) =>
             val partitionsRaw = partitionsList.asJsonArray.iterator.map(_.asJsonObject)
             val partitionsWithNewLeader =
               partitionsRaw
                 .map { p =>
-                  // The logic here is predicated on the fact that the JSON's description of current leadership
-                  // and current ISR matches the controller's view, even if the controller's view is nominally
-                  // "wrong" (as in the "stuck AlterIsr" case of April 2023). Regardless of what the ISR _should_
+                  // The logic here is predicated on the assumption that the JSON's description of current leadership
+                  // and current ISR matches the controller's view, even if the controller's view is nominally "wrong"
+                  // (as was true in the "stuck AlterIsr" case of April 2023). Regardless of what the ISR _should_
                   // be, the controller is the one that "approves" the recommended leadership election, so "fixing"
                   // the ISR in the JSON view doesn't help: the controller won't switch leadership to a replica
                   // that's not in the controller's understanding of the ISR.
@@ -146,13 +158,13 @@ object RecommendedLeaderElectionCommand extends Logging {
                   val leader = p("leader").to[Int]
                   val inSync = p("in-sync").asJsonArray.iterator.map(_.to[Int]).toSet
                   if (inSync.size < 2) {
-                    warn(s"partition $topic-$partition has no other leader to choose. Skipping.")
+                    println(s"partition $topic-$partition has no other leader to choose. Skipping.")
                     None
                   } else if (inSync.intersect(preferredBrokers).isEmpty) {
-                    warn(s"partition $topic-$partition has no healthy leader to choose. Skipping.")
+                    println(s"partition $topic-$partition has no healthy leader to choose. Skipping.")
                     None
                   } else if (preferredBrokers.contains(leader)) {
-                    info(s"Skipping $topic-$partition as the current leader ${leader} is in the preferred/healthy set.")
+                    println(s"Skipping $topic-$partition as the current leader ${leader} is in the preferred/healthy set.")
                     None
                   } else{
                     val newLeader = new Integer((inSync - leader).intersect(preferredBrokers).head)
@@ -328,6 +340,23 @@ private final class RecommendedLeaderElectionCommandOptions(args: Array[String])
     .withRequiredArg
     .describedAs("the new leader")
     .ofType(classOf[Integer])
+
+  // a.k.a. healthyBrokers:
+  val preferredBrokers = parser
+    .accepts(
+      "preferred-brokers",
+      s"Comma-separated list of brokers considered healthy enough to be targets for leadership elections. REQUIRED if the ${RecommendedLeaderElectionCommand.PREFERRED_BROKER_ENV} environment variable is not set.")
+    .withRequiredArg
+    .describedAs("list of healthy broker IDs")
+    .ofType(classOf[String])
+
+  val backoffSeconds = parser
+    .accepts(
+      "backoff-seconds",
+      "Number of seconds to pause between each batch of 100 topic-partition leadership elections. Default: 60 sec.")
+    .withRequiredArg
+    .describedAs("seconds to pause")
+    .ofType(classOf[Long])
 
   options = parser.parse(args: _*)
 }

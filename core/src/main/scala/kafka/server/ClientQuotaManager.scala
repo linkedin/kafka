@@ -19,7 +19,6 @@ package kafka.server
 import java.{lang, util}
 import java.util.concurrent.{ConcurrentHashMap, DelayQueue, TimeUnit}
 import java.util.concurrent.locks.ReentrantReadWriteLock
-
 import kafka.network.RequestChannel
 import kafka.network.RequestChannel._
 import kafka.server.ClientQuotaManager._
@@ -32,6 +31,7 @@ import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.{Sanitizer, Time}
 import org.apache.kafka.server.quota.{ClientQuotaCallback, ClientQuotaEntity, ClientQuotaType}
 
+import scala.concurrent.SyncVar
 import scala.jdk.CollectionConverters._
 
 /**
@@ -199,7 +199,7 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   private val quotaCallback = clientQuotaCallback.getOrElse(new DefaultQuotaCallback)
   private val staticConfigClientIdQuota = Quota.upperBound(config.quotaDefault.toDouble)
   private val clientQuotaType = QuotaType.toClientQuotaType(quotaType)
-  private val quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]();
+  private var quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]()
 
   @volatile
   private var quotaTypesEnabled = clientQuotaCallback match {
@@ -273,11 +273,15 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   }
 
   def logQuotaViolations(): Unit = {
-    quotaViolationStatBySensorId.forEach {
+    // Create a tmp reference to original map for logging purpose, and create a new map for quotaViolationStatBySensorId.
+    // This is to avoid data changes to cause race conditions to the ongoing logging.
+    val tmpQuotaViolationStatBySensorId = quotaViolationStatBySensorId
+    quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]();
+
+    tmpQuotaViolationStatBySensorId.forEach {
       case (quotaSensorName, (violateCount, violateTime)) =>
         info((s"Quota violated ${violateCount} times for sensor (${quotaSensorName}) for ${violateTime} milliseconds"))
     }
-    quotaViolationStatBySensorId.clear()
   }
 
   /**
@@ -328,9 +332,10 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     } catch {
       case e: QuotaViolationException =>
         val throttleTimeMs = throttleTime(e, timeMs).toInt
-        val quotaViolationStat = quotaViolationStatBySensorId.getOrDefault(quotaSensor.name(), (0, 0))
-        val updatedStat = (quotaViolationStat._1 + 1, quotaViolationStat._2 + throttleTimeMs)
-        quotaViolationStatBySensorId.put(quotaSensor.name(), updatedStat)
+        quotaViolationStatBySensorId.compute(quotaSensor.name(), (_, value) =>
+          if (value != null) (value._1 + 1, value._2 + throttleTimeMs)
+          else (1, throttleTimeMs)
+        )
         throttleTimeMs
     }
   }

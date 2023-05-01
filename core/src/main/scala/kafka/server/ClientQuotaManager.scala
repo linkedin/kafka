@@ -31,7 +31,6 @@ import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.{Sanitizer, Time}
 import org.apache.kafka.server.quota.{ClientQuotaCallback, ClientQuotaEntity, ClientQuotaType}
 
-import scala.concurrent.SyncVar
 import scala.jdk.CollectionConverters._
 
 /**
@@ -199,6 +198,9 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   private val quotaCallback = clientQuotaCallback.getOrElse(new DefaultQuotaCallback)
   private val staticConfigClientIdQuota = Quota.upperBound(config.quotaDefault.toDouble)
   private val clientQuotaType = QuotaType.toClientQuotaType(quotaType)
+
+  // The map storing the quota violation count and throttle time for each client.
+  // The key is the client name which violate the quota, and the value is (violation count, throttle time in milliseconds).
   private var quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]()
 
   @volatile

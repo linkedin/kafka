@@ -1759,16 +1759,7 @@ class KafkaController(val config: KafkaConfig,
       controllerContext.partitionLeadershipInfo(partition).get.leaderAndIsr.leader == id
     }
     partitionStateMachine.handleStateChanges(partitionsLedByBroker.toSeq, OnlinePartition, Some(ControlledShutdownPartitionLeaderElectionStrategy))
-    try {
-      brokerRequestBatch.newBatch()
-      partitionsFollowedByBroker.foreach { partition =>
-        brokerRequestBatch.addStopReplicaRequestForBrokers(Seq(id), partition, deletePartition = false)
-      }
-      brokerRequestBatch.sendRequestsToBrokers(epoch)
-    } catch {
-      case e: IllegalStateException =>
-        handleIllegalState(e)
-    }
+
     // If the broker is a follower, updates the isr in ZK and notifies the current leader
     replicaStateMachine.handleStateChanges(partitionsFollowedByBroker.map(partition =>
       PartitionAndReplica(partition, id)).toSeq, OfflineReplica)

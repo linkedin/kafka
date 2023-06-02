@@ -89,7 +89,9 @@
       { "name": "RemovingReplicas", "type": "[]int32", "versions": "4+", "ignorable": true, "entityType": "brokerId",
         "about": "The replica IDs that we are removing this partition from, or null if no replicas are being removed." },
       { "name": "IsNew", "type": "bool", "versions": "1+", "default": "false", "ignorable": true,
-        "about": "Whether the replica should have existed on the broker or not." }
+        "about": "Whether the replica should have existed on the broker or not." },
+      { "name": "BlockFollowerFromAddingBack", "type": "bool", "tag": 0, "taggedVersions": "6+", "versions": "6+", "default": "false",
+        "about": "Whether the leader should block follower being adding back in a short period."}
     ]}
   ]
 }

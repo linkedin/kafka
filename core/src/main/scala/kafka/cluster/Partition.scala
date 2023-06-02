@@ -42,7 +42,7 @@ import org.apache.kafka.common.requests.OffsetsForLeaderEpochResponse.{UNDEFINED
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.common.{IsolationLevel, TopicPartition, Uuid}
 
-import scala.collection.{Map, Seq}
+import scala.collection.{Map, Seq, mutable}
 import scala.jdk.CollectionConverters._
 
 trait IsrChangeListener {
@@ -274,6 +274,9 @@ class Partition(val topicPartition: TopicPartition,
   newGauge("ReplicasCount", () => if (isLeader) assignmentState.replicationFactor else 0, tags)
   newGauge("LastStableOffsetLag", () => log.map(_.lastStableOffsetLag).getOrElse(0), tags)
   ISR_STATES_TO_CREATE_METRICS.foreach(c => newGauge(s"${c.getSimpleName}", () => if (isrStateClass.equals(c)) 1 else 0, tags))
+
+  private val expandIsrLocks: mutable.Map[Int, Long] = mutable.Map.empty[Int, Long]
+  private val expandIsrLockTime: Long = 60000 // Block replica to be added back to ISR in 60 seconds
 
   def isrStateClass: Class[_ <: IsrState] = isrState.getClass
 
@@ -561,7 +564,8 @@ class Partition(val topicPartition: TopicPartition,
         assignment = partitionState.replicas.asScala.map(_.toInt),
         isr = isr,
         addingReplicas = addingReplicas,
-        removingReplicas = removingReplicas
+        removingReplicas = removingReplicas,
+        blockFollowerFromAddingBack = partitionState.blockFollowerFromAddingBack()
       )
       try {
         createLogIfNotExists(partitionState.isNew, isFutureReplica = false, highWatermarkCheckpoints, topicId)
@@ -745,7 +749,8 @@ class Partition(val topicPartition: TopicPartition,
   def updateAssignmentAndIsr(assignment: Seq[Int],
                              isr: Set[Int],
                              addingReplicas: Seq[Int],
-                             removingReplicas: Seq[Int]): Unit = {
+                             removingReplicas: Seq[Int],
+                             blockFollowerFromAddingBack: Boolean = false): Unit = {
     val newRemoteReplicas = assignment.filter(_ != localBrokerId)
     val removedReplicas = remoteReplicasMap.keys.filter(!newRemoteReplicas.contains(_))
 
@@ -758,7 +763,14 @@ class Partition(val topicPartition: TopicPartition,
       assignmentState = OngoingReassignmentState(addingReplicas, removingReplicas, assignment)
     else
       assignmentState = SimpleAssignmentState(assignment)
+
+    blockFollowersFromAddingBackToIsr(isr)
     isrState = CommittedIsr(isr)
+  }
+
+  def blockFollowersFromAddingBackToIsr(isr: Set[Int]): Unit = {
+    val followersKickedOutOfIsr = isrState.isr.diff(isr)
+    followersKickedOutOfIsr.foreach(replica => expandIsrLocks(replica) = System.currentTimeMillis())
   }
 
   /**
@@ -1379,6 +1391,14 @@ class Partition(val topicPartition: TopicPartition,
   }
 
   private[cluster] def expandIsr(newInSyncReplica: Int): Unit = {
+    if (expandIsrLocks.contains(newInSyncReplica)) {
+      if (expandIsrLocks(newInSyncReplica) + expandIsrLockTime < System.currentTimeMillis()) {
+        trace(s"Avoiding adding $newInSyncReplica to isr as it is locked since $expandIsrLocks(newInSyncReplica)")
+      } else {
+        expandIsrLocks.remove(newInSyncReplica)
+      }
+    }
+
     // This is called from maybeExpandIsr which holds the ISR write lock
     if (!isrState.isInflight) {
       // When expanding the ISR, we can safely assume the new replica will make it into the ISR since this puts us in

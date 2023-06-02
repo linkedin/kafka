@@ -1760,9 +1760,12 @@ class KafkaController(val config: KafkaConfig,
     }
     partitionStateMachine.handleStateChanges(partitionsLedByBroker.toSeq, OnlinePartition, Some(ControlledShutdownPartitionLeaderElectionStrategy))
 
+
     // If the broker is a follower, updates the isr in ZK and notifies the current leader
-    replicaStateMachine.handleStateChanges(partitionsFollowedByBroker.map(partition =>
-      PartitionAndReplica(partition, id)).toSeq, OfflineReplica)
+    val followerReplicas = partitionsFollowedByBroker.map(partition => PartitionAndReplica(partition, id)).toSeq
+    controllerContext.replicasBeingShutdown ++= followerReplicas
+    replicaStateMachine.handleStateChanges(followerReplicas, OfflineReplica)
+    controllerContext.replicasBeingShutdown --= followerReplicas
     trace(s"All leaders = ${controllerContext.partitionsLeadershipInfo.mkString(",")}")
     if (shouldSkipShutdownSafetyCheck) {
       // When skipping shutdown safety check, we allow the broker to shutdown even though it may be the leader for some partitions.

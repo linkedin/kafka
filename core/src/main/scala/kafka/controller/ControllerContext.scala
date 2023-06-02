@@ -104,6 +104,8 @@ class ControllerContext {
 
   val topicsToBeDeleted = mutable.Set.empty[String]
 
+  val replicasBeingShutdown = mutable.Set.empty[PartitionAndReplica]
+
   /** The following topicsWithDeletionStarted variable is used to properly update the offlinePartitionCount metric.
    * When a topic is going through deletion, we don't want to keep track of its partition state
    * changes in the offlinePartitionCount metric. This goal means if some partitions of a topic are already

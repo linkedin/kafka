@@ -553,8 +553,9 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
                                        topicPartition: TopicPartition,
                                        leaderIsrAndControllerEpoch: LeaderIsrAndControllerEpoch,
                                        replicaAssignment: ReplicaAssignment,
-                                       isNew: Boolean): Unit = {
-    addLeaderAndIsrRequestForBrokers(brokerIds, topicPartition, leaderIsrAndControllerEpoch, replicaAssignment, isNew, ControllerContextSnapshot(controllerContext))
+                                       isNew: Boolean,
+                                       blockFollowerFromAddingBack: Boolean = false): Unit = {
+    addLeaderAndIsrRequestForBrokers(brokerIds, topicPartition, leaderIsrAndControllerEpoch, replicaAssignment, isNew, ControllerContextSnapshot(controllerContext), blockFollowerFromAddingBack)
   }
 
   def addLeaderAndIsrRequestForBrokers(brokerIds: Seq[Int],
@@ -562,7 +563,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
                                        leaderIsrAndControllerEpoch: LeaderIsrAndControllerEpoch,
                                        replicaAssignment: ReplicaAssignment,
                                        isNew: Boolean,
-                                       controllerContextSnapshot: ControllerContextSnapshot): Unit = {
+                                       controllerContextSnapshot: ControllerContextSnapshot,
+                                       blockFollowerFromAddingBack: Boolean): Unit = {
 
     brokerIds.filter(_ >= 0).foreach { brokerId =>
       val result = leaderAndIsrRequestMap.getOrElseUpdate(brokerId, mutable.Map.empty)
@@ -579,7 +581,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
         .setReplicas(replicaAssignment.replicas.map(Integer.valueOf).asJava)
         .setAddingReplicas(replicaAssignment.addingReplicas.map(Integer.valueOf).asJava)
         .setRemovingReplicas(replicaAssignment.removingReplicas.map(Integer.valueOf).asJava)
-        .setIsNew(isNew || alreadyNew))
+        .setIsNew(isNew || alreadyNew)
+        .setBlockFollowerFromAddingBack(blockFollowerFromAddingBack))
     }
 
     addUpdateMetadataRequestForBrokers(controllerContextSnapshot.liveOrShuttingDownBrokerIds.toSeq, Set(topicPartition),

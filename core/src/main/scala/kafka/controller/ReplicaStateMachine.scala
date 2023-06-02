@@ -260,7 +260,8 @@ class ZkReplicaStateMachine(config: KafkaConfig,
                     leaderIsrAndControllerEpoch,
                     controllerContext.partitionFullReplicaAssignment(partition),
                     isNew = false,
-                    controllerContextSnapshot)
+                    controllerContextSnapshot,
+                    false)
                 case None =>
               }
               timingsOpt.foreach { timings =>
@@ -279,7 +280,8 @@ class ZkReplicaStateMachine(config: KafkaConfig,
           }
         }
       case OfflineReplica =>
-        validReplicas.foreach { replica =>
+        // Should not send StopReplicaRequest to brokers being controlled shutdown
+        validReplicas.filter {replica => !controllerContext.replicasBeingShutdown.contains(replica)}.foreach { replica =>
           controllerBrokerRequestBatch.addStopReplicaRequestForBrokers(Seq(replicaId), replica.topicPartition, deletePartition = false)
         }
         val (replicasWithLeadershipInfo, replicasWithoutLeadershipInfo) = validReplicas.partition { replica =>
@@ -294,7 +296,9 @@ class ZkReplicaStateMachine(config: KafkaConfig,
             controllerBrokerRequestBatch.addLeaderAndIsrRequestForBrokers(recipients,
               partition,
               leaderIsrAndControllerEpoch,
-              controllerContext.partitionFullReplicaAssignment(partition), isNew = false)
+              controllerContext.partitionFullReplicaAssignment(partition),
+              isNew = false,
+              controllerContext.replicasBeingShutdown.contains(PartitionAndReplica(partition, replicaId)))
           }
           val replica = PartitionAndReplica(partition, replicaId)
           val currentState = controllerContext.replicaState(replica)

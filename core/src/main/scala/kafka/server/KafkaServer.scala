@@ -787,6 +787,9 @@ class KafkaServer(
         CoreUtils.swallow(controlledShutdown(), this)
         _brokerState = BrokerState.SHUTTING_DOWN
 
+        // This delay is to wait LeaderAndIsrRequest to remove the followers on this broker from their ISRs.
+        Thread.sleep(60000)
+
         if (healthCheckScheduler != null)
           healthCheckScheduler.shutdown()
 

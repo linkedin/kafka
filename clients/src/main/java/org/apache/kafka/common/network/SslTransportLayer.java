@@ -115,7 +115,7 @@ public class SslTransportLayer implements TransportLayer {
         final LogContext logContext = new LogContext(String.format("[SslTransportLayer channelId=%s key=%s] ", channelId, key));
         this.log = logContext.logger(getClass());
 
-        log.info(String.format(
+        log.debug(String.format(
             "New SSL channel created with kernel offload turned %s", shouldAttemptKtls ? "on" : "off"));
     }
 

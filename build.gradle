@@ -59,9 +59,9 @@ allprojects {
   repositories {
     mavenLocal()
     mavenCentral()
-    maven {
-      url  "https://linkedin.jfrog.io/artifactory/zookeeper"
-    }
+    maven { url  "https://linkedin.jfrog.io/artifactory/zookeeper" }
+    maven { url  "https://linkedin.jfrog.io/artifactory/ktls-jni" }
+
   }
 
   dependencyUpdates {

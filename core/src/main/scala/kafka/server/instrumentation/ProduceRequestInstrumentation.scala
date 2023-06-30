@@ -107,8 +107,8 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
 
   override def validateReconfiguration(newConfig: KafkaConfig): Unit = {
     val thresholdMs = newConfig.longTailProduceRequestLogThresholdMs
-    if (thresholdMs < -1) {
-      throw new ConfigException(s"${KafkaConfig.LiLongTailProduceRequestLogThresholdMsProp} should be >= -1")
+    if (thresholdMs < 0) {
+      throw new ConfigException(s"${KafkaConfig.LiLongTailProduceRequestLogThresholdMsProp} should be >= 0")
     }
     val ratio = newConfig.longTailProduceRequestLogRatio
     if (ratio < 0 || ratio > 1) {

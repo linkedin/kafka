@@ -679,7 +679,8 @@ class KafkaApis(val requestChannel: RequestChannel,
 
       // Send the response immediately. In case of throttling, the channel has already been muted.
       if (produceRequest.acks == 0) {
-        // TODO: Instrumentation log does not cover acks=0 case yet because it's not a major ask.
+        // We intentionally don't instrument acks=0 requests,
+        // since they're a rare use case and not a source of high tail latencies.
 
         // no operation needed if producer request.required.acks = 0; however, if there is any error in handling
         // the request, since no response is expected by the producer, the server will close socket server so that

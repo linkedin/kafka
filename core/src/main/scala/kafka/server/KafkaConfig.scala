@@ -1267,7 +1267,7 @@ object KafkaConfig {
       .define(LiLeaderElectionOnCorruptionWaitMsProp, LONG, Defaults.LiLeaderElectionOnCorruptionWaitMs, atLeast(0), HIGH, LiLeaderElectionOnCorruptionWaitMsDoc)
       .define(LiZookeeperPaginationEnableProp, BOOLEAN, Defaults.LiZookeeperPaginationEnable, LOW, LiZookeeperPaginationEnableDoc)
       .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, STRING, Defaults.LiRackIdMapperClassNameForRackAwareReplicaAssignment, LOW, LiRackIdMapperClassNameForRackAwareReplicaAssignmentDoc)
-      .define(LiLongTailProduceRequestLogThresholdMsProp, LONG, Defaults.LiLongTailProduceRequestLogThresholdMs, atLeast(-1), MEDIUM, LiLongTailProduceRequestLogThresholdMsDoc)
+      .define(LiLongTailProduceRequestLogThresholdMsProp, LONG, Defaults.LiLongTailProduceRequestLogThresholdMs, atLeast(0), MEDIUM, LiLongTailProduceRequestLogThresholdMsDoc)
       .define(LiLongTailProduceRequestLogRatioProp, DOUBLE, Defaults.LiLongTailProduceRequestLogRatio, between(0, 1), MEDIUM, LiLongTailProduceRequestLogRatioDoc)
       .define(AllowPreferredControllerFallbackProp, BOOLEAN, Defaults.AllowPreferredControllerFallback, HIGH, AllowPreferredControllerFallbackDoc)
       .define(UnofficialClientLoggingEnableProp, BOOLEAN, Defaults.UnofficialClientLoggingEnable, LOW, UnofficialClientLoggingEnableDoc)

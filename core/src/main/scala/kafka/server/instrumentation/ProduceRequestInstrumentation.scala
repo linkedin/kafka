@@ -47,7 +47,7 @@ class NoOpProduceRequestInstrumentation extends ProduceRequestInstrumentation(ti
 class ProduceRequestInstrumentation(val time: Time,
                                     val requiredAcks: Short) {
   val marks: mutable.Map[Stage.Value, Long] = mutable.Map()
-  var topicPartitionsInRequest: Iterable[TopicPartition] = List()
+  var appliedTopicPartitions: Iterable[TopicPartition] = List()
 
   // Implicitly add init stage on construction
   markStage(ProduceRequestInstrumentation.Stage.Init)
@@ -186,7 +186,7 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
     // because the underlying details, at this moment, have been cleared by ProduceRequest#clearPartitionRecords()
     logger.info(
       s"totalTimeMs=${totalTimeMs}; acks=${instrumentation.requiredAcks}; "
-        + s"topic_partitions=${instrumentation.topicPartitionsInRequest.map(tp => s"${tp.topic()}-${tp.partition()}").mkString("(", ", ", ")")}; "
+        + s"topic_partitions=${instrumentation.appliedTopicPartitions.map(tp => s"${tp.topic()}-${tp.partition()}").mkString("(", ", ", ")")}; "
         + s"instrumentationEachStageMs=${toTimeTakenInEachStageMessage(instrumentation)}; "
         // Shrinking ISR info is important to the produce request.
         // When there are dead followers, an acks=-1 produce may block until the leader discovered it is dead **AND** the full ISR shrinkage to complete.

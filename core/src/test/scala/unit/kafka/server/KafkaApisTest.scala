@@ -1721,7 +1721,8 @@ class KafkaApisTest {
       EasyMock.capture(responseCallback),
       EasyMock.anyObject(),
       EasyMock.anyObject(),
-      EasyMock.eq(requestLocal))
+      EasyMock.eq(requestLocal),
+      EasyMock.anyObject())
     ).andAnswer(() => responseCallback.getValue.apply(Map(tp2 -> new PartitionResponse(Errors.NONE))))
 
     EasyMock.expect(requestChannel.sendResponse(

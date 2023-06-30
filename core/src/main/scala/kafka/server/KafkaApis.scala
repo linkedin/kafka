@@ -638,7 +638,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
       var errorInResponse = false
       instrumentation.markStage(Stage.BeginResponseCallback)
-      instrumentation.topicPartitionsInRequest = responseStatus.keys  // logging relies on the info
+      instrumentation.appliedTopicPartitions = responseStatus.keys  // logging relies on the info
 
       mergedResponseStatus.forKeyValue { (topicPartition, status) =>
         if (status.error != Errors.NONE) {

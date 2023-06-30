@@ -166,7 +166,7 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
                instrumentation: ProduceRequestInstrumentation): Unit = {
     val totalTimeMs = nanosToMs(time.nanoseconds() - request.startTimeNanos)
     if (totalTimeMs < config.thresholdToLogMs) {
-      logger.debug("totalTimeMs={} is below {}={}, skip logging",
+      logger.trace("totalTimeMs={} is below {}={}, skip logging",
                    totalTimeMs,
                    KafkaConfig.LiLongTailProduceRequestLogThresholdMsProp,
                    config.thresholdToLogMs)
@@ -175,7 +175,7 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
 
     val coin = rnd.nextDouble()
     if (coin > config.logRatio) {
-      logger.debug("Funneled out by random coin {} > configured ratio {}", coin, config.logRatio)
+      logger.trace("Funneled out by random coin {} > configured ratio {}", coin, config.logRatio)
       return
     }
 

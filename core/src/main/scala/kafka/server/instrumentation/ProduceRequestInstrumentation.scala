@@ -41,7 +41,7 @@ class NoOpProduceRequestInstrumentation extends ProduceRequestInstrumentation(ti
 }
 
 /**
- * THe instrumentation object to be pass along the flow in the produce request
+ * The instrumentation object to be pass along the flow in the produce request
  *
  * @param time The object to obtain timestamp
  * @param requiredAcks The associated required acks for the produce request

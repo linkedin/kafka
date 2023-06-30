@@ -40,7 +40,7 @@ object ProduceRequestInstrumentation {
   val NoOpProduceRequestInstrumentation = new NoOpProduceRequestInstrumentation()
 }
 
-class NoOpProduceRequestInstrumentation extends ProduceRequestInstrumentation(time = null, requiredAcks = -1) {
+class NoOpProduceRequestInstrumentation extends ProduceRequestInstrumentation(time = null) {
   override def markStage(stage: Stage.Value): Unit = {
   }
 }
@@ -49,10 +49,8 @@ class NoOpProduceRequestInstrumentation extends ProduceRequestInstrumentation(ti
  * The instrumentation object to be pass along the flow in the produce request
  *
  * @param time The object to obtain timestamp
- * @param requiredAcks The associated required acks for the produce request
  */
-class ProduceRequestInstrumentation(val time: Time,
-                                    val requiredAcks: Short) {
+class ProduceRequestInstrumentation(val time: Time) {
   val marks: mutable.Map[Stage.Value, Long] = mutable.Map()
   var appliedTopicPartitions: Iterable[TopicPartition] = List()
 

@@ -588,7 +588,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val produceRequest = request.body[ProduceRequest]
     val requestSize = request.sizeInBytes
-    val instrumentation = new ProduceRequestInstrumentation(time = time, requiredAcks = produceRequest.acks())
+    val instrumentation = new ProduceRequestInstrumentation(time = time)
 
     if (RequestUtils.hasTransactionalRecords(produceRequest)) {
       val isAuthorizedTransactional = produceRequest.transactionalId != null &&

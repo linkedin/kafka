@@ -37,7 +37,7 @@ class ProduceRequestInstrumentationTest {
   mapper.registerModule(DefaultScalaModule)
 
   var kafkaConfig: KafkaConfig = _
-  var time: MockTime = _
+  var time: MockTime = _  // With mock time object, we can advance the wall clock precisely without flakiness using `.sleep` API
   var rnd: Random = _
   var replicaManager: ReplicaManager = _
 

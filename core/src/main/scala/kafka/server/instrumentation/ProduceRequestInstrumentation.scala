@@ -138,7 +138,7 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
   def toTimeTakenInEachStageMessage(instrumentation: ProduceRequestInstrumentation): String = {
     val marks = instrumentation.marks
 
-    // Enforce Finish is marked, so when sliding there is at list a full window
+    // Enforce Finish is marked, so when sliding there is at list a full window (init is force marked on create)
     marks.get(Stage.Finish) match {
       case None => instrumentation.markStage(Stage.Finish)
       case _ =>
@@ -154,7 +154,7 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
         val (_, timestamp2) = iter.next()
         // Use the next stage's timestamp mark minus this stage's timestamp mark to get time spent on current stage
         // Last stage is on finish, no diff to check, i.e. no need to log
-        '\"' + s"${stage1.toString}: ${timestamp2 - timestamp1}" + '\"'
+        '\"' + s"${stage1.toString}" + "\":" +  s"${timestamp2 - timestamp1}"
       }
       .mkString("{", ", ", "}")
   }

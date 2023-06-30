@@ -706,7 +706,7 @@ class KafkaApis(val requestChannel: RequestChannel,
                                     Some(_ => {
                                       // Conclude instrumentation via marking stage; this is the onComplete callback
                                       instrumentation.markStage(Stage.Finish)
-                                      produceRequestInstrumentationLogger.maybeLog(instrumentation)
+                                      produceRequestInstrumentationLogger.maybeLog(request, instrumentation)
                                     }))
       }
     }

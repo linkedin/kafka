@@ -1,18 +1,25 @@
 package kafka.server.instrumentation
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.scalalogging.Logger
 import kafka.cluster.PendingShrinkIsr
-import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
+import kafka.network.RequestChannel.Request
+import kafka.server.instrumentation.ProduceRequestInstrumentation.{Stage, mapper}
 import kafka.server.instrumentation.ProduceRequestInstrumentationLogger.Config
 import kafka.server.{BrokerReconfigurable, KafkaConfig, ReplicaManager}
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.ConfigException
+import org.apache.kafka.common.requests.ProduceRequest
 import org.apache.kafka.common.utils.Time
 
 import scala.collection.mutable
 
 object ProduceRequestInstrumentation {
+  val mapper = new ObjectMapper()
+  mapper.registerModule(DefaultScalaModule)
+
   /**
    * Symbols to be used for marking at each instrumentation stage
    */
@@ -149,24 +156,20 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
         val (_, timestamp2) = iter.next()
         // Use the next stage's timestamp mark minus this stage's timestamp mark to get time spent on current stage
         // Last stage is on finish, no diff to check, i.e. no need to log
-        s"${stage1.toString}: ${timestamp2 - timestamp1}"
+        '\"' + s"${stage1.toString}: ${timestamp2 - timestamp1}" + '\"'
       }
-      .mkString("(", ", ", ")")
+      .mkString("{", ", ", "}")
   }
 
   /**
    * Based on the config (e.g. probability funnel), logs the detail of the instrumentation
    *
+   * @param request Used for capturing detailed info in request
    * @param instrumentation The instrumentation to log
    */
-  def maybeLog(instrumentation: ProduceRequestInstrumentation): Unit = {
+  def maybeLog(request: Request, instrumentation: ProduceRequestInstrumentation): Unit = {
 
-    val totalTimeMs = (instrumentation.marks.get(Stage.Init), instrumentation.marks.get(Stage.Finish)) match {
-      case (Some(initTimestampMs), Some(finishTimestampMs)) => finishTimestampMs - initTimestampMs
-      case _ =>
-        logger.warn(s"Expect instrumentation to have stages {} & {} but not found.  Silently return from maybeLog", Stage.Init, Stage.Finish)
-        return
-    }
+    val totalTimeMs = request.totalTimeMs
 
     if (totalTimeMs < config.thresholdToLogMs) {
       logger.trace("totalTimeMs={} is below {}={}, skip logging",
@@ -182,12 +185,25 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
       return
     }
 
-    // Details like instrumentation.topicPartitionsInRequest cannot be obtained from request object,
-    // because the underlying details, at this moment, have been cleared by ProduceRequest#clearPartitionRecords()
+    val requestMetrics = Map(
+      "totalTimeMs" -> Math.round(request.totalTimeMs),
+      "requestQueueTimeMs" -> Math.round(request.requestQueueTimeMs),
+      "apiLocalTimeMs" -> Math.round(request.apiLocalTimeMs),
+      "apiRemoteTimeMs" -> Math.round(request.apiRemoteTimeMs),
+      "apiThrottleTimeMs" -> Math.round(request.apiThrottleTimeMs),
+      "responseQueueTimeMs" -> Math.round(request.responseQueueTimeMs),
+      "responseSendTimeMs" -> Math.round(request.responseSendTimeMs),
+      "sizeOfBodyInBytes" -> request.sizeOfBodyInBytes.toLong,
+      "responseBytes" -> request.responseBytes,
+    )
+
     logger.info(
-      s"totalTimeMs=${totalTimeMs}; acks=${instrumentation.requiredAcks}; "
+      s"acks=${request.body[ProduceRequest].acks()}; "
+        + s"request_metric=${mapper.writeValueAsString(requestMetrics)}; "
+        // instrumentation.appliedTopicPartitions cannot be obtained from request object,
+        // because the underlying details, at this moment, have been cleared by ProduceRequest#clearPartitionRecords()
         + s"topic_partitions=${instrumentation.appliedTopicPartitions.map(tp => s"${tp.topic()}-${tp.partition()}").mkString("(", ", ", ")")}; "
-        + s"instrumentationEachStageMs=${toTimeTakenInEachStageMessage(instrumentation)}; "
+        + s"stage_breakdown_ms=${toTimeTakenInEachStageMessage(instrumentation)}; "
         // Shrinking ISR info is important to the produce request.
         // When there are dead followers, an acks=-1 produce may block until the leader discovered it is dead **AND** the full ISR shrinkage to complete.
         + s"${classOf[PendingShrinkIsr].getSimpleName}_count=${replicaManager.numOfPartitionOfIsrState(classOf[PendingShrinkIsr])}"

@@ -2,11 +2,9 @@ package kafka.server.instrumentation
 
 import com.typesafe.scalalogging.Logger
 import kafka.cluster.PendingShrinkIsr
-import kafka.network.RequestChannel
 import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
 import kafka.server.instrumentation.ProduceRequestInstrumentationLogger.Config
 import kafka.server.{BrokerReconfigurable, KafkaConfig, ReplicaManager}
-import kafka.utils.CoreUtils.nanosToMs
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.ConfigException
@@ -159,12 +157,17 @@ class ProduceRequestInstrumentationLogger(kafkaConfig: KafkaConfig,
   /**
    * Based on the config (e.g. probability funnel), logs the detail of the instrumentation
    *
-   * @param request This is required to obtain the total time for threshold funnel
    * @param instrumentation The instrumentation to log
    */
-  def maybeLog(request: RequestChannel.Request,
-               instrumentation: ProduceRequestInstrumentation): Unit = {
-    val totalTimeMs = nanosToMs(time.nanoseconds() - request.startTimeNanos)
+  def maybeLog(instrumentation: ProduceRequestInstrumentation): Unit = {
+
+    val totalTimeMs = (instrumentation.marks.get(Stage.Init), instrumentation.marks.get(Stage.Finish)) match {
+      case (Some(initTimestampMs), Some(finishTimestampMs)) => finishTimestampMs - initTimestampMs
+      case _ =>
+        logger.warn(s"Expect instrumentation to have stages {} & {} but not found.  Silently return from maybeLog", Stage.Init, Stage.Finish)
+        return
+    }
+
     if (totalTimeMs < config.thresholdToLogMs) {
       logger.trace("totalTimeMs={} is below {}={}, skip logging",
                    totalTimeMs,

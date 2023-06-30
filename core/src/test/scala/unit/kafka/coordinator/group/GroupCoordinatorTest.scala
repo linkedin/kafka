@@ -4035,6 +4035,7 @@ class GroupCoordinatorTest {
       EasyMock.capture(capturedArgument),
       EasyMock.anyObject().asInstanceOf[Option[ReentrantLock]],
       EasyMock.anyObject(),
+      EasyMock.anyObject(),
       EasyMock.anyObject())).andAnswer(new IAnswer[Unit] {
       override def answer = capturedArgument.getValue.apply(
         Map(new TopicPartition(Topic.GROUP_METADATA_TOPIC_NAME, groupPartitionId) ->
@@ -4178,6 +4179,7 @@ class GroupCoordinatorTest {
       EasyMock.capture(capturedArgument),
       EasyMock.anyObject().asInstanceOf[Option[ReentrantLock]],
       EasyMock.anyObject(),
+      EasyMock.anyObject(),
       EasyMock.anyObject())
     ).andAnswer(new IAnswer[Unit] {
       override def answer = capturedArgument.getValue.apply(
@@ -4211,6 +4213,7 @@ class GroupCoordinatorTest {
       EasyMock.anyObject().asInstanceOf[Map[TopicPartition, MemoryRecords]],
       EasyMock.capture(capturedArgument),
       EasyMock.anyObject().asInstanceOf[Option[ReentrantLock]],
+      EasyMock.anyObject(),
       EasyMock.anyObject(),
       EasyMock.anyObject())
     ).andAnswer(new IAnswer[Unit] {

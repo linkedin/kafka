@@ -772,7 +772,6 @@ public class SslTransportLayer implements TransportLayer {
             attemptToEnableKernelTls();
         }
         if (ktlsEnabled) {
-            log.debug("Writing with Kernel TLS enabled");
             return writeKernelTLS(srcs, offset, length);
         }
         if ((offset < 0) || (length < 0) || (offset > srcs.length - length))

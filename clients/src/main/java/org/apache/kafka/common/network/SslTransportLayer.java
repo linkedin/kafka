@@ -112,11 +112,10 @@ public class SslTransportLayer implements TransportLayer {
         this.state = State.NOT_INITIALIZED;
         this.metadataRegistry = metadataRegistry;
 
-        final LogContext logContext = new LogContext(String.format("[SslTransportLayer channelId=%s key=%s] ", channelId, key));
+        final LogContext logContext = new LogContext("[SslTransportLayer channelId=" + channelId + " key=" + key + "] ");
         this.log = logContext.logger(getClass());
 
-        log.debug(String.format(
-            "New SSL channel created with kernel offload turned %s", shouldAttemptKtls ? "on" : "off"));
+        log.debug("New SSL channel created with kernel offload turned {}", shouldAttemptKtls ? "on" : "off");
     }
 
     // Visible for testing
@@ -421,7 +420,7 @@ public class SslTransportLayer implements TransportLayer {
                 handshakeFinished();
                 break;
             default:
-                throw new IllegalStateException(String.format("Unexpected status [%s]", handshakeStatus));
+                throw new IllegalStateException("Unexpected status [" + handshakeStatus + "]");
         }
     }
 

@@ -56,7 +56,8 @@ public class LiCombinedControlTransformer {
                 .setReplicas(partitionState.replicas())
                 .setAddingReplicas(partitionState.addingReplicas())
                 .setRemovingReplicas(partitionState.removingReplicas())
-                .setIsNew(partitionState.isNew());
+                .setIsNew(partitionState.isNew())
+                .setBlockFollowerFromAddingBack(partitionState.blockFollowerFromAddingBack());
     }
 
     public static LeaderAndIsrRequestData.LeaderAndIsrPartitionState restoreLeaderAndIsrPartition(
@@ -71,7 +72,8 @@ public class LiCombinedControlTransformer {
                 .setReplicas(partitionState.replicas())
                 .setAddingReplicas(partitionState.addingReplicas())
                 .setRemovingReplicas(partitionState.removingReplicas())
-                .setIsNew(partitionState.isNew());
+                .setIsNew(partitionState.isNew())
+                .setBlockFollowerFromAddingBack(partitionState.blockFollowerFromAddingBack());
     }
 
     public static LiCombinedControlRequestData.UpdateMetadataPartitionState transformUpdateMetadataPartition(

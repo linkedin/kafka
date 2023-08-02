@@ -1745,7 +1745,7 @@ class KafkaController(val config: KafkaConfig,
 
     zkClient.recordBrokerShutdown(id, brokerEpoch, controllerContext.epochZkVersion)
     controllerContext.shuttingDownBrokerIds += (id -> brokerEpoch)
-    info(s"Shutting down broker $id")
+    info(s"hgeng:Shutting down broker $id")
 
     debug(s"All shutting down brokers: ${controllerContext.shuttingDownBrokerIds.mkString(",")}")
     debug(s"Live brokers: ${controllerContext.liveBrokerIds.mkString(",")}")
@@ -1764,8 +1764,12 @@ class KafkaController(val config: KafkaConfig,
     // If the broker is a follower, updates the isr in ZK and notifies the current leader
     val followerReplicas = partitionsFollowedByBroker.map(partition => PartitionAndReplica(partition, id)).toSeq
     controllerContext.replicasBeingShutdown ++= followerReplicas
+    info(s"hgeng: replicas being shutdown: ${controllerContext.replicasBeingShutdown}")
+    info("hgeng: Handling state changes")
     replicaStateMachine.handleStateChanges(followerReplicas, OfflineReplica)
+    info("hgeng: finished handling changes")
     controllerContext.replicasBeingShutdown --= followerReplicas
+    info(s"hgeng: replicas being shutdown: ${controllerContext.replicasBeingShutdown}")
     trace(s"All leaders = ${controllerContext.partitionsLeadershipInfo.mkString(",")}")
     if (shouldSkipShutdownSafetyCheck) {
       // When skipping shutdown safety check, we allow the broker to shutdown even though it may be the leader for some partitions.

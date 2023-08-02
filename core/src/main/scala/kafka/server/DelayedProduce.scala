@@ -54,7 +54,8 @@ class DelayedProduce(delayMs: Long,
                      produceMetadata: ProduceMetadata,
                      replicaManager: ReplicaManager,
                      responseCallback: Map[TopicPartition, PartitionResponse] => Unit,
-                     lockOpt: Option[Lock] = None)
+                     lockOpt: Option[Lock] = None,
+                      creationTime: Long = System.currentTimeMillis())
   extends DelayedOperation(delayMs, lockOpt) {
 
   import DelayedOperation._
@@ -126,6 +127,14 @@ class DelayedProduce(delayMs: Long,
    * Upon completion, return the current response status along with the error code per partition
    */
   override def onComplete(): Unit = {
+    val timeToComplete = System.currentTimeMillis() - creationTime
+    if (timeToComplete > 1000) {
+      info(s"Delayed request takes ${timeToComplete} to complete," +
+        s" partitions are ${produceMetadata.produceStatus.keysIterator.next()}")
+      info(s"Delayed request takes ${timeToComplete} to complete," +
+        s" partitions are ${produceMetadata.produceStatus.keySet}")
+    }
+
     val responseStatus = produceMetadata.produceStatus.map { case (k, status) => k -> status.responseStatus }
     responseCallback(responseStatus)
   }

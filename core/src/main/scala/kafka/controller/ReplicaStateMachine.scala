@@ -289,10 +289,12 @@ class ZkReplicaStateMachine(config: KafkaConfig,
         }
         val updatedLeaderIsrAndControllerEpochs = removeReplicasFromIsr(replicaId, replicasWithLeadershipInfo.map(_.topicPartition))
         updatedLeaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
-          stateLogger.info(s"Partition $partition state changed to $leaderIsrAndControllerEpoch after removing replica $replicaId from the ISR as part of transition to $OfflineReplica")
+          stateLogger.info(s"hgeng: Partition $partition state changed to $leaderIsrAndControllerEpoch after removing replica $replicaId from the ISR as part of transition to $OfflineReplica")
           if (!controllerContext.isTopicQueuedUpForDeletion(partition.topic)) {
-            val recipients = controllerContext.partitionReplicaAssignment(partition).filterNot(_ == replicaId)
+            val recipients = controllerContext.partitionReplicaAssignment(partition)
             // possible PERF TODO?  could add controllerContextSnapshot as 6th arg here, too:
+            stateLogger.info(s"hgeng: partition: $partition" +
+              s"replicaId: $replicaId, contains? ${controllerContext.replicasBeingShutdown.contains(PartitionAndReplica(partition, replicaId))}")
             controllerBrokerRequestBatch.addLeaderAndIsrRequestForBrokers(recipients,
               partition,
               leaderIsrAndControllerEpoch,

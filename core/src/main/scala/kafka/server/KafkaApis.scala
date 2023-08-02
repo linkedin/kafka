@@ -289,6 +289,12 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   private def doHandleLeaderAndIsrRequest(correlationId: Int, leaderAndIsrRequest: LeaderAndIsrRequest): LeaderAndIsrResponse = {
+
+    leaderAndIsrRequest.partitionStates().forEach( state =>
+      info(s"hgeng: Handling LAIR request partition state ${state}")
+    )
+
+
     replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest,
       RequestHandlerHelper.onLeadershipChange(groupCoordinator, txnCoordinator, _, _))
   }

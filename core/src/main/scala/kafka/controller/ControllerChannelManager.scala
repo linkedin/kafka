@@ -664,6 +664,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       else if (config.interBrokerProtocolVersion >= KAFKA_1_0_IV0) 1
       else 0
 
+    var blockFollowerAddingBack = false
+
     val maxBrokerEpoch = controllerContext.maxBrokerEpoch
     leaderAndIsrRequestMap.forKeyValue { (broker, leaderAndIsrPartitionStates) =>
       if (controllerContext.liveOrShuttingDownBrokerIds.contains(broker)) {
@@ -677,8 +679,14 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
           } else {
             "become-follower"
           }
+          if (state.blockFollowerFromAddingBack()) {
+            blockFollowerAddingBack = true
+            info("hgeng:Blocking  follower from adding back is true")
+          }
+
           if (stateChangeLog.isTraceEnabled)
-            stateChangeLog.trace(s"Sending $typeOfRequest LeaderAndIsr request $state to broker $broker for partition $topicPartition")
+            stateChangeLog.trace(s"hgeng: Sending $typeOfRequest LeaderAndIsr request $state to broker $broker for partition $topicPartition" +
+              s"blockFollowerAddingBack $blockFollowerAddingBack")
         }
         stateChangeLog.info(s"Sending LeaderAndIsr request to broker $broker with $numBecomeLeaders become-leader " +
           s"and ${leaderAndIsrPartitionStates.size - numBecomeLeaders} become-follower partitions")
@@ -701,6 +709,9 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
             controllerEpoch, brokerEpoch, maxBrokerEpoch, leaderAndIsrPartitionStates.values.toBuffer.asJava, topicIds.asJava, leaders.asJava)
         }
 
+        if (blockFollowerAddingBack) {
+          info(s"hgeng: LeaderAndIsrRequestBuilder is $leaderAndIsrRequestBuilder")
+        }
 
         sendRequest(broker, leaderAndIsrRequestBuilder, (r: AbstractResponse) => {
           val leaderAndIsrResponse = r.asInstanceOf[LeaderAndIsrResponse]

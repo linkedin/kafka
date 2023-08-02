@@ -552,6 +552,8 @@ class Partition(val topicPartition: TopicPartition,
                  highWatermarkCheckpoints: OffsetCheckpoints,
                  topicId: Option[Uuid]): Boolean = {
     val (leaderHWIncremented, isNewLeader) = inWriteLock(leaderIsrUpdateLock) {
+      info(s"Making leader to partition $partitionState")
+
       // record the epoch of the controller that made the leadership decision. This is useful while updating the isr
       // to maintain the decision maker controller's epoch in the zookeeper path
       controllerEpoch = partitionState.controllerEpoch
@@ -764,7 +766,10 @@ class Partition(val topicPartition: TopicPartition,
     else
       assignmentState = SimpleAssignmentState(assignment)
 
-    blockFollowersFromAddingBackToIsr(isr)
+    if (blockFollowerFromAddingBack) {
+      info(s"hgeng: block follower from adding to isr: $isr")
+      blockFollowersFromAddingBackToIsr(isr)
+    }
     isrState = CommittedIsr(isr)
   }
 
@@ -1392,9 +1397,12 @@ class Partition(val topicPartition: TopicPartition,
 
   private[cluster] def expandIsr(newInSyncReplica: Int): Unit = {
     if (expandIsrLocks.contains(newInSyncReplica)) {
-      if (expandIsrLocks(newInSyncReplica) + expandIsrLockTime < System.currentTimeMillis()) {
-        trace(s"Avoiding adding $newInSyncReplica to isr as it is locked since $expandIsrLocks(newInSyncReplica)")
+      if (System.currentTimeMillis() < expandIsrLocks(newInSyncReplica) + expandIsrLockTime) {
+        info(s"hgeng: Avoid adding $newInSyncReplica to isr as it is locked since ${expandIsrLocks(newInSyncReplica)}")
+        return
       } else {
+        info(s"hgeng: Remove $newInSyncReplica from expandIsrLock map. Current time ${System.currentTimeMillis()}" +
+          s", lock time ${expandIsrLocks(newInSyncReplica)}")
         expandIsrLocks.remove(newInSyncReplica)
       }
     }

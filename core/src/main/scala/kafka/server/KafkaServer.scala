@@ -221,7 +221,7 @@ class KafkaServer(
    */
   override def startup(): Unit = {
     try {
-      info("starting")
+      info("hgeng:1:25: starting")
 
       if (isShuttingDown.get)
         throw new IllegalStateException("Kafka server is still shutting down, cannot re-start!")
@@ -547,7 +547,8 @@ class KafkaServer(
   }
 
   private def initZkClient(time: Time): Unit = {
-    info(s"Connecting to zookeeper on ${config.zkConnect}")
+    info("hgeng: init zk client")
+    info(s"hgeng fat: Connecting to zookeeper on ${config.zkConnect}")
 
     val secureAclsEnabled = config.zkEnableSecureAcls
     val isZkSecurityEnabled = JaasUtils.isZkSaslEnabled() || KafkaConfig.zkTlsClientAuthEnabled(zkClientConfig)
@@ -758,7 +759,7 @@ class KafkaServer(
       // We request the controller to do a controlled shutdown. On failure, we backoff for a configured period
       // of time and try again for a configured number of retries. If all the attempt fails, we simply force
       // the shutdown.
-      info("Starting controlled shutdown")
+      info("hgeng:Starting controlled shutdown")
 
       _brokerState = BrokerState.PENDING_CONTROLLED_SHUTDOWN
 
@@ -775,7 +776,7 @@ class KafkaServer(
    */
   override def shutdown(): Unit = {
     try {
-      info("shutting down")
+      info("hgeng: shutting down")
 
       if (isStartingUp.get)
         throw new IllegalStateException("Kafka server is still starting up, cannot shut down!")
@@ -784,11 +785,13 @@ class KafkaServer(
       // last in the `if` block. If the order is reversed, we could shutdown twice or leave `isShuttingDown` set to
       // `true` at the end of this method.
       if (shutdownLatch.getCount > 0 && isShuttingDown.compareAndSet(false, true)) {
+        info("hgeng: sending controlled shutdown")
         CoreUtils.swallow(controlledShutdown(), this)
         _brokerState = BrokerState.SHUTTING_DOWN
 
         // This delay is to wait LeaderAndIsrRequest to remove the followers on this broker from their ISRs.
         Thread.sleep(60000)
+        info("hgeng: received controlled shutdown success, and slept for 60 seconds")
 
         if (healthCheckScheduler != null)
           healthCheckScheduler.shutdown()

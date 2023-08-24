@@ -842,7 +842,7 @@ class Partition(val topicPartition: TopicPartition,
 
           val timeElapsedMs = System.currentTimeMillis() - requestCreationTime
           if (timeElapsedMs >= logSlowReplicationThresholdMs) {
-            info(s"Progress awaiting ISR acks for offset $requiredOffset: " +
+            info(s"Progress awaiting ISR acks for partition ${leaderLog.topicPartition} offset $requiredOffset: " +
               s"acked: ${ackedReplicas.map(logEndOffsetString)}, " +
               s"awaiting ${awaitingReplicas.map(logEndOffsetString)}. " +
               s"Already waited for ${timeElapsedMs} milliseconds so far")

@@ -104,7 +104,9 @@ object Partition extends KafkaMetricsGroup {
       metadataCache = replicaManager.metadataCache,
       logManager = replicaManager.logManager,
       alterIsrManager = replicaManager.alterIsrManager,
-      transferLeaderManager = replicaManager.transferLeaderManager)
+      transferLeaderManager = replicaManager.transferLeaderManager,
+      logSlowReplicationThresholdMs = replicaManager.config.longTailProduceRequestLogThresholdMs
+      )
   }
 
   def removeMetrics(topicPartition: TopicPartition): Unit = {
@@ -228,7 +230,8 @@ class Partition(val topicPartition: TopicPartition,
                 metadataCache: MetadataCache,
                 logManager: LogManager,
                 alterIsrManager: AlterIsrManager,
-                transferLeaderManager: TransferLeaderManager) extends Logging with KafkaMetricsGroup {
+                transferLeaderManager: TransferLeaderManager,
+                logSlowReplicationThresholdMs: Long = Long.MaxValue) extends Logging with KafkaMetricsGroup {
 
   def topic: String = topicPartition.topic
   def partitionId: Int = topicPartition.partition
@@ -821,7 +824,7 @@ class Partition(val topicPartition: TopicPartition,
    * fully caught up to the (local) leader's offset corresponding to this produce request before we acknowledge the
    * produce request.
    */
-  def checkEnoughReplicasReachOffset(requiredOffset: Long): (Boolean, Errors) = {
+  def checkEnoughReplicasReachOffset(requiredOffset: Long, requestCreationTime: Long): (Boolean, Errors) = {
     leaderLogIfLocal match {
       case Some(leaderLog) =>
         // keep the current immutable replica list reference
@@ -837,9 +840,13 @@ class Partition(val topicPartition: TopicPartition,
           val localLogInfo = (localBrokerId, localLogOrException.logEndOffset)
           val (ackedReplicas, awaitingReplicas) = (replicaInfo + localLogInfo).partition { _._2 >= requiredOffset}
 
-          trace(s"Progress awaiting ISR acks for offset $requiredOffset: " +
-            s"acked: ${ackedReplicas.map(logEndOffsetString)}, " +
-            s"awaiting ${awaitingReplicas.map(logEndOffsetString)}")
+          val timeElapsedMs = System.currentTimeMillis() - requestCreationTime
+          if (timeElapsedMs >= logSlowReplicationThresholdMs) {
+            info(s"Progress awaiting ISR acks for offset $requiredOffset: " +
+              s"acked: ${ackedReplicas.map(logEndOffsetString)}, " +
+              s"awaiting ${awaitingReplicas.map(logEndOffsetString)}. " +
+              s"Already waited for ${timeElapsedMs} milliseconds so far")
+          }
         }
 
         val minIsr = leaderLog.config.minInSyncReplicas

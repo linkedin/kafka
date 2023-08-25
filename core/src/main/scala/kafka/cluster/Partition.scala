@@ -253,8 +253,10 @@ class Partition(val topicPartition: TopicPartition,
   @volatile var assignmentState: AssignmentState = SimpleAssignmentState(Seq.empty)
   @volatile private var logSlowReplicationBucketStartTime: Long = 0
   @volatile private var logSlowReplicationBucketCounter: Int = 0
+
+  // The bucket size is set to 1 minute, with max log number 300. The logs will hit max QPS at 5, which should be acceptable.
   val logSlowReplicationBucketLengthMs: Long = 60000
-  val logSlowReplicationBucketMaxLogCount: Int = 1000
+  val logSlowReplicationBucketMaxLogCount: Int = 300
 
   // Logs belonging to this partition. Majority of time it will be only one log, but if log directory
   // is getting changed (as a result of ReplicaAlterLogDirs command), we may have two logs until copy

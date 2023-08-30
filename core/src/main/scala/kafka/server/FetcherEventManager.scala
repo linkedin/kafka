@@ -168,7 +168,10 @@ class FetcherEventManager(name: String,
           processor.process(fetcherEvent)
         }
       } catch {
-        case e: FatalExitError => throw e
+        case e@(_: FatalExitError |
+                _: OutOfMemoryError |
+                _: StackOverflowError) =>
+          throw e
         case e: Throwable => error(s"Uncaught error processing event $fetcherEvent", e)
       }
 

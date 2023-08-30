@@ -138,8 +138,10 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
 
   def put(event: FetcherEvent): Unit = {
     inLock(eventLock) {
-      queue.add(new QueuedFetcherEvent(event, time.milliseconds(), nextSequenceNumber.getAndIncrement()))
-      newEventCondition.signalAll()
+      if (!shutdownInitialized) {
+        queue.add(new QueuedFetcherEvent(event, time.milliseconds(), nextSequenceNumber.getAndIncrement()))
+        newEventCondition.signalAll()
+      }
     }
   }
 
@@ -181,6 +183,12 @@ class FetcherEventBus(time: Time, conditionFactory: ConditionFactory = DefaultCo
       }
 
       result
+    }
+  }
+
+  def processFuturesBeforeTerminate(): Unit = {
+    inLock(eventLock) {
+
     }
   }
 }

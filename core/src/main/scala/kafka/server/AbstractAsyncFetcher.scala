@@ -196,7 +196,17 @@ abstract class AbstractAsyncFetcher(name: String,
         addPartitions(initialFetchStates)
         future.complete(null)
       case RemovePartitions(topicPartitions, future) =>
-        future.complete(removePartitions(topicPartitions))
+        try {
+          val fetcherStates = removePartitions(topicPartitions)
+          future.complete(fetcherStates)
+        } catch {
+          case t: Throwable =>
+            throw t
+        } finally  {
+          if (!future.isDone) {
+            future.completeExceptionally(new Exception(s"removePartitions failed with error: ${t.getMessage}"))
+          }
+        }
       case GetPartitionCount(future) =>
         future.complete(partitionStates.size())
       case TruncateAndFetch =>

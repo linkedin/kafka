@@ -18,12 +18,11 @@
 package kafka.server
 
 import java.util.concurrent.TimeUnit
-
 import com.yammer.metrics.core.Gauge
 import kafka.cluster.BrokerEndPoint
 import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
 import kafka.utils.ShutdownableThread
-import org.apache.kafka.common.internals.KafkaFutureImpl
+import org.apache.kafka.common.internals.{FatalExitError, KafkaFutureImpl}
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.common.{KafkaFuture, TopicPartition}
 
@@ -169,7 +168,12 @@ class FetcherEventManager(name: String,
           processor.process(fetcherEvent)
         }
       } catch {
-        case e: Exception => error(s"Uncaught error processing event $fetcherEvent", e)
+        case e@(_: FatalExitError |
+                _: OutOfMemoryError |
+                _: StackOverflowError) =>
+          throw e
+        case e: Throwable => error(s"Uncaught error processing event $fetcherEvent", e)
+
       }
 
       _state = FetcherState.Idle

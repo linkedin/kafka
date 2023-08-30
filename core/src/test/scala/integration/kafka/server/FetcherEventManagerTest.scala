@@ -19,9 +19,7 @@ package integration.kafka.server
 
 import kafka.cluster.BrokerEndPoint
 import kafka.server._
-import kafka.utils.CoreUtils.propsWith
 import kafka.utils.TestUtils
-import org.apache.kafka.common.internals.FatalExitError
 import org.apache.kafka.common.utils.Time
 import org.easymock.EasyMock.{createMock, expect, replay, verify}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}

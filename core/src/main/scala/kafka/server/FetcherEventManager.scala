@@ -168,12 +168,16 @@ class FetcherEventManager(name: String,
           processor.process(fetcherEvent)
         }
       } catch {
-        case e@(_: FatalExitError |
-                _: OutOfMemoryError |
-                _: StackOverflowError) =>
-          throw e
-        case e: Throwable => error(s"Uncaught error processing event $fetcherEvent", e)
-
+        case e@(_: Exception |
+          // Catches InternalError here. In previous GCNs that were caused by disk corruptions,
+          // InternalError (unsafe memory access) was thrown here due to accessing memory-mapped log files when processing
+          // TruncateAndFetch events.
+          // Without catching this InternalError, this thread is terminated, which causes handleLogDirFailure being stuck
+          // waiting future.get() for futures associated with unprocessed RemovePartitions events.
+          // We catch InternalError here to prevent the thread terminating right away and let handleLogDirFailure
+          // handle broker shutdown if necessary. There have been no issues other than disk failure caused InternalError so far.
+                _: InternalError) =>
+          error(s"Uncaught error processing event $fetcherEvent", e)
       }
 
       _state = FetcherState.Idle

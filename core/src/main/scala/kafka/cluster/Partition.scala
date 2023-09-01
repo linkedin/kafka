@@ -1531,6 +1531,8 @@ class Partition(val topicPartition: TopicPartition,
             isrState = CommittedIsr(leaderAndIsr.isr.toSet)
             zkVersion = leaderAndIsr.zkVersion
             info(s"ISR updated to ${isrState.isr.mkString(",")} and version updated to [$zkVersion]")
+            leaderLogIfLocal.exists(leaderLog => maybeIncrementLeaderHW(leaderLog))
+
             proposedIsrState match {
               case PendingExpandIsr(_, _) => isrChangeListener.markExpand()
               case PendingShrinkIsr(_, _) => isrChangeListener.markShrink()

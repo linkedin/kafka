@@ -986,45 +986,47 @@ class Partition(val topicPartition: TopicPartition,
     val needsIsrUpdate = !isrState.isInflight && inReadLock(leaderIsrUpdateLock) {
       needsShrinkIsr()
     }
-    val isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture()
-    val leaderHWIncremented = needsIsrUpdate && inWriteLock(leaderIsrUpdateLock) {
-      leaderLogIfLocal.exists { leaderLog =>
-        val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
-        if (outOfSyncReplicaIds.nonEmpty) {
-          val outOfSyncReplicaLog = outOfSyncReplicaIds.map { replicaId =>
-            val replica = getReplica(replicaId)
-            val logEndOffsetMessage = replica
-              .map(_.logEndOffset.toString)
-              .getOrElse("unknown")
-            val lastCaughtUpTimeMessage = replica.map(_.lastCaughtUpTimeMs.toString).getOrElse("unknown")
-            s"(brokerId: $replicaId, endOffset: $logEndOffsetMessage, lastCaughtUpTime: $lastCaughtUpTimeMessage)"
-          }.mkString(" ")
-          val newIsrLog = (isrState.isr -- outOfSyncReplicaIds).mkString(",")
-          info(s"Shrinking ISR from ${isrState.isr.mkString(",")} to $newIsrLog. " +
-               s"Leader: (highWatermark: ${leaderLog.highWatermark}, " +
-               s"endOffset: ${leaderLog.logEndOffset}). " +
-               s"Out of sync replicas: $outOfSyncReplicaLog.")
 
-          shrinkIsr(outOfSyncReplicaIds, isrUpdateCompleteFuture)
+    if (needsIsrUpdate) {
+      info(s"Needs shrink isr for ${topicPartition}")
+      val isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture()
 
-          // we may need to increment high watermark since ISR could be down to 1
-          maybeIncrementLeaderHW(leaderLog)
-        } else {
-          false
+      inWriteLock(leaderIsrUpdateLock) {
+        info(s"Acquired leaderIsrUpdateLock for ${topicPartition}. Starting to update isr.")
+        leaderLogIfLocal.exists { leaderLog =>
+          val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
+          if (outOfSyncReplicaIds.nonEmpty) {
+            val outOfSyncReplicaLog = outOfSyncReplicaIds.map { replicaId =>
+              val replica = getReplica(replicaId)
+              val logEndOffsetMessage = replica
+                .map(_.logEndOffset.toString)
+                .getOrElse("unknown")
+              val lastCaughtUpTimeMessage = replica.map(_.lastCaughtUpTimeMs.toString).getOrElse("unknown")
+              s"(brokerId: $replicaId, endOffset: $logEndOffsetMessage, lastCaughtUpTime: $lastCaughtUpTimeMessage)"
+            }.mkString(" ")
+            val newIsrLog = (isrState.isr -- outOfSyncReplicaIds).mkString(",")
+            info(s"Shrinking ISR from ${isrState.isr.mkString(",")} to $newIsrLog. " +
+              s"Leader: (highWatermark: ${leaderLog.highWatermark}, " +
+              s"endOffset: ${leaderLog.logEndOffset}). " +
+              s"Out of sync replicas: $outOfSyncReplicaLog.")
+
+            shrinkIsr(outOfSyncReplicaIds, isrUpdateCompleteFuture)
+          }
+          return
         }
       }
-    }
 
-    try {
-      // some delayed operations may be unblocked after HW changed
-      if (isrUpdateCompleteFuture.get(isrUpdateTimeoutMs, TimeUnit.MILLISECONDS)) {
-        info(s"Completed shrinking isr and incrementing HWM for partition ${topicPartition}." +
-          s" Current isr is ${isrState}. Trying to complete delayed request")
-        tryCompleteDelayedRequests()
+      try {
+        // some delayed operations may be unblocked after HW changed
+        if (isrUpdateCompleteFuture.get(isrUpdateTimeoutMs, TimeUnit.MILLISECONDS)) {
+          info(s"Completed isr shrink and incremented HWM for partition ${topicPartition}." +
+            s" Current isr is ${isrState}. Trying to complete delayed request")
+          tryCompleteDelayedRequests()
+        }
+      } catch {
+        case e: Exception =>
+          error("Failed to complete shrinking isr with exception.", e)
       }
-    } catch {
-      case e: Exception =>
-        error("Failed to complete shrinking isr with exception.", e)
     }
   }
 

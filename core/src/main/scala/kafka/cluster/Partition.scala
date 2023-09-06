@@ -42,6 +42,7 @@ import org.apache.kafka.common.requests.OffsetsForLeaderEpochResponse.{UNDEFINED
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.common.{IsolationLevel, TopicPartition, Uuid}
 
+import java.util.concurrent.{CompletableFuture, TimeUnit}
 import scala.collection.{Map, Seq}
 import scala.jdk.CollectionConverters._
 
@@ -257,6 +258,9 @@ class Partition(val topicPartition: TopicPartition,
   // The bucket size is set to 1 minute, with max log number 300. The logs will hit max QPS at 5, which should be acceptable.
   val logSlowReplicationBucketLengthMs: Long = 60000
   val logSlowReplicationBucketMaxLogCount: Int = 300
+
+  // maybeShrinkISR will block returning by isr update completion, or this timeout
+  val isrUpdateTimeoutMs: Long = 5000
 
   // Logs belonging to this partition. Majority of time it will be only one log, but if log directory
   // is getting changed (as a result of ReplicaAlterLogDirs command), we may have two logs until copy
@@ -982,6 +986,7 @@ class Partition(val topicPartition: TopicPartition,
     val needsIsrUpdate = !isrState.isInflight && inReadLock(leaderIsrUpdateLock) {
       needsShrinkIsr()
     }
+    val isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture()
     val leaderHWIncremented = needsIsrUpdate && inWriteLock(leaderIsrUpdateLock) {
       leaderLogIfLocal.exists { leaderLog =>
         val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
@@ -1000,7 +1005,7 @@ class Partition(val topicPartition: TopicPartition,
                s"endOffset: ${leaderLog.logEndOffset}). " +
                s"Out of sync replicas: $outOfSyncReplicaLog.")
 
-          shrinkIsr(outOfSyncReplicaIds)
+          shrinkIsr(outOfSyncReplicaIds, isrUpdateCompleteFuture)
 
           // we may need to increment high watermark since ISR could be down to 1
           maybeIncrementLeaderHW(leaderLog)
@@ -1010,9 +1015,17 @@ class Partition(val topicPartition: TopicPartition,
       }
     }
 
-    // some delayed operations may be unblocked after HW changed
-    if (leaderHWIncremented)
-      tryCompleteDelayedRequests()
+    try {
+      // some delayed operations may be unblocked after HW changed
+      if (isrUpdateCompleteFuture.get(isrUpdateTimeoutMs, TimeUnit.MILLISECONDS)) {
+        info(s"Completed shrinking isr and incrementing HWM for partition ${topicPartition}." +
+          s" Current isr is ${isrState}. Trying to complete delayed request")
+        tryCompleteDelayedRequests()
+      }
+    } catch {
+      case e: Exception =>
+        error("Failed to complete shrinking isr with exception.", e)
+    }
   }
 
   /**
@@ -1432,13 +1445,13 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
-  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int]): Unit = {
+  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int], isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture[Boolean]): Unit = {
     // This is called from maybeShrinkIsr which holds the ISR write lock
     if (!isrState.isInflight) {
       // When shrinking the ISR, we cannot assume that the update will succeed as this could erroneously advance the HW
       // We update pendingInSyncReplicaIds here simply to prevent any further ISR updates from occurring until we get
       // the next LeaderAndIsr
-      sendAlterIsrRequest(PendingShrinkIsr(isrState.isr, outOfSyncReplicas))
+      sendAlterIsrRequest(PendingShrinkIsr(isrState.isr, outOfSyncReplicas), isrUpdateCompleteFuture)
     } else {
       trace(s"ISR update in-flight, not removing out-of-sync replicas $outOfSyncReplicas")
     }
@@ -1457,7 +1470,7 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
-  private def sendAlterIsrRequest(proposedIsrState: IsrState): Unit = {
+  private def sendAlterIsrRequest(proposedIsrState: IsrState, isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture[Boolean]): Unit = {
     val isrToSend: Set[Int] = proposedIsrState match {
       case PendingExpandIsr(isr, newInSyncReplicaId) => isr + newInSyncReplicaId
       case PendingShrinkIsr(isr, outOfSyncReplicaIds) => isr -- outOfSyncReplicaIds
@@ -1467,7 +1480,7 @@ class Partition(val topicPartition: TopicPartition,
     }
 
     val newLeaderAndIsr = new LeaderAndIsr(localBrokerId, leaderEpoch, isrToSend.toList, zkVersion)
-    val alterIsrItem = AlterIsrItem(topicPartition, newLeaderAndIsr, handleAlterIsrResponse(proposedIsrState), controllerEpoch)
+    val alterIsrItem = AlterIsrItem(topicPartition, newLeaderAndIsr, handleAlterIsrResponse(proposedIsrState, isrUpdateCompleteFuture), controllerEpoch)
 
     val oldState = isrState
     isrState = proposedIsrState
@@ -1490,7 +1503,7 @@ class Partition(val topicPartition: TopicPartition,
    * Since our error was non-retryable we are okay staying in this state until we see new metadata from UpdateMetadata
    * or LeaderAndIsr
    */
-  private def handleAlterIsrResponse(proposedIsrState: IsrState)(result: Either[Errors, LeaderAndIsr]): Unit = {
+  private def handleAlterIsrResponse(proposedIsrState: IsrState, isrUpdateCompleteFuture: CompletableFuture[Boolean])(result: Either[Errors, LeaderAndIsr]): Unit = {
     inWriteLock(leaderIsrUpdateLock) {
       if (isrState != proposedIsrState) {
         // This means isrState was updated through leader election or some other mechanism before we got the AlterIsr
@@ -1531,7 +1544,11 @@ class Partition(val topicPartition: TopicPartition,
             isrState = CommittedIsr(leaderAndIsr.isr.toSet)
             zkVersion = leaderAndIsr.zkVersion
             info(s"ISR updated to ${isrState.isr.mkString(",")} and version updated to [$zkVersion]")
-            leaderLogIfLocal.exists(leaderLog => maybeIncrementLeaderHW(leaderLog))
+
+            // Try to increment leader HWM if it tries to shrinkISR.
+            if (proposedIsrState.isInstanceOf[PendingShrinkIsr]) {
+              leaderLogIfLocal.exists(leaderLog => isrUpdateCompleteFuture.complete(maybeIncrementLeaderHW(leaderLog)))
+            }
 
             proposedIsrState match {
               case PendingExpandIsr(_, _) => isrChangeListener.markExpand()
@@ -1540,6 +1557,10 @@ class Partition(val topicPartition: TopicPartition,
             }
           }
       }
+    }
+
+    if (!isrUpdateCompleteFuture.isDone) {
+      isrUpdateCompleteFuture.complete(false)
     }
   }
 

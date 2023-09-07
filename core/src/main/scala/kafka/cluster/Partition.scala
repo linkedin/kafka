@@ -992,8 +992,7 @@ class Partition(val topicPartition: TopicPartition,
       val isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture()
 
       inWriteLock(leaderIsrUpdateLock) {
-        info(s"Acquired leaderIsrUpdateLock for ${topicPartition}. Starting to update isr.")
-        leaderLogIfLocal.exists { leaderLog =>
+        leaderLogIfLocal.foreach { leaderLog =>
           val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
           if (outOfSyncReplicaIds.nonEmpty) {
             val outOfSyncReplicaLog = outOfSyncReplicaIds.map { replicaId =>
@@ -1012,14 +1011,13 @@ class Partition(val topicPartition: TopicPartition,
 
             shrinkIsr(outOfSyncReplicaIds, isrUpdateCompleteFuture)
           }
-          return
         }
       }
 
       try {
         // some delayed operations may be unblocked after HW changed
         if (isrUpdateCompleteFuture.get(isrUpdateTimeoutMs, TimeUnit.MILLISECONDS)) {
-          info(s"Completed isr shrink and incremented HWM for partition ${topicPartition}." +
+          info(s"Completed isr shrink and incremented HW for partition ${topicPartition}." +
             s" Current isr is ${isrState}. Trying to complete delayed request")
           tryCompleteDelayedRequests()
         }
@@ -1546,15 +1544,16 @@ class Partition(val topicPartition: TopicPartition,
             isrState = CommittedIsr(leaderAndIsr.isr.toSet)
             zkVersion = leaderAndIsr.zkVersion
             info(s"ISR updated to ${isrState.isr.mkString(",")} and version updated to [$zkVersion]")
-
-            // Try to increment leader HWM if it tries to shrinkISR.
-            if (proposedIsrState.isInstanceOf[PendingShrinkIsr]) {
-              leaderLogIfLocal.exists(leaderLog => isrUpdateCompleteFuture.complete(maybeIncrementLeaderHW(leaderLog)))
-            }
-
             proposedIsrState match {
               case PendingExpandIsr(_, _) => isrChangeListener.markExpand()
-              case PendingShrinkIsr(_, _) => isrChangeListener.markShrink()
+              case PendingShrinkIsr(_, _) =>
+                isrChangeListener.markShrink()
+                leaderLogIfLocal.foreach{leaderLog =>
+                  // Try to increment leader HWM if it tries to shrinkISR.
+                  val leaderHWIncremented = maybeIncrementLeaderHW(leaderLog)
+                  info(s"HW incremented: ${leaderHWIncremented}, for partition ${topicPartition} after shrinking ISR to ${isrState.isr.mkString(",")}")
+                  isrUpdateCompleteFuture.complete(leaderHWIncremented)
+                }
               case _ => // nothing to do, shouldn't get here
             }
           }

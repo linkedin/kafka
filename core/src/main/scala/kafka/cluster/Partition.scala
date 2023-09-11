@@ -1445,7 +1445,7 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
-  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int], isrUpdateCompleteFuture: CompletableFuture[Boolean]): Unit = {
+  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int], isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture[Boolean]): Unit = {
     // This is called from maybeShrinkIsr which holds the ISR write lock
     if (!isrState.isInflight) {
       // When shrinking the ISR, we cannot assume that the update will succeed as this could erroneously advance the HW

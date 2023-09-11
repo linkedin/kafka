@@ -1487,7 +1487,7 @@ class Partition(val topicPartition: TopicPartition,
       result => {
         try {
           isrUpdateCompleteFuture.complete(handleAlterIsrResponse(proposedIsrState)(result))
-        } finally {
+        } catch {
           case e: Exception => isrUpdateCompleteFuture.completeExceptionally(e)
         }
       },

@@ -1445,7 +1445,7 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
-  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int], isrUpdateCompleteFuture: CompletableFuture[Boolean] = new CompletableFuture[Boolean]): Unit = {
+  private[cluster] def shrinkIsr(outOfSyncReplicas: Set[Int], isrUpdateCompleteFuture: CompletableFuture[Boolean]): Unit = {
     // This is called from maybeShrinkIsr which holds the ISR write lock
     if (!isrState.isInflight) {
       // When shrinking the ISR, we cannot assume that the update will succeed as this could erroneously advance the HW
@@ -1454,6 +1454,7 @@ class Partition(val topicPartition: TopicPartition,
       sendAlterIsrRequest(PendingShrinkIsr(isrState.isr, outOfSyncReplicas), isrUpdateCompleteFuture)
     } else {
       trace(s"ISR update in-flight, not removing out-of-sync replicas $outOfSyncReplicas")
+      isrUpdateCompleteFuture.complete(false)
     }
   }
 
@@ -1480,7 +1481,18 @@ class Partition(val topicPartition: TopicPartition,
     }
 
     val newLeaderAndIsr = new LeaderAndIsr(localBrokerId, leaderEpoch, isrToSend.toList, zkVersion)
-    val alterIsrItem = AlterIsrItem(topicPartition, newLeaderAndIsr, handleAlterIsrResponse(proposedIsrState, isrUpdateCompleteFuture), controllerEpoch)
+    val alterIsrItem = AlterIsrItem(
+      topicPartition,
+      newLeaderAndIsr,
+      result => {
+        try {
+          isrUpdateCompleteFuture.complete(handleAlterIsrResponse(proposedIsrState)(result))
+        } finally {
+          case e: Exception => isrUpdateCompleteFuture.completeExceptionally(e)
+        }
+      },
+      controllerEpoch
+    )
 
     val oldState = isrState
     isrState = proposedIsrState
@@ -1502,15 +1514,17 @@ class Partition(val topicPartition: TopicPartition,
    * give up. This leaves [[Partition.isrState]] in an in-flight state (either pending shrink or pending expand).
    * Since our error was non-retryable we are okay staying in this state until we see new metadata from UpdateMetadata
    * or LeaderAndIsr
+   *
+   * @return true if the HW incremented after handleAlterIsrResponse
    */
-  private def handleAlterIsrResponse(proposedIsrState: IsrState, isrUpdateCompleteFuture: CompletableFuture[Boolean])(result: Either[Errors, LeaderAndIsr]): Unit = {
+  private def handleAlterIsrResponse(proposedIsrState: IsrState)(result: Either[Errors, LeaderAndIsr]): Boolean = {
     inWriteLock(leaderIsrUpdateLock) {
       if (isrState != proposedIsrState) {
         // This means isrState was updated through leader election or some other mechanism before we got the AlterIsr
         // response. We don't know what happened on the controller exactly, but we do know this response is out of date
         // so we ignore it.
         warn(s"Ignoring failed ISR update to $proposedIsrState since we have already updated state to $isrState")
-        return
+        return false
       }
 
       result match {
@@ -1552,17 +1566,14 @@ class Partition(val topicPartition: TopicPartition,
                   // Try to increment leader HWM if it tries to shrinkISR.
                   val leaderHWIncremented = maybeIncrementLeaderHW(leaderLog)
                   info(s"HW incremented: ${leaderHWIncremented}, for partition ${topicPartition} after shrinking ISR to ${isrState.isr.mkString(",")}")
-                  isrUpdateCompleteFuture.complete(leaderHWIncremented)
+                  return leaderHWIncremented
                 }
               case _ => // nothing to do, shouldn't get here
             }
           }
       }
     }
-
-    if (!isrUpdateCompleteFuture.isDone) {
-      isrUpdateCompleteFuture.complete(false)
-    }
+    false
   }
 
   override def equals(that: Any): Boolean = that match {

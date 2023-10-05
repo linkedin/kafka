@@ -136,6 +136,8 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     )
 
+  val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation()
+
   def close(): Unit = {
     aclApis.close()
     info("Shutdown complete.")
@@ -1140,6 +1142,10 @@ class KafkaApis(val requestChannel: RequestChannel,
               Some(offsetRequest.isolationLevel)
             else
               None
+
+            if (isClientRequest) {  // Brokers send listOffset requests too to check if truncation needed --- ignore those.
+              listOffsetsRequestInstrumentation.logUsage(request.context.principal, topic)
+            }
 
             val foundOpt = replicaManager.fetchOffsetForTimestamp(topicPartition,
               partition.timestamp,

@@ -22,9 +22,11 @@ import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsTopic
 import org.apache.kafka.common.requests.ListOffsetsRequest
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 
-import java.util.concurrent.TimeUnit
-import scala.collection.{Map, mutable}
-import scala.jdk.CollectionConverters._
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import scala.collection.{concurrent, mutable}
+import scala.jdk.CollectionConverters.{asScalaBufferConverter, mapAsScalaConcurrentMapConverter}
+
 
 /**
  * A short term solution for tracking
@@ -58,15 +60,15 @@ class ListOffsetsRequestInstrumentation extends KafkaMetricsGroup {
 
 
   // The object would be periodically dumped to log and cleared on kafka-server wrapper
-  var listOffsetsByTimestampApiClientUsers: mutable.Map[String, mutable.Set[String]] = _
+  var listOffsetsByTimestampApiClientUsers: mutable.Map[String, concurrent.Map[String, AtomicInteger]] = _
   snapshotAndResetListOffsetByTimeStampApiUsers()
 
   /**
    * A helper method for the external wrapper to obtain the tracked requesters and refresh the tracking map
    */
-  def snapshotAndResetListOffsetByTimeStampApiUsers(): mutable.Map[String, mutable.Set[String]] = {
+  def snapshotAndResetListOffsetByTimeStampApiUsers(): mutable.Map[String, concurrent.Map[String, AtomicInteger]] = {
     val old = listOffsetsByTimestampApiClientUsers
-    listOffsetsByTimestampApiClientUsers = mutable.Map[String, mutable.Set[String]]()
+    listOffsetsByTimestampApiClientUsers = mutable.Map()
     old
   }
 
@@ -109,13 +111,23 @@ class ListOffsetsRequestInstrumentation extends KafkaMetricsGroup {
 
     if (byTimestampCnt > 0) {
       // For by timestamp, we also want to know who are the ones sending
-      (listOffsetsByTimestampApiClientUsers.get(principal.getName) match {
+      val principalAssociatedTopicCounts = listOffsetsByTimestampApiClientUsers.get(principal.getName) match {
         case Some(v) => v
         case None =>
-          val newSet: mutable.Set[String] = mutable.Set()
-          listOffsetsByTimestampApiClientUsers(principal.getName) = newSet
-          newSet
-      }).add(topic.name)
+          val newMap: concurrent.Map[String, AtomicInteger] = new ConcurrentHashMap[String, AtomicInteger]().asScala
+          listOffsetsByTimestampApiClientUsers(principal.getName) = newMap
+          newMap
+      }
+
+      val associatedTopicCounter = principalAssociatedTopicCounts.get(topic.name) match {
+        case Some(v) => v
+        case None =>
+          val newCounter = new AtomicInteger(0)
+          principalAssociatedTopicCounts(topic.name) = newCounter
+          newCounter
+      }
+
+      associatedTopicCounter.incrementAndGet()
     }
   }
 }

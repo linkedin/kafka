@@ -1127,6 +1127,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     )
 
     val responseTopics = authorizedRequestInfo.map { topic =>
+      val isClientRequest = offsetRequest.replicaId == ListOffsetsRequest.CONSUMER_REPLICA_ID
+      if (isClientRequest) {  // Brokers send listOffset requests too to check if truncation needed --- ignore those.
+        listOffsetsRequestInstrumentation.logUsage(request.context.principal, topic)
+      }
+
       val responsePartitions = topic.partitions.asScala.map { partition =>
         val topicPartition = new TopicPartition(topic.name, partition.partitionIndex)
         if (offsetRequest.duplicatePartitions.contains(topicPartition)) {
@@ -1137,15 +1142,10 @@ class KafkaApis(val requestChannel: RequestChannel,
           try {
             val fetchOnlyFromLeader = offsetRequest.replicaId != ListOffsetsRequest.DEBUGGING_REPLICA_ID &&
               offsetRequest.replicaId != ListOffsetsRequest.CONTROLLER_REPLICA_ID
-            val isClientRequest = offsetRequest.replicaId == ListOffsetsRequest.CONSUMER_REPLICA_ID
             val isolationLevelOpt = if (isClientRequest)
               Some(offsetRequest.isolationLevel)
             else
               None
-
-            if (isClientRequest) {  // Brokers send listOffset requests too to check if truncation needed --- ignore those.
-              listOffsetsRequestInstrumentation.logUsage(request.context.principal, topic)
-            }
 
             val foundOpt = replicaManager.fetchOffsetForTimestamp(topicPartition,
               partition.timestamp,

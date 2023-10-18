@@ -113,7 +113,11 @@ public enum ApiKeys {
     // LinkedIn API keys for APIs not yet upstreamed.
     LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK(ApiMessageType.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, true, true),
     LI_COMBINED_CONTROL(ApiMessageType.LI_COMBINED_CONTROL, true),
-    LI_MOVE_CONTROLLER(ApiMessageType.LI_MOVE_CONTROLLER, true);
+    LI_MOVE_CONTROLLER(ApiMessageType.LI_MOVE_CONTROLLER, true),
+
+    LI_XINFRA_TOPIC_CREATE(ApiMessageType.LI_XINFRA_TOPIC_CREATE, false, true),
+    LI_XINFRA_TOPIC_DELETE(ApiMessageType.LI_XINFRA_TOPIC_DELETE, false, true),
+    LIST_XINFRA_TOPICS(ApiMessageType.LIST_XINFRA_TOPICS);
 
     private static final Map<ApiMessageType.ListenerType, EnumSet<ApiKeys>> APIS_BY_LISTENER =
         new EnumMap<>(ApiMessageType.ListenerType.class);

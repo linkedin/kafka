@@ -309,6 +309,12 @@ public abstract class AbstractRequest implements AbstractRequestResponse {
                 return LiCombinedControlRequest.parse(buffer, apiVersion);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerRequest.parse(buffer, apiVersion);
+            case LI_XINFRA_TOPIC_CREATE:
+                return LiXinfraTopicCreateRequest.parse(buffer, apiVersion);
+            case LI_XINFRA_TOPIC_DELETE:
+                return LiXinfraTopicDeleteRequest.parse(buffer, apiVersion);
+            case LIST_XINFRA_TOPICS:
+                return ListXinfraTopicsRequest.parse(buffer, apiVersion);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseRequest`, the " +
                         "code should be updated to do so.", apiKey));

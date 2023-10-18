@@ -253,6 +253,12 @@ public abstract class AbstractResponse implements AbstractRequestResponse {
                 return LiCombinedControlResponse.parse(responseBuffer, version);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerResponse.parse(responseBuffer, version);
+            case LI_XINFRA_TOPIC_CREATE:
+                return LiXinfraTopicCreateResponse.parse(responseBuffer, version);
+            case LI_XINFRA_TOPIC_DELETE:
+                return LiXinfraTopicDeleteResponse.parse(responseBuffer, version);
+            case LIST_XINFRA_TOPICS:
+                return ListXinfraTopicsResponse.parse(responseBuffer, version);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseResponse`, the " +
                         "code should be updated to do so.", apiKey));

@@ -199,6 +199,13 @@ public interface Admin extends AutoCloseable {
      */
     CreateTopicsResult createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options);
 
+    default CreateOrDeleteXinfraTopicsZnodeResult createXinfraTopicsZnode(Map<String, String> xinfraTopics) {
+        return createXinfraTopicsZnode(xinfraTopics, new CreateXinfraTopicsZnodeOptions());
+    }
+
+    CreateOrDeleteXinfraTopicsZnodeResult createXinfraTopicsZnode(Map<String, String> xinfraTopics,
+        CreateXinfraTopicsZnodeOptions options);
+
     /**
      * This is a convenience method for {@link #deleteTopics(TopicCollection, DeleteTopicsOptions)}
      * with default options. See the overload for more details.
@@ -263,6 +270,12 @@ public interface Admin extends AutoCloseable {
      */
     DeleteTopicsResult deleteTopics(TopicCollection topics, DeleteTopicsOptions options);
 
+    default CreateOrDeleteXinfraTopicsZnodeResult deleteXinfraTopicsZnode(Map<String, String> xinfraTopics) {
+        return deleteXinfraTopicsZnode(xinfraTopics, new DeleteXinfraTopicsZnodeOptions());
+    }
+
+    CreateOrDeleteXinfraTopicsZnodeResult deleteXinfraTopicsZnode(Map<String, String> xinfraTopics, DeleteXinfraTopicsZnodeOptions options);
+
     /**
      * List the topics available in the cluster with the default options.
      * <p>
@@ -282,6 +295,12 @@ public interface Admin extends AutoCloseable {
      * @return The ListTopicsResult.
      */
     ListTopicsResult listTopics(ListTopicsOptions options);
+
+    default ListXinfraTopicsResult listXinfraTopics() {
+        return listXinfraTopics(new ListXinfraTopicsOptions());
+    }
+
+    ListXinfraTopicsResult listXinfraTopics(ListXinfraTopicsOptions options);
 
     /**
      * Describe some topics in the cluster, with the default options.

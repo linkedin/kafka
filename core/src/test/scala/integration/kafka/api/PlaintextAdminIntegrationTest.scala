@@ -133,6 +133,27 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
   }
 
   @Test
+  def testXinfraTopicCreateDeleteAndGet(): Unit = {
+    client = Admin.create(createConfig)
+    val xinfraTopic = Map("xinfra-test-topic" -> "tracking").asJava
+
+    // create the xinfra topic znode
+    client.createXinfraTopicsZnode(xinfraTopic)
+
+    // list xinfra topic should return exactly one entry
+    val result = client.listXinfraTopics()
+    assertEquals(1, result.namesAndNamespaces().get().size())
+    assertEquals("xinfra-test-topic tracking", result.namesAndNamespaces().get().get(0))
+
+    // delete xinfra topic znode
+    client.deleteXinfraTopicsZnode(xinfraTopic)
+
+    // after deletion, list xinfra topic should return 0 entry
+    val result1 = client.listXinfraTopics()
+    assertEquals(0, result1.namesAndNamespaces().get().size())
+  }
+
+  @Test
   def testDeleteTopicsWithIds(): Unit = {
     client = Admin.create(createConfig)
     val topics = Seq("mytopic", "mytopic2", "mytopic3")

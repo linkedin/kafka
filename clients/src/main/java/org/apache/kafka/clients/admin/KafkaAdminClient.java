@@ -143,7 +143,6 @@ import org.apache.kafka.common.message.LeaveGroupRequestData.MemberIdentity;
 import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRequestData;
 import org.apache.kafka.common.message.LiMoveControllerRequestData;
 import org.apache.kafka.common.message.LiXinfraTopicCreateRequestData;
-import org.apache.kafka.common.message.LiXinfraTopicDeleteRequestData;
 import org.apache.kafka.common.message.ListGroupsRequestData;
 import org.apache.kafka.common.message.ListGroupsResponseData;
 import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsPartition;
@@ -151,7 +150,6 @@ import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsTopic;
 import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsPartitionResponse;
 import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsTopicResponse;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
-import org.apache.kafka.common.message.ListXinfraTopicsRequestData;
 import org.apache.kafka.common.message.MetadataRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
 import org.apache.kafka.common.message.UnregisterBrokerRequestData;
@@ -226,16 +224,12 @@ import org.apache.kafka.common.requests.LiMoveControllerRequest;
 import org.apache.kafka.common.requests.LiMoveControllerResponse;
 import org.apache.kafka.common.requests.LiXinfraTopicCreateRequest;
 import org.apache.kafka.common.requests.LiXinfraTopicCreateResponse;
-import org.apache.kafka.common.requests.LiXinfraTopicDeleteRequest;
-import org.apache.kafka.common.requests.LiXinfraTopicDeleteResponse;
 import org.apache.kafka.common.requests.ListGroupsRequest;
 import org.apache.kafka.common.requests.ListGroupsResponse;
 import org.apache.kafka.common.requests.ListOffsetsRequest;
 import org.apache.kafka.common.requests.ListOffsetsResponse;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsRequest;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsResponse;
-import org.apache.kafka.common.requests.ListXinfraTopicsRequest;
-import org.apache.kafka.common.requests.ListXinfraTopicsResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
 import org.apache.kafka.common.requests.MetadataResponse;
 import org.apache.kafka.common.requests.RenewDelegationTokenRequest;
@@ -1756,45 +1750,6 @@ public class KafkaAdminClient extends AdminClient {
             throw new IllegalArgumentException("The TopicCollection: " + topics + " provided did not match any supported classes for deleteTopics.");
     }
 
-    @Override
-    public CreateOrDeleteXinfraTopicsZnodeResult deleteXinfraTopicsZnode(Map<String, String> xinfraTopics,
-                                                                         DeleteXinfraTopicsZnodeOptions options) {
-        final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(xinfraTopics.size());
-        final long now = time.milliseconds();
-        List<LiXinfraTopicDeleteRequestData.XinfraTopics> topics = new ArrayList<>();
-        xinfraTopics.forEach((topic, namespace) -> {
-            topics.add(new LiXinfraTopicDeleteRequestData.XinfraTopics().setName(topic).setNamespace(namespace));
-            topicFutures.put(topic, new KafkaFutureImpl<>());
-        });
-        runnable.call(new Call("deleteXinfraTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
-            new ControllerNodeProvider()) {
-            @Override
-            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
-                return new LiXinfraTopicDeleteRequest.Builder(new LiXinfraTopicDeleteRequestData()
-                    .setTopics(topics)
-                    .setTimeoutMs(timeoutMs),  (short) 0);
-            }
-
-            @Override
-            void handleResponse(AbstractResponse abstractResponse) {
-                LiXinfraTopicDeleteResponse response = (LiXinfraTopicDeleteResponse) abstractResponse;
-                Errors errors = Errors.forCode(response.data().errorCode());
-                if (errors != Errors.NONE) {
-                    completeAllExceptionally(topicFutures.values(), errors.exception());
-                    return;
-                }
-                topicFutures.values().forEach(f -> f.complete(null));
-            }
-
-            @Override
-            void handleFailure(Throwable throwable) {
-                // Fail all the other remaining futures
-                completeAllExceptionally(topicFutures.values(), throwable);
-            }
-        }, now);
-        return new CreateOrDeleteXinfraTopicsZnodeResult(new HashMap<>(topicFutures));
-    }
-
     private Map<String, KafkaFuture<Void>> handleDeleteTopicsUsingNames(final Collection<String> topicNames,
                                                                         final DeleteTopicsOptions options) {
         final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(topicNames.size());
@@ -2030,39 +1985,6 @@ public class KafkaAdminClient extends AdminClient {
             }
         }, now);
         return new ListTopicsResult(topicListingFuture);
-    }
-
-    @Override
-    public ListXinfraTopicsResult listXinfraTopics(ListXinfraTopicsOptions options) {
-        final KafkaFutureImpl<List<String>> xinfraTopicListingFuture = new KafkaFutureImpl<>();
-        final long now = time.milliseconds();
-        runnable.call(new Call("listXinfraTopics", calcDeadlineMs(now, options.timeoutMs()),
-            new LeastLoadedNodeProvider()) {
-
-            @Override
-            AbstractRequest.Builder createRequest(int timeoutMs) {
-                return new ListXinfraTopicsRequest.Builder(new ListXinfraTopicsRequestData(), (short) 0);
-            }
-
-            @Override
-            void handleResponse(AbstractResponse abstractResponse) {
-                ListXinfraTopicsResponse response = (ListXinfraTopicsResponse) abstractResponse;
-                Errors error = Errors.forCode(response.data().errorCode());
-                if (error != Errors.NONE) {
-                    xinfraTopicListingFuture.completeExceptionally(error.exception());
-                    return;
-                }
-
-                List<String> allXinfraTopics = new ArrayList<>(response.data().topics());
-                xinfraTopicListingFuture.complete(allXinfraTopics);
-            }
-
-            @Override
-            void handleFailure(Throwable throwable) {
-                xinfraTopicListingFuture.completeExceptionally(throwable);
-            }
-        }, now);
-        return new ListXinfraTopicsResult(xinfraTopicListingFuture);
     }
 
     @Override

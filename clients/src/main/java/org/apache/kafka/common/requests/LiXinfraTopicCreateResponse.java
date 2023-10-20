@@ -50,9 +50,10 @@ public class LiXinfraTopicCreateResponse extends AbstractResponse {
         return data;
     }
 
-    public static LiXinfraTopicCreateResponse prepareResponse(Errors error, short version) {
+    public static LiXinfraTopicCreateResponse prepareResponse(Errors error, int throttleTimeMs, short version) {
         LiXinfraTopicCreateResponseData data = new LiXinfraTopicCreateResponseData();
         data.setErrorCode(error.code());
+        data.setThrottleTimeMs(throttleTimeMs);
         return new LiXinfraTopicCreateResponse(data, version);
     }
 
@@ -62,7 +63,7 @@ public class LiXinfraTopicCreateResponse extends AbstractResponse {
 
     @Override
     public int throttleTimeMs() {
-        return 0;
+        return data.throttleTimeMs();
     }
 
     public short version() {

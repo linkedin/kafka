@@ -361,11 +361,6 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
-    public ListXinfraTopicsResult listXinfraTopics(ListXinfraTopicsOptions options) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
-
-    @Override
     synchronized public DescribeTopicsResult describeTopics(Collection<String> topicNames, DescribeTopicsOptions options) {
         Map<String, KafkaFuture<TopicDescription>> topicDescriptions = new HashMap<>();
 
@@ -416,11 +411,6 @@ public class MockAdminClient extends AdminClient {
         else
             throw new IllegalArgumentException("The TopicCollection provided did not match any supported classes for deleteTopics.");
         return result;
-    }
-
-    @Override
-    public CreateOrDeleteXinfraTopicsZnodeResult deleteXinfraTopicsZnode(Map<String, String> xinfraTopics, DeleteXinfraTopicsZnodeOptions options) {
-        throw new UnsupportedOperationException("Not implemented yet");
     }
 
     private Map<String, KafkaFuture<Void>> handleDeleteTopicsUsingNames(Collection<String> topicNameCollection, DeleteTopicsOptions options) {

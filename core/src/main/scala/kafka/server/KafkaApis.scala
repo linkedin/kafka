@@ -257,8 +257,6 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.LI_COMBINED_CONTROL => handleLiCombinedControlRequest(request, requestLocal)
         case ApiKeys.LI_MOVE_CONTROLLER => handleMoveControllerRequest(request)
         case ApiKeys.LI_XINFRA_TOPIC_CREATE => maybeForwardToController(request, handleXinfraTopicCreateRequest)
-        case ApiKeys.LI_XINFRA_TOPIC_DELETE => maybeForwardToController(request, handleXinfraTopicDeleteRequest)
-        case ApiKeys.LIST_XINFRA_TOPICS => handleListXinfraTopicsRequest(request)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {
@@ -1669,25 +1667,6 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     sendResponseCallback(describeGroupsResponseData)
-  }
-
-  def handleListXinfraTopicsRequest(request: RequestChannel.Request): Unit = {
-    val listXinfraTopicsRequest = request.body[ListXinfraTopicsRequest]
-    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
-
-    val listXinfraTopicsResponse = try {
-      val allXinfraTopics = zkSupport.zkClient.getAllXinfraTopics
-      val topicsList = allXinfraTopics.map {
-        case (topic, namespace) => (topic + " " + namespace)
-      }.toList.asJava
-
-      new ListXinfraTopicsResponse(
-        new ListXinfraTopicsResponseData().setTopics(topicsList), listXinfraTopicsRequest.version())
-    } catch {
-      case throwable: Throwable =>
-        listXinfraTopicsRequest.getErrorResponse(throwable)
-    }
-    requestHelper.sendResponseExemptThrottle(request, listXinfraTopicsResponse)
   }
 
   def handleListGroupsRequest(request: RequestChannel.Request): Unit = {
@@ -3712,34 +3691,17 @@ class KafkaApis(val requestChannel: RequestChannel,
     val xinfraTopicCreateRequest = request.body[LiXinfraTopicCreateRequest]
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
 
-    val xinfraTopicCreateResponse = try {
+    try {
       xinfraTopicCreateRequest.data().topics().forEach(xinfraTopic => {
         zkSupport.zkClient.createXinfraTopicZNode(xinfraTopic.name(), xinfraTopic.namespace())
       })
-      LiXinfraTopicCreateResponse.prepareResponse(Errors.NONE, xinfraTopicCreateRequest.version())
+      requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+        LiXinfraTopicCreateResponse.prepareResponse(Errors.NONE, requestThrottleMs, xinfraTopicCreateRequest.version())
+      )
     } catch {
       case throwable: Throwable =>
-        xinfraTopicCreateRequest.getErrorResponse(throwable)
+        requestHelper.sendResponseExemptThrottle(request, xinfraTopicCreateRequest.getErrorResponse(throwable))
     }
-
-    requestHelper.sendResponseExemptThrottle(request, xinfraTopicCreateResponse)
-  }
-
-  def handleXinfraTopicDeleteRequest(request: RequestChannel.Request): Unit = {
-    val xinfraTopicDeleteRequest = request.body[LiXinfraTopicDeleteRequest]
-    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
-
-    val xinfraTopicDeleteResponse = try {
-      xinfraTopicDeleteRequest.data().topics().forEach(xinfraTopic => {
-        zkSupport.zkClient.deleteXinfraTopicZNode(xinfraTopic.name())
-      })
-      LiXinfraTopicDeleteResponse.prepareResponse(Errors.NONE, xinfraTopicDeleteRequest.version())
-    } catch {
-      case throwable: Throwable =>
-        xinfraTopicDeleteRequest.getErrorResponse(throwable)
-    }
-
-    requestHelper.sendResponseExemptThrottle(request, xinfraTopicDeleteResponse)
   }
 }
 

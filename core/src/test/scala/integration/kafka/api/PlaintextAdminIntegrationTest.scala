@@ -139,18 +139,6 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
 
     // create the xinfra topic znode
     client.createXinfraTopicsZnode(xinfraTopic)
-
-    // list xinfra topic should return exactly one entry
-    val result = client.listXinfraTopics()
-    assertEquals(1, result.namesAndNamespaces().get().size())
-    assertEquals("xinfra-test-topic tracking", result.namesAndNamespaces().get().get(0))
-
-    // delete xinfra topic znode
-    client.deleteXinfraTopicsZnode(xinfraTopic)
-
-    // after deletion, list xinfra topic should return 0 entry
-    val result1 = client.listXinfraTopics()
-    assertEquals(0, result1.namesAndNamespaces().get().size())
   }
 
   @Test

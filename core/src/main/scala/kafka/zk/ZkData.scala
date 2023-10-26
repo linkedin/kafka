@@ -76,7 +76,7 @@ object BrokersZNode {
 }
 
 object FederatedTopicsZNode {
-  def path = "/xinfraTopics"
+  def path = "/federatedTopics"
 }
 
 object PreferredControllersZNode {

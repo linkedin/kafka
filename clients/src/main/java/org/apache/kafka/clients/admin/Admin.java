@@ -199,11 +199,11 @@ public interface Admin extends AutoCloseable {
      */
     CreateTopicsResult createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options);
 
-    default CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> xinfraTopics) {
-        return createFederatedTopicsZnode(xinfraTopics, new CreateFederatedTopicsZnodeOptions());
+    default CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> federatedTopics) {
+        return createFederatedTopicsZnode(federatedTopics, new CreateFederatedTopicsZnodeOptions());
     }
 
-    CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> xinfraTopics,
+    CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> federatedTopics,
         CreateFederatedTopicsZnodeOptions options);
 
     /**

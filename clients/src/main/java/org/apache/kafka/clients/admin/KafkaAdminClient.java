@@ -1600,7 +1600,7 @@ public class KafkaAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicsZnodeResult createXinfraTopicsZnode(final Map<String, String> xinfraTopics,
+    public CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(final Map<String, String> xinfraTopics,
                                                                          final CreateFederatedTopicsZnodeOptions options) {
         final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(xinfraTopics.size());
         final long now = time.milliseconds();
@@ -1609,7 +1609,7 @@ public class KafkaAdminClient extends AdminClient {
             topics.add(new LiFederatedTopicCreateRequestData.FederatedTopics().setName(topic).setNamespace(namespace));
             topicFutures.put(topic, new KafkaFutureImpl<>());
         });
-        runnable.call(new Call("createXinfraTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
+        runnable.call(new Call("createFederatedTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
             new ControllerNodeProvider()) {
             @Override
             AbstractRequest.Builder<?> createRequest(int timeoutMs) {

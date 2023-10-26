@@ -329,7 +329,7 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicsZnodeResult createXinfraTopicsZnode(Map<String, String> xinfraTopics,
+    public CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> xinfraTopics,
         CreateFederatedTopicsZnodeOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }

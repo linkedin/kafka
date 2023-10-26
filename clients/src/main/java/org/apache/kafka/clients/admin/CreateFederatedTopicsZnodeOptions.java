@@ -22,7 +22,7 @@ import org.apache.kafka.common.annotation.InterfaceStability;
 
 
 /**
- * Options for {@link Admin#createXinfraTopicsZnode(Map, CreateFederatedTopicsZnodeOptions)} (Collection)}.
+ * Options for {@link Admin#createFederatedTopicsZnode(Map, CreateFederatedTopicsZnodeOptions)} (Collection)}.
  *
  * The API of this class is evolving, see {@link Admin} for details.
  */

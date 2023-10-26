@@ -27,10 +27,10 @@ import org.apache.kafka.common.annotation.InterfaceStability;
  * The API of this class is evolving, see {@link Admin} for details.
  */
 @InterfaceStability.Evolving
-public class CreateOrDeleteXinfraTopicsZnodeResult {
+public class CreateOrDeleteFederatedTopicsZnodeResult {
     private final Map<String, KafkaFuture<Void>> future;
 
-    CreateOrDeleteXinfraTopicsZnodeResult(Map<String, KafkaFuture<Void>> future) {
+    CreateOrDeleteFederatedTopicsZnodeResult(Map<String, KafkaFuture<Void>> future) {
         this.future = future;
     }
 

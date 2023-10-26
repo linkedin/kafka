@@ -20,18 +20,18 @@ package org.apache.kafka.common.requests;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
-import org.apache.kafka.common.message.LiXinfraTopicCreateResponseData;
+import org.apache.kafka.common.message.LiFederatedTopicCreateResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
 
 
-public class LiXinfraTopicCreateResponse extends AbstractResponse {
-    private final LiXinfraTopicCreateResponseData data;
+public class LiFederatedTopicCreateResponse extends AbstractResponse {
+    private final LiFederatedTopicCreateResponseData data;
     private final short version;
 
-    public LiXinfraTopicCreateResponse(LiXinfraTopicCreateResponseData data, short version) {
-        super(ApiKeys.LI_XINFRA_TOPIC_CREATE);
+    public LiFederatedTopicCreateResponse(LiFederatedTopicCreateResponseData data, short version) {
+        super(ApiKeys.LI_FEDERATED_TOPIC_CREATE);
         this.data = data;
         this.version = version;
     }
@@ -46,19 +46,19 @@ public class LiXinfraTopicCreateResponse extends AbstractResponse {
     }
 
     @Override
-    public LiXinfraTopicCreateResponseData data() {
+    public LiFederatedTopicCreateResponseData data() {
         return data;
     }
 
-    public static LiXinfraTopicCreateResponse prepareResponse(Errors error, int throttleTimeMs, short version) {
-        LiXinfraTopicCreateResponseData data = new LiXinfraTopicCreateResponseData();
+    public static LiFederatedTopicCreateResponse prepareResponse(Errors error, int throttleTimeMs, short version) {
+        LiFederatedTopicCreateResponseData data = new LiFederatedTopicCreateResponseData();
         data.setErrorCode(error.code());
         data.setThrottleTimeMs(throttleTimeMs);
-        return new LiXinfraTopicCreateResponse(data, version);
+        return new LiFederatedTopicCreateResponse(data, version);
     }
 
-    public static LiXinfraTopicCreateResponse parse(ByteBuffer buffer, short version) {
-        return new LiXinfraTopicCreateResponse(new LiXinfraTopicCreateResponseData(new ByteBufferAccessor(buffer), version), version);
+    public static LiFederatedTopicCreateResponse parse(ByteBuffer buffer, short version) {
+        return new LiFederatedTopicCreateResponse(new LiFederatedTopicCreateResponseData(new ByteBufferAccessor(buffer), version), version);
     }
 
     @Override

@@ -17,11 +17,11 @@
   "apiKey": 1003,
   "type": "request",
   "listeners": ["zkBroker", "broker", "controller"],
-  "name": "LiXinfraTopicCreateRequest",
+  "name": "LiFederatedTopicCreateRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",
   "fields": [
-    { "name": "Topics", "type": "[]XinfraTopics", "versions": "0+", "about": "The name and namespace of the xinfra topic",
+    { "name": "Topics", "type": "[]FederatedTopics", "versions": "0+", "about": "The name and namespace of the federated topic",
       "fields": [
         {"name": "Name", "type": "string", "versions": "0+", "about": "The topic name"},
         {"name": "Namespace", "type": "string", "versions": "0+", "about": "The namespace of the topic"}

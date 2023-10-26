@@ -661,8 +661,8 @@ class RequestQuotaTest extends BaseRequestTest {
         case ApiKeys.LI_MOVE_CONTROLLER =>
           new LiMoveControllerRequest.Builder(new LiMoveControllerRequestData(), ApiKeys.LI_MOVE_CONTROLLER.latestVersion)
 
-        case ApiKeys.LI_XINFRA_TOPIC_CREATE =>
-          new LiXinfraTopicCreateRequest.Builder(new LiXinfraTopicCreateRequestData(), ApiKeys.LI_XINFRA_TOPIC_CREATE.latestVersion)
+        case ApiKeys.LI_FEDERATED_TOPIC_CREATE =>
+          new LiFederatedTopicCreateRequest.Builder(new LiXinfraTopicCreateRequestData(), ApiKeys.LI_FEDERATED_TOPIC_CREATE.latestVersion)
 
         case _ =>
           throw new IllegalArgumentException("Unsupported API key " + apiKey)

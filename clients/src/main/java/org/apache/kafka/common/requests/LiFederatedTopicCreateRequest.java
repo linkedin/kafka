@@ -18,25 +18,25 @@
 package org.apache.kafka.common.requests;
 
 import java.nio.ByteBuffer;
-import org.apache.kafka.common.message.LiXinfraTopicCreateRequestData;
-import org.apache.kafka.common.message.LiXinfraTopicCreateResponseData;
+import org.apache.kafka.common.message.LiFederatedTopicCreateRequestData;
+import org.apache.kafka.common.message.LiFederatedTopicCreateResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
 
 
-public class LiXinfraTopicCreateRequest extends AbstractRequest {
-    public static class Builder extends AbstractRequest.Builder<LiXinfraTopicCreateRequest> {
-        private final LiXinfraTopicCreateRequestData data;
+public class LiFederatedTopicCreateRequest extends AbstractRequest {
+    public static class Builder extends AbstractRequest.Builder<LiFederatedTopicCreateRequest> {
+        private final LiFederatedTopicCreateRequestData data;
 
-        public Builder(LiXinfraTopicCreateRequestData data, short allowedVersion) {
-            super(ApiKeys.LI_XINFRA_TOPIC_CREATE, allowedVersion);
+        public Builder(LiFederatedTopicCreateRequestData data, short allowedVersion) {
+            super(ApiKeys.LI_FEDERATED_TOPIC_CREATE, allowedVersion);
             this.data = data;
         }
 
         @Override
-        public LiXinfraTopicCreateRequest build(short version) {
-            return new LiXinfraTopicCreateRequest(data, version);
+        public LiFederatedTopicCreateRequest build(short version) {
+            return new LiFederatedTopicCreateRequest(data, version);
         }
 
         @Override
@@ -45,26 +45,26 @@ public class LiXinfraTopicCreateRequest extends AbstractRequest {
         }
     }
 
-    private final LiXinfraTopicCreateRequestData data;
+    private final LiFederatedTopicCreateRequestData data;
 
-    LiXinfraTopicCreateRequest(LiXinfraTopicCreateRequestData data, short version) {
-        super(ApiKeys.LI_XINFRA_TOPIC_CREATE, version);
+    LiFederatedTopicCreateRequest(LiFederatedTopicCreateRequestData data, short version) {
+        super(ApiKeys.LI_FEDERATED_TOPIC_CREATE, version);
         this.data = data;
     }
 
-    public static LiXinfraTopicCreateRequest parse(ByteBuffer buffer, short version) {
-        return new LiXinfraTopicCreateRequest(new LiXinfraTopicCreateRequestData(new ByteBufferAccessor(buffer), version), version);
+    public static LiFederatedTopicCreateRequest parse(ByteBuffer buffer, short version) {
+        return new LiFederatedTopicCreateRequest(new LiFederatedTopicCreateRequestData(new ByteBufferAccessor(buffer), version), version);
     }
 
     @Override
     public AbstractResponse getErrorResponse(int throttleTimeMs, Throwable e) {
-        LiXinfraTopicCreateResponseData data = new LiXinfraTopicCreateResponseData()
+        LiFederatedTopicCreateResponseData data = new LiFederatedTopicCreateResponseData()
             .setErrorCode(Errors.forException(e).code());
-        return new LiXinfraTopicCreateResponse(data, version());
+        return new LiFederatedTopicCreateResponse(data, version());
     }
 
     @Override
-    public LiXinfraTopicCreateRequestData data() {
+    public LiFederatedTopicCreateRequestData data() {
         return data;
     }
 }

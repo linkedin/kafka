@@ -47,8 +47,8 @@ public class NoOpAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteXinfraTopicsZnodeResult createXinfraTopicsZnode(Map<String, String> xinfraTopics,
-        CreateXinfraTopicsZnodeOptions options) {
+    public CreateOrDeleteFederatedTopicsZnodeResult createXinfraTopicsZnode(Map<String, String> xinfraTopics,
+        CreateFederatedTopicsZnodeOptions options) {
         return null;
     }
 

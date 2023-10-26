@@ -141,8 +141,8 @@ import org.apache.kafka.common.message.DescribeUserScramCredentialsResponseData;
 import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
 import org.apache.kafka.common.message.LeaveGroupRequestData.MemberIdentity;
 import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRequestData;
+import org.apache.kafka.common.message.LiFederatedTopicCreateRequestData;
 import org.apache.kafka.common.message.LiMoveControllerRequestData;
-import org.apache.kafka.common.message.LiXinfraTopicCreateRequestData;
 import org.apache.kafka.common.message.ListGroupsRequestData;
 import org.apache.kafka.common.message.ListGroupsResponseData;
 import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsPartition;
@@ -222,8 +222,8 @@ import org.apache.kafka.common.requests.LiControlledShutdownSkipSafetyCheckReque
 import org.apache.kafka.common.requests.LiControlledShutdownSkipSafetyCheckResponse;
 import org.apache.kafka.common.requests.LiMoveControllerRequest;
 import org.apache.kafka.common.requests.LiMoveControllerResponse;
-import org.apache.kafka.common.requests.LiXinfraTopicCreateRequest;
-import org.apache.kafka.common.requests.LiXinfraTopicCreateResponse;
+import org.apache.kafka.common.requests.LiFederatedTopicCreateRequest;
+import org.apache.kafka.common.requests.LiFederatedTopicCreateResponse;
 import org.apache.kafka.common.requests.ListGroupsRequest;
 import org.apache.kafka.common.requests.ListGroupsResponse;
 import org.apache.kafka.common.requests.ListOffsetsRequest;
@@ -1600,27 +1600,27 @@ public class KafkaAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteXinfraTopicsZnodeResult createXinfraTopicsZnode(final Map<String, String> xinfraTopics,
-                                                                         final CreateXinfraTopicsZnodeOptions options) {
+    public CreateOrDeleteFederatedTopicsZnodeResult createXinfraTopicsZnode(final Map<String, String> xinfraTopics,
+                                                                         final CreateFederatedTopicsZnodeOptions options) {
         final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(xinfraTopics.size());
         final long now = time.milliseconds();
-        List<LiXinfraTopicCreateRequestData.XinfraTopics> topics = new ArrayList<>();
+        List<LiFederatedTopicCreateRequestData.FederatedTopics> topics = new ArrayList<>();
         xinfraTopics.forEach((topic, namespace) -> {
-            topics.add(new LiXinfraTopicCreateRequestData.XinfraTopics().setName(topic).setNamespace(namespace));
+            topics.add(new LiFederatedTopicCreateRequestData.FederatedTopics().setName(topic).setNamespace(namespace));
             topicFutures.put(topic, new KafkaFutureImpl<>());
         });
         runnable.call(new Call("createXinfraTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
             new ControllerNodeProvider()) {
             @Override
             AbstractRequest.Builder<?> createRequest(int timeoutMs) {
-                return new LiXinfraTopicCreateRequest.Builder(new LiXinfraTopicCreateRequestData()
+                return new LiFederatedTopicCreateRequest.Builder(new LiFederatedTopicCreateRequestData()
                     .setTopics(topics)
                     .setTimeoutMs(timeoutMs),  (short) 0);
             }
 
             @Override
             void handleResponse(AbstractResponse abstractResponse) {
-                LiXinfraTopicCreateResponse response = (LiXinfraTopicCreateResponse) abstractResponse;
+                LiFederatedTopicCreateResponse response = (LiFederatedTopicCreateResponse) abstractResponse;
                 Errors errors = Errors.forCode(response.data().errorCode());
                 if (errors != Errors.NONE) {
                     completeAllExceptionally(topicFutures.values(), errors.exception());
@@ -1635,7 +1635,7 @@ public class KafkaAdminClient extends AdminClient {
                 completeAllExceptionally(topicFutures.values(), throwable);
             }
         }, now);
-        return new CreateOrDeleteXinfraTopicsZnodeResult(new HashMap<>(topicFutures));
+        return new CreateOrDeleteFederatedTopicsZnodeResult(new HashMap<>(topicFutures));
     }
 
     private Call getCreateTopicsCall(final CreateTopicsOptions options,

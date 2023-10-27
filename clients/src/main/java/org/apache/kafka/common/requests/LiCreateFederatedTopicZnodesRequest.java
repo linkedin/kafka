@@ -18,25 +18,25 @@
 package org.apache.kafka.common.requests;
 
 import java.nio.ByteBuffer;
-import org.apache.kafka.common.message.LiFederatedTopicZnodeCreateRequestData;
-import org.apache.kafka.common.message.LiFederatedTopicZnodeCreateResponseData;
+import org.apache.kafka.common.message.LiCreateFederatedTopicZnodesRequestData;
+import org.apache.kafka.common.message.LiCreateFederatedTopicZnodesResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
 
 
-public class LiFederatedTopicZnodeCreateRequest extends AbstractRequest {
-    public static class Builder extends AbstractRequest.Builder<LiFederatedTopicZnodeCreateRequest> {
-        private final LiFederatedTopicZnodeCreateRequestData data;
+public class LiCreateFederatedTopicZnodesRequest extends AbstractRequest {
+    public static class Builder extends AbstractRequest.Builder<LiCreateFederatedTopicZnodesRequest> {
+        private final LiCreateFederatedTopicZnodesRequestData data;
 
-        public Builder(LiFederatedTopicZnodeCreateRequestData data, short allowedVersion) {
+        public Builder(LiCreateFederatedTopicZnodesRequestData data, short allowedVersion) {
             super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES, allowedVersion);
             this.data = data;
         }
 
         @Override
-        public LiFederatedTopicZnodeCreateRequest build(short version) {
-            return new LiFederatedTopicZnodeCreateRequest(data, version);
+        public LiCreateFederatedTopicZnodesRequest build(short version) {
+            return new LiCreateFederatedTopicZnodesRequest(data, version);
         }
 
         @Override
@@ -45,26 +45,26 @@ public class LiFederatedTopicZnodeCreateRequest extends AbstractRequest {
         }
     }
 
-    private final LiFederatedTopicZnodeCreateRequestData data;
+    private final LiCreateFederatedTopicZnodesRequestData data;
 
-    LiFederatedTopicZnodeCreateRequest(LiFederatedTopicZnodeCreateRequestData data, short version) {
+    LiCreateFederatedTopicZnodesRequest(LiCreateFederatedTopicZnodesRequestData data, short version) {
         super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES, version);
         this.data = data;
     }
 
-    public static LiFederatedTopicZnodeCreateRequest parse(ByteBuffer buffer, short version) {
-        return new LiFederatedTopicZnodeCreateRequest(new LiFederatedTopicZnodeCreateRequestData(new ByteBufferAccessor(buffer), version), version);
+    public static LiCreateFederatedTopicZnodesRequest parse(ByteBuffer buffer, short version) {
+        return new LiCreateFederatedTopicZnodesRequest(new LiCreateFederatedTopicZnodesRequestData(new ByteBufferAccessor(buffer), version), version);
     }
 
     @Override
     public AbstractResponse getErrorResponse(int throttleTimeMs, Throwable e) {
-        LiFederatedTopicZnodeCreateResponseData data = new LiFederatedTopicZnodeCreateResponseData()
+        LiCreateFederatedTopicZnodesResponseData data = new LiCreateFederatedTopicZnodesResponseData()
             .setErrorCode(Errors.forException(e).code());
-        return new LiFederatedTopicZnodeCreateResponse(data, version());
+        return new LiCreateFederatedTopicZnodesResponse(data, version());
     }
 
     @Override
-    public LiFederatedTopicZnodeCreateRequestData data() {
+    public LiCreateFederatedTopicZnodesRequestData data() {
         return data;
     }
 }

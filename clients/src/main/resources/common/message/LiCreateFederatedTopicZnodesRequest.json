@@ -17,7 +17,7 @@
   "apiKey": 1003,
   "type": "request",
   "listeners": ["zkBroker", "broker", "controller"],
-  "name": "LiFederatedTopicZnodeCreateRequest",
+  "name": "LiCreateFederatedTopicZnodesRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",
   "fields": [

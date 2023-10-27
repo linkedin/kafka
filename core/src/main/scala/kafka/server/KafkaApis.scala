@@ -3688,12 +3688,12 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def handleMarkFederatedTopicRequest(request: RequestChannel.Request): Unit = {
-    val markFederatedTopicRequest = request.body[LiFederatedTopicZnodeCreateRequest]
+    val markFederatedTopicRequest = request.body[LiCreateFederatedTopicZnodesRequest]
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
 
     if (!zkSupport.controller.isActive) {
       requestHelper.sendResponseExemptThrottle(request,
-        LiFederatedTopicZnodeCreateResponse.prepareResponse(Errors.NOT_CONTROLLER, 0, markFederatedTopicRequest.version())
+        LiCreateFederatedTopicZnodesResponse.prepareResponse(Errors.NOT_CONTROLLER, 0, markFederatedTopicRequest.version())
       )
     } else {
       val hasClusterAuthorization = authHelper.authorize(request.context, CREATE, CLUSTER, CLUSTER_NAME,
@@ -3736,7 +3736,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           zkSupport.zkClient.createFederatedTopicZNode(entry._1, entry._2)
         })
         requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
-          LiFederatedTopicZnodeCreateResponse.prepareResponse(Errors.NONE, requestThrottleMs, markFederatedTopicRequest.version())
+          LiCreateFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, requestThrottleMs, markFederatedTopicRequest.version())
         )
       } catch {
         case throwable: Throwable =>

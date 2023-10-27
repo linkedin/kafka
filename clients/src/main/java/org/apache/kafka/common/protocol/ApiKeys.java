@@ -115,7 +115,7 @@ public enum ApiKeys {
     LI_COMBINED_CONTROL(ApiMessageType.LI_COMBINED_CONTROL, true),
     LI_MOVE_CONTROLLER(ApiMessageType.LI_MOVE_CONTROLLER, true),
 
-    LI_FEDERATED_TOPIC_CREATE(ApiMessageType.LI_FEDERATED_TOPIC_CREATE, false, true);
+    LI_CREATE_FEDERATED_TOPIC_ZNODE(ApiMessageType.LI_CREATE_FEDERATED_TOPIC_ZNODES, false, true);
 
     private static final Map<ApiMessageType.ListenerType, EnumSet<ApiKeys>> APIS_BY_LISTENER =
         new EnumMap<>(ApiMessageType.ListenerType.class);

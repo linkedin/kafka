@@ -31,7 +31,7 @@ public class LiFederatedTopicCreateResponse extends AbstractResponse {
     private final short version;
 
     public LiFederatedTopicCreateResponse(LiFederatedTopicCreateResponseData data, short version) {
-        super(ApiKeys.LI_FEDERATED_TOPIC_CREATE);
+        super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODE);
         this.data = data;
         this.version = version;
     }

@@ -1601,7 +1601,7 @@ public class KafkaAdminClient extends AdminClient {
 
     @Override
     public CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(final Map<String, String> federatedTopics,
-                                                                         final CreateFederatedTopicsZnodeOptions options) {
+                                                                               final CreateFederatedTopicsZnodeOptions options) {
         final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(federatedTopics.size());
         final long now = time.milliseconds();
         List<LiFederatedTopicCreateRequestData.FederatedTopics> topics = new ArrayList<>();

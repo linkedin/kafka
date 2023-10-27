@@ -20,17 +20,17 @@ package org.apache.kafka.common.requests;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
-import org.apache.kafka.common.message.LiFederatedTopicCreateResponseData;
+import org.apache.kafka.common.message.LiFederatedTopicZnodeCreateResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
 
 
-public class LiFederatedTopicCreateResponse extends AbstractResponse {
-    private final LiFederatedTopicCreateResponseData data;
+public class LiFederatedTopicZnodeCreateResponse extends AbstractResponse {
+    private final LiFederatedTopicZnodeCreateResponseData data;
     private final short version;
 
-    public LiFederatedTopicCreateResponse(LiFederatedTopicCreateResponseData data, short version) {
+    public LiFederatedTopicZnodeCreateResponse(LiFederatedTopicZnodeCreateResponseData data, short version) {
         super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES);
         this.data = data;
         this.version = version;
@@ -46,19 +46,19 @@ public class LiFederatedTopicCreateResponse extends AbstractResponse {
     }
 
     @Override
-    public LiFederatedTopicCreateResponseData data() {
+    public LiFederatedTopicZnodeCreateResponseData data() {
         return data;
     }
 
-    public static LiFederatedTopicCreateResponse prepareResponse(Errors error, int throttleTimeMs, short version) {
-        LiFederatedTopicCreateResponseData data = new LiFederatedTopicCreateResponseData();
+    public static LiFederatedTopicZnodeCreateResponse prepareResponse(Errors error, int throttleTimeMs, short version) {
+        LiFederatedTopicZnodeCreateResponseData data = new LiFederatedTopicZnodeCreateResponseData();
         data.setErrorCode(error.code());
         data.setThrottleTimeMs(throttleTimeMs);
-        return new LiFederatedTopicCreateResponse(data, version);
+        return new LiFederatedTopicZnodeCreateResponse(data, version);
     }
 
-    public static LiFederatedTopicCreateResponse parse(ByteBuffer buffer, short version) {
-        return new LiFederatedTopicCreateResponse(new LiFederatedTopicCreateResponseData(new ByteBufferAccessor(buffer), version), version);
+    public static LiFederatedTopicZnodeCreateResponse parse(ByteBuffer buffer, short version) {
+        return new LiFederatedTopicZnodeCreateResponse(new LiFederatedTopicZnodeCreateResponseData(new ByteBufferAccessor(buffer), version), version);
     }
 
     @Override

@@ -270,6 +270,12 @@ public interface Admin extends AutoCloseable {
      */
     DeleteTopicsResult deleteTopics(TopicCollection topics, DeleteTopicsOptions options);
 
+    default CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> xinfraTopics) {
+        return deleteFederatedTopicZnodes(xinfraTopics, new DeleteFederatedTopicZnodesOptions());
+    }
+
+    CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> xinfraTopics, DeleteFederatedTopicZnodesOptions options);
+
     /**
      * List the topics available in the cluster with the default options.
      * <p>

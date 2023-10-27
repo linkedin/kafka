@@ -138,7 +138,7 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
     val federatedTopic = Map("federated-test-topic" -> "tracking").asJava
 
     // create the federated topic znode
-    client.createFederatedTopicsZnode(federatedTopic)
+    client.createFederatedTopicZnodes(federatedTopic)
   }
 
   @Test

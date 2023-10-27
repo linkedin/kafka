@@ -329,8 +329,8 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> federatedTopics,
-        CreateFederatedTopicsZnodeOptions options) {
+    public CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(Map<String, String> federatedTopics,
+        CreateFederatedTopicZnodesOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }
 

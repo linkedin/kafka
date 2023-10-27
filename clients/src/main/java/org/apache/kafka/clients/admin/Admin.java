@@ -199,12 +199,12 @@ public interface Admin extends AutoCloseable {
      */
     CreateTopicsResult createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options);
 
-    default CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> federatedTopics) {
-        return createFederatedTopicsZnode(federatedTopics, new CreateFederatedTopicsZnodeOptions());
+    default CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(Map<String, String> federatedTopics) {
+        return createFederatedTopicZnodes(federatedTopics, new CreateFederatedTopicZnodesOptions());
     }
 
-    CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(Map<String, String> federatedTopics,
-        CreateFederatedTopicsZnodeOptions options);
+    CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(Map<String, String> federatedTopics,
+        CreateFederatedTopicZnodesOptions options);
 
     /**
      * This is a convenience method for {@link #deleteTopics(TopicCollection, DeleteTopicsOptions)}

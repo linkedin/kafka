@@ -1600,8 +1600,8 @@ public class KafkaAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicsZnodeResult createFederatedTopicsZnode(final Map<String, String> federatedTopics,
-                                                                               final CreateFederatedTopicsZnodeOptions options) {
+    public CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(final Map<String, String> federatedTopics,
+                                                                               final CreateFederatedTopicZnodesOptions options) {
         final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(federatedTopics.size());
         final long now = time.milliseconds();
         List<LiCreateFederatedTopicZnodesRequestData.FederatedTopics> topics = new ArrayList<>();
@@ -1609,7 +1609,7 @@ public class KafkaAdminClient extends AdminClient {
             topics.add(new LiCreateFederatedTopicZnodesRequestData.FederatedTopics().setName(topic).setNamespace(namespace));
             topicFutures.put(topic, new KafkaFutureImpl<>());
         });
-        runnable.call(new Call("createFederatedTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
+        runnable.call(new Call("createFederatedTopicZnodes", calcDeadlineMs(now, options.timeoutMs()),
             new ControllerNodeProvider()) {
             @Override
             AbstractRequest.Builder<?> createRequest(int timeoutMs) {
@@ -1635,7 +1635,7 @@ public class KafkaAdminClient extends AdminClient {
                 completeAllExceptionally(topicFutures.values(), throwable);
             }
         }, now);
-        return new CreateOrDeleteFederatedTopicsZnodeResult(new HashMap<>(topicFutures));
+        return new CreateOrDeleteFederatedTopicZnodesResult(new HashMap<>(topicFutures));
     }
 
     private Call getCreateTopicsCall(final CreateTopicsOptions options,

@@ -22,12 +22,12 @@ import org.apache.kafka.common.annotation.InterfaceStability;
 
 
 /**
- * Options for {@link Admin#createFederatedTopicsZnode(Map, CreateFederatedTopicsZnodeOptions)} (Collection)}.
+ * Options for {@link Admin#createFederatedTopicZnodes(Map, CreateFederatedTopicZnodesOptions)} (Collection)}.
  *
  * The API of this class is evolving, see {@link Admin} for details.
  */
 @InterfaceStability.Evolving
-public class CreateFederatedTopicsZnodeOptions extends AbstractOptions<CreateFederatedTopicsZnodeOptions> {
+public class CreateFederatedTopicZnodesOptions extends AbstractOptions<CreateFederatedTopicZnodesOptions> {
     private boolean retryOnQuotaViolation = true;
 
     /**
@@ -36,7 +36,7 @@ public class CreateFederatedTopicsZnodeOptions extends AbstractOptions<CreateFed
      *
      */
     // This method is retained to keep binary compatibility with 0.11
-    public CreateFederatedTopicsZnodeOptions timeoutMs(Integer timeoutMs) {
+    public CreateFederatedTopicZnodesOptions timeoutMs(Integer timeoutMs) {
         this.timeoutMs = timeoutMs;
         return this;
     }
@@ -44,7 +44,7 @@ public class CreateFederatedTopicsZnodeOptions extends AbstractOptions<CreateFed
     /**
      * Set to true if quota violation should be automatically retried.
      */
-    public CreateFederatedTopicsZnodeOptions retryOnQuotaViolation(boolean retryOnQuotaViolation) {
+    public CreateFederatedTopicZnodesOptions retryOnQuotaViolation(boolean retryOnQuotaViolation) {
         this.retryOnQuotaViolation = retryOnQuotaViolation;
         return this;
     }

@@ -256,7 +256,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiControlledShutdownSkipSafetyCheck(request)
         case ApiKeys.LI_COMBINED_CONTROL => handleLiCombinedControlRequest(request, requestLocal)
         case ApiKeys.LI_MOVE_CONTROLLER => handleMoveControllerRequest(request)
-        case ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODE => maybeForwardToController(request, handleMarkFederatedTopicRequest)
+        case ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES => maybeForwardToController(request, handleMarkFederatedTopicRequest)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {

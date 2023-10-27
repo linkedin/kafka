@@ -309,7 +309,7 @@ public abstract class AbstractRequest implements AbstractRequestResponse {
                 return LiCombinedControlRequest.parse(buffer, apiVersion);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerRequest.parse(buffer, apiVersion);
-            case LI_CREATE_FEDERATED_TOPIC_ZNODE:
+            case LI_CREATE_FEDERATED_TOPIC_ZNODES:
                 return LiFederatedTopicCreateRequest.parse(buffer, apiVersion);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseRequest`, the " +

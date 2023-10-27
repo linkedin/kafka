@@ -30,7 +30,7 @@ public class LiFederatedTopicCreateRequest extends AbstractRequest {
         private final LiFederatedTopicCreateRequestData data;
 
         public Builder(LiFederatedTopicCreateRequestData data, short allowedVersion) {
-            super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODE, allowedVersion);
+            super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES, allowedVersion);
             this.data = data;
         }
 
@@ -48,7 +48,7 @@ public class LiFederatedTopicCreateRequest extends AbstractRequest {
     private final LiFederatedTopicCreateRequestData data;
 
     LiFederatedTopicCreateRequest(LiFederatedTopicCreateRequestData data, short version) {
-        super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODE, version);
+        super(ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES, version);
         this.data = data;
     }
 

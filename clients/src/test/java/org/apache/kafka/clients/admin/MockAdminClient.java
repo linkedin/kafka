@@ -414,7 +414,7 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> xinfraTopics, DeleteFederatedTopicZnodesOptions options) {
+    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> federatedTopics, DeleteFederatedTopicZnodesOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }
 

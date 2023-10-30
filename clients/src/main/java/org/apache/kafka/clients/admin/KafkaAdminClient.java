@@ -1754,16 +1754,16 @@ public class KafkaAdminClient extends AdminClient {
     }
 
     @Override
-    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> xinfraTopics,
-                                                                         DeleteFederatedTopicZnodesOptions options) {
-        final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(xinfraTopics.size());
+    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(Map<String, String> federatedTopics,
+                                                                               DeleteFederatedTopicZnodesOptions options) {
+        final Map<String, KafkaFutureImpl<Void>> topicFutures = new HashMap<>(federatedTopics.size());
         final long now = time.milliseconds();
         List<LiDeleteFederatedTopicZnodesRequestData.FederatedTopics> topics = new ArrayList<>();
-        xinfraTopics.forEach((topic, namespace) -> {
+        federatedTopics.forEach((topic, namespace) -> {
             topics.add(new LiDeleteFederatedTopicZnodesRequestData.FederatedTopics().setName(topic).setNamespace(namespace));
             topicFutures.put(topic, new KafkaFutureImpl<>());
         });
-        runnable.call(new Call("deleteXinfraTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
+        runnable.call(new Call("deleteFederatedTopicsZnode", calcDeadlineMs(now, options.timeoutMs()),
             new ControllerNodeProvider()) {
             @Override
             AbstractRequest.Builder<?> createRequest(int timeoutMs) {

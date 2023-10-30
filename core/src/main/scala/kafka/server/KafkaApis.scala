@@ -256,7 +256,11 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiControlledShutdownSkipSafetyCheck(request)
         case ApiKeys.LI_COMBINED_CONTROL => handleLiCombinedControlRequest(request, requestLocal)
         case ApiKeys.LI_MOVE_CONTROLLER => handleMoveControllerRequest(request)
+        // LI_CREATE_FEDERATED_TOPIC_ZNODES is decoupled from CREATE_TOPICS and only changes the ACL validation behavior
+        // within kafka-server level
         case ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES => maybeForwardToController(request, handleMarkFederatedTopicRequest)
+        // LI_DELETE_FEDERATED_TOPIC_ZNODES is decoupled from DELETE_TOPICS and only changes the ACL validation behavior
+        // within kafka-server level
         case ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES => maybeForwardToController(request, handleDeleteFederatedTopicZnodesRequest)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }

@@ -137,7 +137,7 @@ class PreferredControllerTest extends ZooKeeperTestHarness {
   }
 
   private def simulateControlledShutdownRequest(controller: KafkaServer, from: KafkaServer): ControlledShutdownResponse = {
-    // Mimicking what KafkaServer#controlledShutdown
+    // Mimic how KafkaServer#controlledShutdown creates a low-level NetworkClient and send out a ControlledShutdownRequest
     val config = from.config
     val time = new SystemTime()
     val logContext = new LogContext()

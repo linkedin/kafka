@@ -1261,7 +1261,7 @@ object KafkaConfig {
       .define(HeapDumpTimeoutProp, LONG, Defaults.HeapDumpTimeout, LOW, HeapDumpTimeoutDoc)
       .define(ProducerBatchDecompressionEnableProp, BOOLEAN, Defaults.ProducerBatchDecompressionEnable, LOW, ProducerBatchDecompressionEnableDoc)
       .define(PreferredControllerProp, BOOLEAN, Defaults.PreferredController, HIGH, PreferredControllerDoc)
-      .define(LiMinPreferredControllerCountProp, INT, Defaults.LiMinPreferredControllerCount, HIGH, LiMinPreferredControllerCountDoc)
+      .define(LiMinPreferredControllerCountProp, INT, Defaults.LiMinPreferredControllerCount, atLeast(0), HIGH, LiMinPreferredControllerCountDoc)
       .define(LiAsyncFetcherEnableProp, BOOLEAN, Defaults.LiAsyncFetcherEnabled, HIGH, LiAsyncFetcherEnableDoc)
       .define(LiCombinedControlRequestEnableProp, BOOLEAN, Defaults.LiCombinedControlRequestEnabled, HIGH, LiCombinedControlRequestEnableDoc)
       .define(LiUpdateMetadataDelayMsProp, LONG, Defaults.LiUpdateMetadataDelayMs, atLeast(0), LOW, LiUpdateMetadataDelayMsDoc)

@@ -1734,7 +1734,6 @@ class KafkaController(val config: KafkaConfig,
 
     val shouldSkipShutdownSafetyCheck = controllerContext.skipShutdownSafetyCheck.getOrElse(id, -1L) >= actualBrokerEpoch
     var passedAllShutdown: Boolean = true // For logging purpose
-    // TODO: live controller itself?
     if (controllerContext.getLivePreferredControllerIds.size <= config.liMinPreferredControllerCount
         // Only check if this broker affects live preferred controller set so that for non-preferred-controller clusters it doesn't get blocked
         && controllerContext.getLivePreferredControllerIds.contains(id)) {

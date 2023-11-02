@@ -1737,7 +1737,7 @@ class KafkaController(val config: KafkaConfig,
     if (controllerContext.getLivePreferredControllerIds.size <= config.liMinPreferredControllerCount
         // Only check if this broker affects live preferred controller set so that for non-preferred-controller clusters it doesn't get blocked
         && controllerContext.getLivePreferredControllerIds.contains(id)) {
-      passedAllShutdown &= false
+      passedAllShutdown = false
       if (!shouldSkipShutdownSafetyCheck) {
         info(s"Live preferred controller check has prevented broker $id (broker epoch $actualBrokerEpoch) from shutting down.")
         throw new NotEnoughPreferredControllersException(s"Broker id $id cannot initiate shutdown without an impact on preferred controller availability.")
@@ -1747,7 +1747,7 @@ class KafkaController(val config: KafkaConfig,
     // This is not an else if, in case in some sense that preferred controller still got scheduled with replicas.
     // While it should be guaranteed on external component like cruise-control, Kafka itself should be defensive on this.
     if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, actualBrokerEpoch)) {
-      passedAllShutdown &= false
+      passedAllShutdown = false
       if (!shouldSkipShutdownSafetyCheck) {
         info(s"Controlled shutdown safety has prevented broker $id (broker epoch $actualBrokerEpoch) from shutting down.")
         throw new NotEnoughReplicasException(s"Broker id $id cannot initiate shutdown without an impact on topic availability.")

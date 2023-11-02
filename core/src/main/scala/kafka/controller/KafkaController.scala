@@ -1745,7 +1745,7 @@ class KafkaController(val config: KafkaConfig,
     }
 
     // This is not an else if, in case in some sense that preferred controller still got scheduled with replicas.
-    // While it should be guaranteed on external component like cruise-control, Kafka itself should be defensive on this
+    // While it should be guaranteed on external component like cruise-control, Kafka itself should be defensive on this.
     if (config.controlledShutdownSafetyCheckEnable && !safeToShutdown(id, actualBrokerEpoch)) {
       passedAllShutdown &= false
       if (!shouldSkipShutdownSafetyCheck) {

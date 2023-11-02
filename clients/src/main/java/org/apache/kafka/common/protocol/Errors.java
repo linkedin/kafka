@@ -373,7 +373,7 @@ public enum Errors {
     LI_OFFSET_MOVED_TO_TIERED_STORAGE and fully move to using OFFSET_MOVED_TO_TIERED_STORAGE.
      */
     LI_OFFSET_MOVED_TO_TIERED_STORAGE(1107, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new),
-    LI_NOT_ENOUGH_PREFERRED_CONTROLLERS(2000, "Not enough live preferred controllers", NotEnoughPreferredControllersException::new);
+    NOT_ENOUGH_PREFERRED_CONTROLLERS(2000, "Not enough live preferred controllers", NotEnoughPreferredControllersException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

@@ -58,7 +58,7 @@ public class ApiErrorTest {
             new NotEnoughReplicasException(), Errors.NOT_ENOUGH_REPLICAS, null));
 
         arguments.add(Arguments.of(
-            new NotEnoughPreferredControllersException(), Errors.LI_NOT_ENOUGH_PREFERRED_CONTROLLERS, null));
+            new NotEnoughPreferredControllersException(), Errors.NOT_ENOUGH_PREFERRED_CONTROLLERS, null));
 
         // avoid populating the error message if it's a generic one
         arguments.add(Arguments.of(

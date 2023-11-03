@@ -262,6 +262,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         // LI_DELETE_FEDERATED_TOPIC_ZNODES is decoupled from DELETE_TOPICS and only changes the ACL validation behavior
         // within kafka-server level
         case ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES => maybeForwardToController(request, handleDeleteFederatedTopicZnodesRequest)
+        // LI_LIST_FEDERATED_TOPIC_ZNODES is decoupled from LIST_TOPICS and not affect any other operation
+        case ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES => handleListFederatedTopicZnodesRequest(request)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {
@@ -3811,6 +3813,47 @@ class KafkaApis(val requestChannel: RequestChannel,
         case throwable: Throwable =>
           requestHelper.sendResponseExemptThrottle(request, federatedTopicZnodesDeleteRequest.getErrorResponse(throwable))
       }
+    }
+  }
+
+  def handleListFederatedTopicZnodesRequest(request: RequestChannel.Request): Unit = {
+    val listfederatedTopicZnodesRequest = request.body[LiListFederatedTopicZnodesRequest]
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    val requestedTopics = listfederatedTopicZnodesRequest.data().topics()
+
+    try {
+      if (requestedTopics.isEmpty || requestedTopics.size() == 0) {
+        // if empty list passed, list all existing federated topics
+        val allFederatedTopicZnodes = zkSupport.zkClient.getAllFederatedTopics.toList.asJava
+
+        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          new LiListFederatedTopicZnodesResponse(
+            new LiListFederatedTopicZnodesResponseData().setTopics(allFederatedTopicZnodes)
+              .setThrottleTimeMs(requestThrottleMs), listfederatedTopicZnodesRequest.version()
+          )
+        )
+      } else {
+        // if non-empty list passed, only list znode values for the given topics
+        val foundFederatedTopicZnodes = mutable.Set[String]()
+
+        requestedTopics.forEach(topic => {
+          val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name())
+          if (curFederatedTopicZnode != null) {
+            foundFederatedTopicZnodes.add(curFederatedTopicZnode)
+          }
+        })
+
+        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          new LiListFederatedTopicZnodesResponse(
+            new LiListFederatedTopicZnodesResponseData()
+              .setTopics(foundFederatedTopicZnodes.toList.asJava).setThrottleTimeMs(requestThrottleMs),
+            listfederatedTopicZnodesRequest.version()
+          )
+        )
+      }
+    } catch {
+      case throwable: Throwable =>
+        requestHelper.sendResponseExemptThrottle(request, listfederatedTopicZnodesRequest.getErrorResponse(throwable))
     }
   }
 }

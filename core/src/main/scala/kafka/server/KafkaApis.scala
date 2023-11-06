@@ -3827,6 +3827,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         listfederatedTopicZnodesRequest.getErrorResponse(
           new ClusterAuthorizationException("List all federated topic znodes operation not allowed"))
       )
+      return
     }
 
     try {

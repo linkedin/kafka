@@ -3820,26 +3820,37 @@ class KafkaApis(val requestChannel: RequestChannel,
     val listfederatedTopicZnodesRequest = request.body[LiListFederatedTopicZnodesRequest]
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
     val requestedTopics = listfederatedTopicZnodesRequest.data().topics()
+    val hasClusterAuthorization = authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)
 
     try {
-      if (requestedTopics.isEmpty || requestedTopics.size() == 0) {
+      if (requestedTopics.isEmpty) {
         // if empty list passed, list all existing federated topics
         val allFederatedTopicZnodes = zkSupport.zkClient.getAllFederatedTopics.toList.asJava
 
-        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
-          new LiListFederatedTopicZnodesResponse(
-            new LiListFederatedTopicZnodesResponseData().setTopics(allFederatedTopicZnodes)
-              .setThrottleTimeMs(requestThrottleMs), listfederatedTopicZnodesRequest.version()
+        // either return all federated topics or none, if cluster doesn't allow describe operation
+        if (hasClusterAuthorization) {
+          requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+            new LiListFederatedTopicZnodesResponse(
+              new LiListFederatedTopicZnodesResponseData().setTopics(allFederatedTopicZnodes)
+                .setThrottleTimeMs(requestThrottleMs), listfederatedTopicZnodesRequest.version()
+            )
           )
-        )
+        } else {
+          requestHelper.sendResponseExemptThrottle(request,
+            listfederatedTopicZnodesRequest.getErrorResponse(
+              new ClusterAuthorizationException("List all federated topic znodes operation not allowed"))
+          )
+        }
       } else {
         // if non-empty list passed, only list znode values for the given topics
         val foundFederatedTopicZnodes = mutable.Set[String]()
 
         requestedTopics.forEach(topic => {
-          val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name())
-          if (curFederatedTopicZnode != null) {
-            foundFederatedTopicZnodes.add(curFederatedTopicZnode)
+          if (hasClusterAuthorization || authHelper.authorize(request.context, DESCRIBE, TOPIC, topic.name())) {
+            val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name())
+            if (curFederatedTopicZnode != null) {
+              foundFederatedTopicZnodes.add(curFederatedTopicZnode)
+            }
           }
         })
 

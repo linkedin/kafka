@@ -2034,7 +2034,7 @@ public class KafkaAdminClient extends AdminClient {
 
     @Override
     public ListFederatedTopicZnodesResult listFederatedTopicZnodes(List<String> federatedTopics,
-        ListFederatedTopicZnodesOptions options) {
+                                                                   ListFederatedTopicZnodesOptions options) {
         final KafkaFutureImpl<List<String>> federatedTopicZnodesListingFuture = new KafkaFutureImpl<>();
         List<LiListFederatedTopicZnodesRequestData.FederatedTopics> topicsRequested = new ArrayList<>();
         federatedTopics.forEach(topic ->

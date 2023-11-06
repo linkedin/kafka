@@ -319,14 +319,15 @@ public interface Admin extends AutoCloseable {
     }
 
     /**
-     * List federated topic znodes match given topic names
+     * List federated topic znodes match given topic names; if empty list passed, all existing federated topic znodes
+     * will be listed
      * @param federatedTopics topic names
      * @param options the options to use when list federated topic znodes
      * @return empty list if the given topic names' znode don't exist; otherwise return the federated topics formatted
      *         /namespace/topic
      */
     ListFederatedTopicZnodesResult listFederatedTopicZnodes(List<String> federatedTopics,
-        ListFederatedTopicZnodesOptions options);
+                                                            ListFederatedTopicZnodesOptions options);
 
     /**
      * Describe some topics in the cluster, with the default options.

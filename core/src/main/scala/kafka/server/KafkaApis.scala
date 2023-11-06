@@ -3820,37 +3820,34 @@ class KafkaApis(val requestChannel: RequestChannel,
     val listfederatedTopicZnodesRequest = request.body[LiListFederatedTopicZnodesRequest]
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
     val requestedTopics = listfederatedTopicZnodesRequest.data().topics()
-    val hasClusterAuthorization = authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)
+
+    // only do authorization on cluster level, users are not expected to track this directly via kafka
+    if (!authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)) {
+      requestHelper.sendResponseExemptThrottle(request,
+        listfederatedTopicZnodesRequest.getErrorResponse(
+          new ClusterAuthorizationException("List all federated topic znodes operation not allowed"))
+      )
+    }
 
     try {
       if (requestedTopics.isEmpty) {
         // if empty list passed, list all existing federated topics
         val allFederatedTopicZnodes = zkSupport.zkClient.getAllFederatedTopics.toList.asJava
 
-        // either return all federated topics or none, if cluster doesn't allow describe operation
-        if (hasClusterAuthorization) {
-          requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
-            new LiListFederatedTopicZnodesResponse(
-              new LiListFederatedTopicZnodesResponseData().setTopics(allFederatedTopicZnodes)
-                .setThrottleTimeMs(requestThrottleMs), listfederatedTopicZnodesRequest.version()
-            )
+        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          new LiListFederatedTopicZnodesResponse(
+            new LiListFederatedTopicZnodesResponseData().setTopics(allFederatedTopicZnodes)
+              .setThrottleTimeMs(requestThrottleMs), listfederatedTopicZnodesRequest.version()
           )
-        } else {
-          requestHelper.sendResponseExemptThrottle(request,
-            listfederatedTopicZnodesRequest.getErrorResponse(
-              new ClusterAuthorizationException("List all federated topic znodes operation not allowed"))
-          )
-        }
+        )
       } else {
         // if non-empty list passed, only list znode values for the given topics
         val foundFederatedTopicZnodes = mutable.Set[String]()
 
         requestedTopics.forEach(topic => {
-          if (hasClusterAuthorization || authHelper.authorize(request.context, DESCRIBE, TOPIC, topic.name())) {
-            val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name())
-            if (curFederatedTopicZnode != null) {
-              foundFederatedTopicZnodes.add(curFederatedTopicZnode)
-            }
+          val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name())
+          if (curFederatedTopicZnode != null) {
+            foundFederatedTopicZnodes.add(curFederatedTopicZnode)
           }
         })
 

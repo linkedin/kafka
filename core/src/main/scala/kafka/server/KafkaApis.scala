@@ -3824,8 +3824,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // only do authorization on cluster level, users are not expected to track this directly via kafka
     if (!authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)) {
       requestHelper.sendResponseExemptThrottle(request,
-        listfederatedTopicZnodesRequest.getErrorResponse(
-          new ClusterAuthorizationException("List all federated topic znodes operation not allowed"))
+        LiListFederatedTopicZnodesResponse.prepareResponse(
+          Errors.CLUSTER_AUTHORIZATION_FAILED, 0, listfederatedTopicZnodesRequest.version())
       )
       return
     }

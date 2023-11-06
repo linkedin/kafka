@@ -16,7 +16,7 @@
 {
   "apiKey": 1005,
   "type": "request",
-  "listeners": ["zkBroker"],
+  "listeners": ["zkBroker", "broker"],
   "name": "LiListFederatedTopicZnodesRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",

@@ -3823,9 +3823,10 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     // only do authorization on cluster level, users are not expected to track this directly via kafka
     if (!authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)) {
-      requestHelper.sendResponseExemptThrottle(request,
-        LiListFederatedTopicZnodesResponse.prepareResponse(
-          Errors.CLUSTER_AUTHORIZATION_FAILED, 0, listfederatedTopicZnodesRequest.version())
+      requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          LiListFederatedTopicZnodesResponse.prepareResponse(
+            Errors.CLUSTER_AUTHORIZATION_FAILED, requestThrottleMs, listfederatedTopicZnodesRequest.version()
+        )
       )
       return
     }

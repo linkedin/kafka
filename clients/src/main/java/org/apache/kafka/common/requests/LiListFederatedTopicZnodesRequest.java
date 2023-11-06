@@ -58,6 +58,7 @@ public class LiListFederatedTopicZnodesRequest extends AbstractRequest {
     public LiListFederatedTopicZnodesResponse getErrorResponse(int throttleTimeMs, Throwable e) {
         LiListFederatedTopicZnodesResponseData data = new LiListFederatedTopicZnodesResponseData().
             setTopics(Collections.emptyList()).
+            setThrottleTimeMs(throttleTimeMs).
             setErrorCode(Errors.forException(e).code());
         return new LiListFederatedTopicZnodesResponse(data, version());
     }

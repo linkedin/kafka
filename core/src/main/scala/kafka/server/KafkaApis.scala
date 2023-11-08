@@ -3854,10 +3854,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         val foundFederatedTopicZnodes = mutable.Set[String]()
 
         requestedTopics.forEach(topic => {
-          val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name(), topic.namespace())
-          if (curFederatedTopicZnode.isDefined) {
-            foundFederatedTopicZnodes.add(curFederatedTopicZnode.get)
-          }
+          zkSupport.zkClient.getFederatedTopic(topic.name(), topic.namespace()).foreach(foundFederatedTopicZnodes.add)
         })
 
         requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>

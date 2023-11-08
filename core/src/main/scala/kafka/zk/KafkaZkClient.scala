@@ -145,36 +145,29 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     }.toMap
   }
 
-  def getFederatedTopic(topic: String): String = {
-    val getDataRequest = GetDataRequest(FederatedTopicZnode.path(topic))
-    val getDataResponse = retryRequestUntilConnected(getDataRequest)
-    getDataResponse.resultCode match {
-      case Code.OK => "/" + FederatedTopicZnode.decode(getDataResponse.data) + "/" + topic
-      case Code.NONODE => null
-      case _ => throw getDataResponse.resultException.get
+  def getFederatedTopic(topic: String, namespace: String): String = {
+    if (pathExists(FederatedTopicZnode.path(topic, namespace))) {
+      "/" + namespace + "/" + topic
+    } else {
+      null
     }
   }
 
   def getAllFederatedTopics: Set[String] = {
-    val topics = getChildren(FederatedTopicsZNode.path)
+    val allTopics = mutable.Map.empty[String, String]
+    val namespaces = getChildren(FederatedTopicsZNode.path)
+    namespaces.foreach(namespace => {
+      val curTopics = getAllFederatedTopicsInNamespace(namespace)
+      curTopics.foreach(curTopic => {
+        allTopics.put(curTopic, namespace)
+      })
+    })
 
     val merge: ((String, String)) => String = {
       case (key, value) => "/" + value + "/" + key
     }
 
-    val getDataRequests = topics.map(topic => GetDataRequest(
-      FederatedTopicZnode.path(topic),
-      ctx = Some(topic)))
-
-    val getDataResponses = retryRequestsUntilConnected(getDataRequests)
-    getDataResponses.flatMap { getDataResponse =>
-      val topic = getDataResponse.ctx.get.asInstanceOf[String]
-      getDataResponse.resultCode match {
-        case Code.OK => Some(topic, FederatedTopicZnode.decode(getDataResponse.data))
-        case Code.NONODE => None
-        case _ => throw getDataResponse.resultException.get
-      }
-    }.toMap.map(merge)
+    allTopics.map(merge)
   }.toSet
 
   /**
@@ -620,6 +613,28 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
         GetChildrenPaginatedRequest(TopicsZNode.path, registerWatch)
       } else {
         GetChildrenRequest(TopicsZNode.path, registerWatch)
+      }
+    )
+    getChildrenResponse.resultCode match {
+      case Code.OK => getChildrenResponse.children.toSet
+      case Code.NONODE => Set.empty
+      case _ => throw getChildrenResponse.resultException.get
+    }
+  }
+
+  /**
+   * Gets all federated topics in the namespace.
+   * @param registerWatch indicates if a watch must be registered or not
+   * @return sequence of topics in the cluster.
+   *
+   */
+  def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = false): Set[String] = {
+    val getChildrenResponse = retryRequestUntilConnected(
+      if (paginateTopics) {
+        debug(s"upgrading GetChildrenRequest to GetChildrenPaginatedRequest for '${TopicsZNode.path}'")
+        GetChildrenPaginatedRequest(FederatedTopicZnode.namespacePath(namespace), registerWatch)
+      } else {
+        GetChildrenRequest(FederatedTopicZnode.namespacePath(namespace), registerWatch)
       }
     )
     getChildrenResponse.resultCode match {
@@ -1896,12 +1911,12 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
   }
 
   def createFederatedTopicZNode(topic: String, namespace: String): Unit = {
-    val path = FederatedTopicZnode.path(topic)
-    createRecursive(path, FederatedTopicZnode.encode(namespace))
+    val path = FederatedTopicZnode.path(topic, namespace)
+    createRecursive(path)
   }
 
-  def deleteFederatedTopicZNode(topic: String): Unit = {
-    deletePath(FederatedTopicZnode.path(topic), ZkVersion.MatchAnyVersion, false)
+  def deleteFederatedTopicZNode(topic: String, namespace: String): Unit = {
+    deletePath(FederatedTopicZnode.path(topic, namespace), ZkVersion.MatchAnyVersion, false)
   }
 
   private def setConsumerOffset(group: String, topicPartition: TopicPartition, offset: Long): SetDataResponse = {

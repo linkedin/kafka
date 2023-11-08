@@ -154,21 +154,16 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
   }
 
   def getAllFederatedTopics: Set[String] = {
-    val allTopics = mutable.Map.empty[String, String]
     val namespaces = getChildren(FederatedTopicsZNode.path)
-    namespaces.foreach(namespace => {
-      val curTopics = getAllFederatedTopicsInNamespace(namespace)
-      curTopics.foreach(curTopic => {
-        allTopics.put(curTopic, namespace)
-      })
-    })
-
-    val merge: ((String, String)) => String = {
-      case (key, value) => s"/$value/$key"
-    }
-
-    allTopics.map(merge)
-  }.toSet
+    namespaces
+      // For all topics, generate (topic -> namespace) tuple
+      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace).map(_ -> namespace))
+      // To map to merge potential duplicate of topic -> namespace
+      .toMap
+      // Serialize to znode paths
+      .map { case (topic: String, namespace: String) => s"/$namespace/$topic" }
+      .toSet
+  }
 
   /**
    * Registers a given broker in zookeeper as the controller and increments controller epoch.

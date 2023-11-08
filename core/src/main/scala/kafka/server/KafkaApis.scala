@@ -3851,11 +3851,10 @@ class KafkaApis(val requestChannel: RequestChannel,
         )
       } else {
         // if non-empty list passed, only list znode values for the given topics
-        val foundFederatedTopicZnodes = mutable.Set[String]()
-
-        requestedTopics.forEach(topic => {
-          zkSupport.zkClient.getFederatedTopic(topic.name(), topic.namespace()).foreach(foundFederatedTopicZnodes.add)
-        })
+        val foundFederatedTopicZnodes = requestedTopics.asScala
+          // from a list of Options, flatten extracts value from Some, and nothing from None
+          .flatMap(topic => zkSupport.zkClient.getFederatedTopic(topic.name(), topic.namespace()))
+          .toSet
 
         requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
           new LiListFederatedTopicZnodesResponse(

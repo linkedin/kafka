@@ -145,11 +145,11 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     }.toMap
   }
 
-  def getFederatedTopic(topic: String, namespace: String): String = {
+  private[kafka] def getFederatedTopic(topic: String, namespace: String): Option[String] = {
     if (pathExists(FederatedTopicZnode.path(topic, namespace))) {
-      "/" + namespace + "/" + topic
+      Some(s"/$namespace/$topic")
     } else {
-      null
+      None
     }
   }
 
@@ -164,7 +164,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     })
 
     val merge: ((String, String)) => String = {
-      case (key, value) => "/" + value + "/" + key
+      case (key, value) => s"/$value/$key"
     }
 
     allTopics.map(merge)

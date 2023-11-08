@@ -3855,8 +3855,8 @@ class KafkaApis(val requestChannel: RequestChannel,
 
         requestedTopics.forEach(topic => {
           val curFederatedTopicZnode = zkSupport.zkClient.getFederatedTopic(topic.name(), topic.namespace())
-          if (curFederatedTopicZnode != null) {
-            foundFederatedTopicZnodes.add(curFederatedTopicZnode)
+          if (curFederatedTopicZnode.isDefined) {
+            foundFederatedTopicZnodes.add(curFederatedTopicZnode.get)
           }
         })
 

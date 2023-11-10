@@ -210,7 +210,7 @@ class ZooKeeperClient(connectString: String,
       case GetChildrenPaginatedRequest(path, _, ctx) =>
         CompletableFuture.supplyAsync(new Supplier[GetChildrenPaginatedResponse]() {
           def get(): GetChildrenPaginatedResponse = {
-            var topicsList: JList[String] = null 
+            var topicsList: JList[String] = null
             var resultCode: Code = Code.OK
             try {
               topicsList = zooKeeper.getAllChildrenPaginated(path, shouldWatch(request))
@@ -332,6 +332,7 @@ class ZooKeeperClient(connectString: String,
    */
   def registerZNodeChildChangeHandler(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
     zNodeChildChangeHandlers.put(zNodeChildChangeHandler.path, zNodeChildChangeHandler)
+    zooKeeper.addWatch(zNodeChildChangeHandler.path, AddWatchMode.PERSISTENT_RECURSIVE)
   }
 
   /**

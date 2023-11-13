@@ -335,6 +335,11 @@ class ZooKeeperClient(connectString: String,
     zooKeeper.addWatch(zNodeChildChangeHandler.path, AddWatchMode.PERSISTENT_RECURSIVE)
   }
 
+  def registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
+    zNodeChildChangeHandlers.put(zNodeChildChangeHandler.path, zNodeChildChangeHandler)
+    zooKeeper.addWatch(zNodeChildChangeHandler.path, AddWatchMode.PERSISTENT_RECURSIVE)
+  }
+
   /**
    * Unregister the handler from ZooKeeperClient. This is just a local operation.
    * @param path the path of the handler to unregister

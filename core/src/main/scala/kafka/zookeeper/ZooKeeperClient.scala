@@ -332,7 +332,6 @@ class ZooKeeperClient(connectString: String,
    */
   def registerZNodeChildChangeHandler(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
     zNodeChildChangeHandlers.put(zNodeChildChangeHandler.path, zNodeChildChangeHandler)
-    zooKeeper.addWatch(zNodeChildChangeHandler.path, AddWatchMode.PERSISTENT_RECURSIVE)
   }
 
   def registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {

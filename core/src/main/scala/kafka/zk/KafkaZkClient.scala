@@ -1733,6 +1733,10 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     zooKeeperClient.registerZNodeChildChangeHandler(zNodeChildChangeHandler)
   }
 
+  def registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
+    zooKeeperClient.registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler)
+  }
+
   /**
    * See ZooKeeperClient.unregisterZNodeChildChangeHandler
    * @param path

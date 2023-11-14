@@ -458,7 +458,7 @@ class ZooKeeperClient(connectString: String,
   // package level visibility for testing only
   private[zookeeper] object ZooKeeperClientWatcher extends Watcher {
     override def process(event: WatchedEvent): Unit = {
-      error(s"Received event: $event")
+      debug(s"Received event: $event")
       Option(event.getPath) match {
         case None =>
           val state = event.getState

@@ -157,7 +157,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     val namespaces = getChildren(FederatedTopicsZNode.path)
     namespaces
       // For all topics, generate (topic -> namespace) tuple
-      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace).map(_ -> namespace))
+      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace, registerWatch = true).map(_ -> namespace))
       // To map to merge potential duplicate of topic -> namespace
       .toMap
       // Serialize to znode paths
@@ -624,6 +624,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
    *
    */
   def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = false): Set[String] = {
+    zooKeeperClient.reRegisterFederatedTopicsZNodeChangeHandler(namespace)
     val getChildrenResponse = retryRequestUntilConnected(
       if (paginateTopics) {
         debug(s"upgrading GetChildrenRequest to GetChildrenPaginatedRequest for " +
@@ -1731,10 +1732,6 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
    */
   def registerZNodeChildChangeHandler(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
     zooKeeperClient.registerZNodeChildChangeHandler(zNodeChildChangeHandler)
-  }
-
-  def registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
-    zooKeeperClient.registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler)
   }
 
   /**

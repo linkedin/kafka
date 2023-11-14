@@ -1065,6 +1065,7 @@ object ZkData {
     PreferredControllersZNode.path,
     CorruptedBrokersZNode.path,
     TopicsZNode.path,
+    FederatedTopicsZNode.path,
     ConfigEntityChangeNotificationZNode.path,
     DeleteTopicsZNode.path,
     BrokerSequenceIdZNode.path,

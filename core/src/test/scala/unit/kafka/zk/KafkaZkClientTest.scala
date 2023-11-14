@@ -309,10 +309,49 @@ class KafkaZkClientTest extends ZooKeeperTestHarness {
     assertTrue(zkClient.topicExists(topic1))
   }
 
+  @Test
+  def testGetAllFederatedTopicsInClusterTriggersWatch(): Unit = {
+    zkClient.createTopLevelPaths()
+    val latch = registerFederatedTopicChildChangeHandler(5)
+
+    // Listing all the topics and register the watch
+    assertTrue(zkClient.getAllFederatedTopics.isEmpty)
+
+    zkClient.createFederatedTopicZNode("testTopic", "tracking")
+    assertEquals(1, zkClient.getAllFederatedTopics.size)
+
+    zkClient.createFederatedTopicZNode("testTopic1", "tracking")
+    assertEquals(2, zkClient.getAllFederatedTopics.size)
+
+    zkClient.createFederatedTopicZNode("testTopic2", "tracking")
+    assertEquals(3, zkClient.getAllFederatedTopics.size)
+
+    zkClient.createFederatedTopicZNode("testTopic3", "metrics")
+    assertEquals(4, zkClient.getAllFederatedTopics.size)
+
+    zkClient.deleteFederatedTopicZNode("testTopic2", "tracking")
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS),
+      "Failed to receive watch notification")
+  }
+
   private def registerChildChangeHandler(count: Int): CountDownLatch = {
-    val znodeChildChangeHandlerCountDownLatch = new CountDownLatch(1)
+    val znodeChildChangeHandlerCountDownLatch = new CountDownLatch(count)
     val znodeChildChangeHandler = new ZNodeChildChangeHandler {
       override val path: String = TopicsZNode.path
+
+      override def handleChildChange(): Unit = {
+        znodeChildChangeHandlerCountDownLatch.countDown()
+      }
+    }
+    zkClient.registerZNodeChildChangeHandler(znodeChildChangeHandler)
+    znodeChildChangeHandlerCountDownLatch
+  }
+
+  private def registerFederatedTopicChildChangeHandler(count: Int): CountDownLatch = {
+    val znodeChildChangeHandlerCountDownLatch = new CountDownLatch(count)
+    val znodeChildChangeHandler = new ZNodeChildChangeHandler {
+      override val path: String = FederatedTopicsZNode.path
 
       override def handleChildChange(): Unit = {
         znodeChildChangeHandlerCountDownLatch.countDown()

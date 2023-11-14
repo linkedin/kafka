@@ -161,8 +161,16 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
       new ListFederatedTopicZnodesOptions()).topics().get()
     assertEquals(0, expectedFail.size())
 
+    // 4. create another topic with same namespace
+    val federatedTopic1 = Map("federated-test-topic-1" -> "tracking").asJava
+    client.createFederatedTopicZnodes(federatedTopic1)
+
+    val federatedTopics1 = zkClient.getAllFederatedTopics
+    assertEquals(2, federatedTopics1.size)
+
     // delete federated topic znode
     client.deleteFederatedTopicZnodes(federatedTopic)
+    client.deleteFederatedTopicZnodes(federatedTopic1)
 
     waitForFederatedTopicZnodes(zkClient, List(), expectedFedTopic)
 

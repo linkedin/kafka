@@ -22,11 +22,11 @@ import java.util.concurrent.locks.{ReentrantLock, ReentrantReadWriteLock}
 import java.util.concurrent._
 import java.util.function.{Consumer, Supplier}
 import java.util.{List => JList}
-
 import com.yammer.metrics.core.MetricName
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils.CoreUtils.{inLock, inReadLock, inWriteLock}
 import kafka.utils.{KafkaScheduler, Logging}
+import kafka.zk.FederatedTopicsZNode
 import kafka.zookeeper.ZooKeeperClient._
 import org.apache.kafka.common.utils.Time
 import org.apache.zookeeper.AsyncCallback.{Children2Callback, DataCallback, StatCallback}
@@ -334,9 +334,11 @@ class ZooKeeperClient(connectString: String,
     zNodeChildChangeHandlers.put(zNodeChildChangeHandler.path, zNodeChildChangeHandler)
   }
 
-  def registerZNodeChildChangeHandlerRecursive(zNodeChildChangeHandler: ZNodeChildChangeHandler): Unit = {
-    zNodeChildChangeHandlers.put(zNodeChildChangeHandler.path, zNodeChildChangeHandler)
-    zooKeeper.addWatch(zNodeChildChangeHandler.path, AddWatchMode.PERSISTENT_RECURSIVE)
+  def reRegisterFederatedTopicsZNodeChangeHandler(namespace: String): Unit = {
+    if (zNodeChildChangeHandlers.contains(FederatedTopicsZNode.path)) {
+      zNodeChildChangeHandlers.putIfAbsent(s"${FederatedTopicsZNode.path}/$namespace",
+        zNodeChildChangeHandlers(FederatedTopicsZNode.path))
+    }
   }
 
   /**
@@ -456,7 +458,7 @@ class ZooKeeperClient(connectString: String,
   // package level visibility for testing only
   private[zookeeper] object ZooKeeperClientWatcher extends Watcher {
     override def process(event: WatchedEvent): Unit = {
-      debug(s"Received event: $event")
+      error(s"Received event: $event")
       Option(event.getPath) match {
         case None =>
           val state = event.getState

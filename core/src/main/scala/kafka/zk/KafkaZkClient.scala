@@ -157,7 +157,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     val namespaces = getChildren(FederatedTopicsZNode.path)
     namespaces
       // For all topics, generate (topic -> namespace) tuple
-      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace, true).map(_ -> namespace))
+      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace, registerWatch = true).map(_ -> namespace))
       // To map to merge potential duplicate of topic -> namespace
       .toMap
       // Serialize to znode paths

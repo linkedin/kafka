@@ -157,7 +157,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
     val namespaces = getChildren(FederatedTopicsZNode.path)
     namespaces
       // For all topics, generate (topic -> namespace) tuple
-      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace).map(_ -> namespace))
+      .flatMap(namespace => getAllFederatedTopicsInNamespace(namespace, true).map(_ -> namespace))
       // To map to merge potential duplicate of topic -> namespace
       .toMap
       // Serialize to znode paths
@@ -623,7 +623,7 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient,
    * @return sequence of topics in the cluster.
    *
    */
-  def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = true): Set[String] = {
+  def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = false): Set[String] = {
     val getChildrenResponse = retryRequestUntilConnected(
       if (paginateTopics) {
         debug(s"upgrading GetChildrenRequest to GetChildrenPaginatedRequest for " +

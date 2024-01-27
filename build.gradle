@@ -388,10 +388,7 @@ subprojects {
 
   test {
     maxParallelForks = userMaxForks ?: Runtime.runtime.availableProcessors()
-    // GRR DEBUG ONLY:  can hard-code this to true for POWER-THROUGH-FLAKES MODE BECAUSE CONFLUENT GAAHHH!!, or
-    //   can figure out how to set "project property" ignoreFailures for "gradlew clean test" runs...  TODO LATER
-    //ignoreFailures = userIgnoreFailures
-    ignoreFailures = true
+    ignoreFailures = userIgnoreFailures
 
     maxHeapSize = defaultMaxHeapSize
     jvmArgs = defaultJvmArgs

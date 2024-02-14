@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.clients;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
@@ -40,6 +42,8 @@ import static org.apache.kafka.common.utils.Utils.getPort;
 
 public final class ClientUtils {
     private static final Logger log = LoggerFactory.getLogger(ClientUtils.class);
+    private static final long DUPLICATE_WINDOW_MS = 1000; // 1 second
+    private static final Map<String, Long> ERROR_DEDUPLICATION_CACHE = new ConcurrentHashMap<>();
 
     private ClientUtils() {
     }
@@ -94,9 +98,21 @@ public final class ClientUtils {
             }
         }
         if (addresses.isEmpty())
-            throw new ConfigException("No resolvable bootstrap server in provided urls: " +
-                String.join(",", urls));
+            dedupeError("No resolvable bootstrap server in provided urls: " + String.join(",", urls));
         return addresses;
+    }
+
+    public static void dedupeError(String message) {
+        long currentTime = System.currentTimeMillis();
+        if (!isDuplicateError(message, currentTime)) {
+            ERROR_DEDUPLICATION_CACHE.put(message, currentTime);
+            throw new ConfigException(message);
+        }
+    }
+
+    private static boolean isDuplicateError(String message, long currentTime) {
+        Long previousTime = ERROR_DEDUPLICATION_CACHE.get(message);
+        return previousTime != null && (currentTime - previousTime) < DUPLICATE_WINDOW_MS;
     }
 
     /**

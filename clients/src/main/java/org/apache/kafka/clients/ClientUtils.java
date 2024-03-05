@@ -76,7 +76,9 @@ public final class ClientUtils {
                             String resolvedCanonicalName = inetAddress.getCanonicalHostName();
                             InetSocketAddress address = new InetSocketAddress(resolvedCanonicalName, port);
                             if (address.isUnresolved()) {
-                                log.warn("Couldn't resolve server {} from {} as DNS resolution of the canonical hostname {} failed for {}", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, resolvedCanonicalName, host);
+                                String message = String.format("Couldn't resolve server %s from %s as DNS resolution of the canonical hostname %s failed for %s",
+                                    url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, resolvedCanonicalName, host);
+                                dedupeAndHandleMessage(message, false);
                             } else {
                                 addresses.add(address);
                             }
@@ -84,7 +86,8 @@ public final class ClientUtils {
                     } else {
                         InetSocketAddress address = new InetSocketAddress(host, port);
                         if (address.isUnresolved()) {
-                            log.warn("Couldn't resolve server {} from {} as DNS resolution failed for {}", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, host);
+                            String message = String.format("Couldn't resolve server %s from %s as DNS resolution failed for %s", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, host);
+                            dedupeAndHandleMessage(message, false);
                         } else {
                             addresses.add(address);
                         }
@@ -98,15 +101,19 @@ public final class ClientUtils {
             }
         }
         if (addresses.isEmpty())
-            dedupeError("No resolvable bootstrap server in provided urls: " + String.join(",", urls));
+            dedupeAndHandleMessage("No resolvable bootstrap server in provided urls: " + String.join(",", urls), true);
         return addresses;
     }
 
-    public static void dedupeError(String message) {
+    public static void dedupeAndHandleMessage(String message, Boolean isError) {
         long currentTime = System.currentTimeMillis();
         if (!isDuplicateError(message, currentTime)) {
             ERROR_DEDUPLICATION_CACHE.put(message, currentTime);
-            throw new ConfigException(message);
+            if (isError) {
+                throw new ConfigException(message);
+            } else {
+                log.warn(message);
+            }
         }
     }
 

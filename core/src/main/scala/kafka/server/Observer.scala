@@ -19,6 +19,8 @@ package kafka.server
 
 import java.util.concurrent.TimeUnit
 import kafka.network.RequestChannel
+import java.util
+
 import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, ProduceRequest, RequestContext}
 import org.apache.kafka.common.Configurable
@@ -61,9 +63,9 @@ trait Observer extends Configurable {
   /**
     * Check client library. Users pass in the client library and version so the client type can be checked
     *
-    * @param clientLibrary  client library name and version
+    * @param hasNonXinfraClient  flag to determine if the topic has been accessed by a non xinfra client
     */
-  def checkClientLibrary(clientLibrary: String): Unit
+  def checkClientLibrary(hasNonXinfraClient: Boolean): Unit
 
   /**
     * Close the observer with timeout.

@@ -1945,7 +1945,15 @@ class KafkaApis(val requestChannel: RequestChannel,
     if (config.unofficialClientLoggingEnable) {
       // Check if the last part of clientSoftwareName (after commitId) is an unexpected software name
       val softwareName = apiVersionRequest.data.clientSoftwareName().split("-").last
-      if (!config.expectedClientSoftwareNames.contains(softwareName)) {
+      val expectedClientSoftwareNames = config.expectedClientSoftwareNames
+      var hasNonXinfraClient = false
+      expectedClientSoftwareNames.forEach { clientName =>
+        if (!clientName.toLowerCase.contains("xinfra")) {
+          hasNonXinfraClient = true;
+        }
+      }
+      observer.checkClientLibrary(hasNonXinfraClient)
+      if (!expectedClientSoftwareNames.contains(softwareName)) {
         val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
         unofficialClientsCache.get(clientIdentity)
         warn(s"received ApiVersionsRequest from user with unofficial client type. clientId clientAddress principal = $clientIdentity")

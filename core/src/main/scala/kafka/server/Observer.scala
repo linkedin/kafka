@@ -24,15 +24,15 @@ import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, Prod
 import org.apache.kafka.common.Configurable
 
 /**
-  * Top level interface that all pluggable observer must implement. Kafka will read the 'observer.class.name' config
-  * value at startup time, create an instance of the specificed class using the default constructor, and call its
-  * 'configure' method.
-  *
-  * From that point onwards, every pair of request and response will be routed to the 'record' method.
-  *
-  * If 'observer.class.name' has no value specified or the specified class does not exist, the <code>NoOpObserver</code>
-  * will be used as a place holder.
-  */
+ * Top level interface that all pluggable observer must implement. Kafka will read the 'observer.class.name' config
+ * value at startup time, create an instance of the specificed class using the default constructor, and call its
+ * 'configure' method.
+ *
+ * From that point onwards, every pair of request and response will be routed to the 'record' method.
+ *
+ * If 'observer.class.name' has no value specified or the specified class does not exist, the <code>NoOpObserver</code>
+ * will be used as a place holder.
+ */
 trait Observer extends Configurable {
 
   /**

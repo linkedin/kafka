@@ -31,7 +31,7 @@ import org.apache.kafka.common.Configurable
   * From that point onwards, every pair of request and response will be routed to the 'record' method.
   *
   * If 'observer.class.name' has no value specified or the specified class does not exist, the <code>NoOpObserver</code>
-  * will be used as a place holder...
+  * will be used as a place holder.
   */
 trait Observer extends Configurable {
 
@@ -45,18 +45,25 @@ trait Observer extends Configurable {
   def observe(requestContext: RequestContext, request: AbstractRequest, response: AbstractResponse): Unit
 
   /**
-    * Observe a produce request. This method handles only the produce request since produce request is special in
-    * two ways. Firstly, if ACK is set to be 0, there is no produce response associated with the produce request.
-    * Secondly, the lifecycle of some inner fields in a ProduceRequest is shorter than the lifecycle of the produce
-    * request itself. That means in some situations, when <code>observe</code> is called on a produce request and
-    * response pair, some fields in the produce request has been null-ed already so that the produce request and
-    * response is not observable (or no useful information). Therefore this method exists for the purpose of allowing
-    * users to observe on the produce request before its corresponding response is created.
-    *
-    * @param requestContext the context information about the request
-    * @param produceRequest  the produce request being observed for a various purpose(s)
-    */
+   * Observe a produce request. This method handles only the produce request since produce request is special in
+   * two ways. Firstly, if ACK is set to be 0, there is no produce response associated with the produce request.
+   * Secondly, the lifecycle of some inner fields in a ProduceRequest is shorter than the lifecycle of the produce
+   * request itself. That means in some situations, when <code>observe</code> is called on a produce request and
+   * response pair, some fields in the produce request has been null-ed already so that the produce request and
+   * response is not observable (or no useful information). Therefore this method exists for the purpose of allowing
+   * users to observe on the produce request before its corresponding response is created.
+   *
+   * @param requestContext the context information about the request
+   * @param produceRequest  the produce request being observed for a various purpose(s)
+   */
   def observeProduceRequest(requestContext: RequestContext, produceRequest: ProduceRequest): Unit
+
+  /**
+   * Check client library. Users pass in the client library and version so the client type can be checked
+   *
+   * @param clientLibrary  client library name and version
+   */
+  def checkClientLibrary(clientLibrary: String): Unit
 
   /**
     * Close the observer with timeout.

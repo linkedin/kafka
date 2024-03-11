@@ -19,7 +19,6 @@ package kafka.server
 
 import java.util.concurrent.TimeUnit
 import kafka.network.RequestChannel
-import java.util
 
 import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.requests.{AbstractRequest, AbstractResponse, ProduceRequest, RequestContext}

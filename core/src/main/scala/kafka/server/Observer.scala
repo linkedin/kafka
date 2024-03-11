@@ -31,7 +31,7 @@ import org.apache.kafka.common.Configurable
   * From that point onwards, every pair of request and response will be routed to the 'record' method.
   *
   * If 'observer.class.name' has no value specified or the specified class does not exist, the <code>NoOpObserver</code>
-  * will be used as a place holder.
+  * will be used as a place holder..
   */
 trait Observer extends Configurable {
 

@@ -1952,7 +1952,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           hasNonXinfraClient = true;
         }
       }
-      observer.checkClientLibrary(hasNonXinfraClient)
+      observer.checkClientLibrary(hasNonXinfraClient, request.context.clientId())
       if (!expectedClientSoftwareNames.contains(softwareName)) {
         val clientIdentity = request.context.clientId() + " " + request.context.clientAddress() + " " + request.context.principal()
         unofficialClientsCache.get(clientIdentity)

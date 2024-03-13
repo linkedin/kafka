@@ -684,8 +684,9 @@ class DynamicLogConfig(logManager: LogManager, server: KafkaBroker) extends Brok
       if (LogConfig.TopicConfigSynonyms.contains(k) && DynamicLogConfig.ReconfigurableConfigs.contains(LogConfig.TopicConfigSynonyms(k))) {
         if (v == null) {
           newBrokerDefaults.remove(k)
-        } else
+        } else {
           newBrokerDefaults.put(k, v.asInstanceOf[AnyRef])
+        }
       }
     }
 

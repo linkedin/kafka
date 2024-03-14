@@ -61,6 +61,7 @@ import org.apache.kafka.common.record.FileRecords.TimestampAndOffset
 import org.apache.kafka.common.record._
 import org.apache.kafka.common.replica.ClientMetadata
 import org.apache.kafka.common.requests.FindCoordinatorRequest.CoordinatorType
+import org.apache.kafka.common.requests.ApiVersionsRequest
 import org.apache.kafka.common.requests.MetadataResponse.TopicMetadata
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests.WriteTxnMarkersRequest.TxnMarkerEntry
@@ -495,6 +496,12 @@ class KafkaApisTest {
       ApiKeys.DESCRIBE_QUORUM,
       requestBuilder
     )
+  }
+
+  @Test
+  def testClientLibraryVersionObserverCaching(): Unit = {
+    val requestBuilder = new ApiVersionsRequest.Builder()
+    testForwardableApi(ApiKeys.API_VERSIONS, requestBuilder)
   }
 
   private def testForwardableApi(apiKey: ApiKeys, requestBuilder: AbstractRequest.Builder[_ <: AbstractRequest]): Unit = {

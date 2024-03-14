@@ -1943,9 +1943,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     val apiVersionRequest = request.body[ApiVersionsRequest]
     val expectedClientSoftwareNames = config.expectedClientSoftwareNames
     var hasNonXinfraClient = false
-    expectedClientSoftwareNames.forEach { clientName =>
-      if (!clientName.toLowerCase.contains("xinfra")) {
-        hasNonXinfraClient = true;
+    if (expectedClientSoftwareNames != null) {
+      expectedClientSoftwareNames.forEach { clientName =>
+        if (!clientName.toLowerCase.contains("xinfra")) {
+          hasNonXinfraClient = true;
+        }
       }
     }
     observer.checkClientLibrary(hasNonXinfraClient, request.context.clientId())

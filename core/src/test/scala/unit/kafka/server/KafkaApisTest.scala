@@ -501,9 +501,31 @@ class KafkaApisTest {
   @Test
   def testClientLibraryVersionObserverCaching(): Unit = {
     val requestBuilder = new ApiVersionsRequest.Builder()
-    testForwardableApi(ApiKeys.API_VERSIONS, requestBuilder)
+    EasyMock.expect(observer.checkClientLibrary(true, clientId))
+    val kafkaApis = createKafkaApis(enableForwarding = true)
 
-    // EasyMock.expect(observer.checkClientLibrary(true, clientId))
+    val topicHeader = new RequestHeader(ApiKeys.API_VERSIONS, ApiKeys.API_VERSIONS.latestVersion,
+      clientId, 0)
+
+    val request = buildRequest(requestBuilder.build(topicHeader.apiVersion))
+
+    if (kafkaApis.metadataSupport.isInstanceOf[ZkSupport]) {
+      // The controller check only makes sense for ZK clusters. For KRaft,
+      // controller requests are handled on a separate listener, so there
+      // is no choice but to forward them.
+      EasyMock.expect(controller.isActive).andReturn(false)
+    }
+
+    expectNoThrottling(request)
+
+    EasyMock.expect(forwardingManager.forwardRequest(
+      EasyMock.eq(request),
+      anyObject[Option[AbstractResponse] => Unit]()
+    )).once()
+
+    EasyMock.replay(replicaManager, clientRequestQuotaManager, requestChannel, controller, forwardingManager)
+
+    kafkaApis.handle(request, RequestLocal.withThreadConfinedCaching)
   }
 
   private def testForwardableApi(apiKey: ApiKeys, requestBuilder: AbstractRequest.Builder[_ <: AbstractRequest]): Unit = {

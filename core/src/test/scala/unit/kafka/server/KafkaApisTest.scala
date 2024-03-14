@@ -512,7 +512,7 @@ class KafkaApisTest {
     if (kafkaApis.metadataSupport.isInstanceOf[ZkSupport]) {
       // The controller check only makes sense for ZK clusters. For KRaft,
       // controller requests are handled on a separate listener, so there
-      // is no choice but to forward them.
+      // is no choice but to forward them..
       EasyMock.expect(controller.isActive).andReturn(false)
     }
 

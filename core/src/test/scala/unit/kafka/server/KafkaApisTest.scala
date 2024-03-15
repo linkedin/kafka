@@ -501,7 +501,7 @@ class KafkaApisTest {
   @Test
   def testClientLibraryVersionObserverCaching(): Unit = {
     val requestBuilder = new ApiVersionsRequest.Builder()
-    EasyMock.expect(observer.checkClientLibrary(true, clientId))
+    EasyMock.expect(observer.trackClientLibrary(true, clientId))
     val kafkaApis = createKafkaApis(enableForwarding = true)
 
     val topicHeader = new RequestHeader(ApiKeys.API_VERSIONS, ApiKeys.API_VERSIONS.latestVersion,

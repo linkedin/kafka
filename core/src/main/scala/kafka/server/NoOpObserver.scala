@@ -46,6 +46,6 @@ class NoOpObserver extends Observer {
   /**
    * Check client library.
    */
-  def checkClientLibrary(hasNonXinfraClient: Boolean, clientId: String): Unit = {}
+  def checkClientLibrary(isXinfraClient: Boolean, clientId: String): Unit = {}
 
 }

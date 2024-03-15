@@ -61,10 +61,10 @@ trait Observer extends Configurable {
   /**
     * Check client library. Users pass in the client library and version so the client type can be checked
     *
-   * @param hasNonXinfraClient  flag to determine if the topic has been accessed by a non xinfra client
+   * @param isXinfraClient  is this clientId a xinfra client
    * @param clientId The clientId for this specific request
     */
-  def checkClientLibrary(hasNonXinfraClient: Boolean, clientId: String): Unit
+  def checkClientLibrary(isXinfraClient: Boolean, clientId: String): Unit
 
   /**
     * Close the observer with timeout.

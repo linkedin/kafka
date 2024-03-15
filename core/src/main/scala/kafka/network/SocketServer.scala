@@ -727,6 +727,7 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
     try {
       connectionQuotas.inc(endPoint.listenerName, socketChannel.socket.getInetAddress, blockedPercentMeter)
       configureAcceptedSocketChannel(socketChannel)
+      info(s"Accepted channel from ${endPoint.connectionString}")
       Some(socketChannel)
     } catch {
       case e: TooManyConnectionsException =>

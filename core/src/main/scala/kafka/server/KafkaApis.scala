@@ -1942,11 +1942,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     // ApiVersionRequest is not available.
     val apiVersionRequest = request.body[ApiVersionsRequest]
     val softwareName = apiVersionRequest.data.clientSoftwareName().split("-").last
-    var isXinfraClient = false
-    if (softwareName != null && softwareName.toLowerCase.contains("xinfra")) {
-      isXinfraClient = true;
-    }
-    observer.checkClientLibrary(isXinfraClient, request.context.clientId())
+
+    val isXinfraClient = (softwareName != null && softwareName.toLowerCase.contains("xinfra"))
+    observer.trackClientLibrary(isXinfraClient, request.context.clientId())
 
     if (config.unofficialClientLoggingEnable) {
       // Check if the last part of clientSoftwareName (after commitId) is an unexpected software name

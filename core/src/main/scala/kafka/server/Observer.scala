@@ -59,10 +59,11 @@ trait Observer extends Configurable {
   def observeProduceRequest(requestContext: RequestContext, produceRequest: ProduceRequest): Unit
 
   /**
-    * Hook to track the client library type so different client types can be compared
+    * Hook to track the client library type so different client types can be compared. This function is in the hot path
+    * of request-handling so all computations that are added to it need to be light
     *
-   * @param isXinfraClient  is this clientId a xinfra client
-   * @param clientId The clientId for this specific request
+    * @param isXinfraClient  is this clientId a xinfra client
+    * @param clientId The clientId for this specific request
     */
   def trackClientLibrary(isXinfraClient: Boolean, clientId: String): Unit
 

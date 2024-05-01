@@ -28,6 +28,8 @@ import joptsimple._
 import kafka.utils.Implicits._
 import kafka.utils.{Exit, _}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerConfig, ConsumerRecord, KafkaConsumer}
+import org.apache.kafka.clients.producer.internals.ErrorLoggingCallback
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.{MessageFormatter, TopicPartition}
 import org.apache.kafka.common.errors.{AuthenticationException, TimeoutException, WakeupException}
 import org.apache.kafka.common.record.TimestampType
@@ -46,7 +48,18 @@ object ConsoleConsumer extends Logging {
 
   private val shutdownLatch = new CountDownLatch(1)
 
+
+  // "job-runner"
+  private val keyPartsToFilterOut : Set[String] = Set(
+    "ContainerPlacementRequestMessage",
+    "set-container-host-assignment",
+    "ContainerPlacementResponseMessage",
+    "set-config"
+  )
+
   def main(args: Array[String]): Unit = {
+    debug("Starting consumer.")
+    /*
     val conf = new ConsumerConfig(args)
     try {
       run(conf)
@@ -57,7 +70,7 @@ object ConsoleConsumer extends Logging {
       case e: Throwable =>
         error("Unknown error when running consumer: ", e)
         Exit.exit(1)
-    }
+    }*/
   }
 
   def run(conf: ConsumerConfig): Unit = {
@@ -71,8 +84,8 @@ object ConsoleConsumer extends Logging {
         new ConsumerWrapper(Option(conf.topicArg), None, None, Option(conf.includedTopicsArg), consumer, timeoutMs)
 
     addShutdownHook(consumerWrapper, conf)
-
-    try process(conf.maxMessages, conf.formatter, consumerWrapper, System.out, conf.skipMessageOnError)
+    val producer = getProducer(conf)
+    try process(conf.maxMessages, conf.formatter, consumerWrapper, producer, System.out, conf.skipMessageOnError)
     finally {
       consumerWrapper.cleanup()
       conf.formatter.close()
@@ -94,8 +107,31 @@ object ConsoleConsumer extends Logging {
     })
   }
 
-  def process(maxMessages: Integer, formatter: MessageFormatter, consumer: ConsumerWrapper, output: PrintStream,
+  private def getProducer(conf: ConsumerConfig): KafkaProducer[Array[Byte], Array[Byte]] = {
+    val props = new Properties()
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka.samza-internal1.kafka.ei4.atd.int.linkedin.com:16637")
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
+    // these should only contain the ssl configs
+    props ++= conf.consumerProps
+    new KafkaProducer[Array[Byte], Array[Byte]](props)
+  }
+
+  private def translateToProducerRecord(consumerRecord: ConsumerRecord[Array[Byte], Array[Byte]]) : ProducerRecord[Array[Byte], Array[Byte]] = {
+    new ProducerRecord[Array[Byte], Array[Byte]](consumerRecord.topic, consumerRecord.partition, consumerRecord.timestamp, consumerRecord.key, consumerRecord.value, consumerRecord.headers)
+  }
+
+  private def send(producer: KafkaProducer[Array[Byte], Array[Byte]],
+    record: ProducerRecord[Array[Byte], Array[Byte]], sync: Boolean): Unit = {
+    if (sync)
+      producer.send(record).get()
+    else
+      producer.send(record, new ErrorLoggingCallback(record.topic, record.key, record.value, false))
+  }
+
+  def process(maxMessages: Integer, formatter: MessageFormatter, consumer: ConsumerWrapper, kafkaProducer: KafkaProducer[Array[Byte], Array[Byte]], output: PrintStream,
               skipMessageOnError: Boolean): Unit = {
+
     while (messageCount < maxMessages || maxMessages == -1) {
       val msg: ConsumerRecord[Array[Byte], Array[Byte]] = try {
         consumer.receive()
@@ -110,21 +146,31 @@ object ConsoleConsumer extends Logging {
           return
       }
       messageCount += 1
-      try {
-        formatter.writeTo(new ConsumerRecord(msg.topic, msg.partition, msg.offset, msg.timestamp, msg.timestampType,
-          0, 0, msg.key, msg.value, msg.headers, Optional.empty[Integer]), output)
-      } catch {
-        case e: Throwable =>
-          if (skipMessageOnError) {
-            error("Error processing message, skipping this message: ", e)
-          } else {
-            // Consumer will be closed
-            throw e
-          }
-      }
-      if (checkErr(output, formatter)) {
-        // Consumer will be closed
-        return
+
+      val key = new String(msg.key, StandardCharsets.UTF_8)
+      if (keyPartsToFilterOut.exists(key.contains)) {
+        info(s"Skipping message with key $key")
+      } else {
+        try {
+          val producerRecord = translateToProducerRecord(msg)
+          send(kafkaProducer, producerRecord, sync = true)
+          /*
+          formatter.writeTo(new ConsumerRecord(msg.topic, msg.partition, msg.offset, msg.timestamp, msg.timestampType,
+            0, 0, msg.key, msg.value, msg.headers, Optional.empty[Integer]), output)
+           */
+        } catch {
+          case e: Throwable =>
+            if (skipMessageOnError) {
+              error("Error processing message, skipping this message: ", e)
+            } else {
+              // Consumer will be closed
+              throw e
+            }
+        }
+        if (checkErr(output, formatter)) {
+          // Consumer will be closed
+          return
+        }
       }
     }
   }

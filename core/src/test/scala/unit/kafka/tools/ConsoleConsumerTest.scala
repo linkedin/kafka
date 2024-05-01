@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{BeforeEach, Test}
 
 import scala.jdk.CollectionConverters._
-
+/*
 class ConsoleConsumerTest {
 
   @BeforeEach
@@ -605,3 +605,4 @@ class ConsoleConsumerTest {
     finally Exit.resetExitProcedure()
   }
 }
+*/

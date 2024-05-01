@@ -50,16 +50,14 @@ object ConsoleConsumer extends Logging {
 
 
   // "job-runner"
+  // "set-config"
   private val keyPartsToFilterOut : Set[String] = Set(
     "ContainerPlacementRequestMessage",
     "set-container-host-assignment",
-    "ContainerPlacementResponseMessage",
-    "set-config"
+    "ContainerPlacementResponseMessage"
   )
 
   def main(args: Array[String]): Unit = {
-    debug("Starting consumer.")
-    /*
     val conf = new ConsumerConfig(args)
     try {
       run(conf)
@@ -70,7 +68,7 @@ object ConsoleConsumer extends Logging {
       case e: Throwable =>
         error("Unknown error when running consumer: ", e)
         Exit.exit(1)
-    }*/
+    }
   }
 
   def run(conf: ConsumerConfig): Unit = {
@@ -109,7 +107,7 @@ object ConsoleConsumer extends Logging {
 
   private def getProducer(conf: ConsumerConfig): KafkaProducer[Array[Byte], Array[Byte]] = {
     val props = new Properties()
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka.samza-internal1.kafka.ei4.atd.int.linkedin.com:16637")
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, conf.dstBootstrapServer)
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
     // these should only contain the ssl configs
@@ -193,7 +191,7 @@ object ConsoleConsumer extends Logging {
     props ++= config.consumerProps
     props ++= config.extraConsumerProps
     setAutoOffsetResetValue(config, props)
-    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.bootstrapServer)
+    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.srcBootstrapServer)
     CommandLineUtils.maybeMergeOptions(
       props, ConsumerConfig.ISOLATION_LEVEL_CONFIG, config.options, config.isolationLevelOpt)
     props
@@ -303,7 +301,11 @@ object ConsoleConsumer extends Logging {
       .ofType(classOf[java.lang.Integer])
     val skipMessageOnErrorOpt = parser.accepts("skip-message-on-error", "If there is an error when processing a message, " +
       "skip it instead of halt.")
-    val bootstrapServerOpt = parser.accepts("bootstrap-server", "REQUIRED: The server(s) to connect to.")
+    val srcBootstrapServerOpt = parser.accepts("src-bootstrap-server", "REQUIRED: The source server(s) to connect to.")
+      .withRequiredArg
+      .describedAs("server to connect to")
+      .ofType(classOf[String])
+    val dstBootstrapServerOpt = parser.accepts("dst-bootstrap-server", "REQUIRED: The destination server(s) to connect to.")
       .withRequiredArg
       .describedAs("server to connect to")
       .ofType(classOf[String])
@@ -353,7 +355,8 @@ object ConsoleConsumer extends Logging {
     val formatterArgs = CommandLineUtils.parseKeyValueArgs(options.valuesOf(messageFormatterArgOpt).asScala)
     val maxMessages = if (options.has(maxMessagesOpt)) options.valueOf(maxMessagesOpt).intValue else -1
     val timeoutMs = if (options.has(timeoutMsOpt)) options.valueOf(timeoutMsOpt).intValue else -1
-    val bootstrapServer = options.valueOf(bootstrapServerOpt)
+    val srcBootstrapServer = options.valueOf(srcBootstrapServerOpt)
+    val dstBootstrapServer = options.valueOf(dstBootstrapServerOpt)
     val keyDeserializer = options.valueOf(keyDeserializerOpt)
     val valueDeserializer = options.valueOf(valueDeserializerOpt)
     val formatter: MessageFormatter = messageFormatterClass.getDeclaredConstructor().newInstance().asInstanceOf[MessageFormatter]
@@ -410,7 +413,7 @@ object ConsoleConsumer extends Logging {
       else if (fromBeginning) ListOffsetsRequest.EARLIEST_TIMESTAMP
       else ListOffsetsRequest.LATEST_TIMESTAMP
 
-    CommandLineUtils.checkRequiredArgs(parser, options, bootstrapServerOpt)
+    CommandLineUtils.checkRequiredArgs(parser, options, srcBootstrapServerOpt)
 
     // if the group id is provided in more than place (through different means) all values must be the same
     val groupIdsProvided = Set(

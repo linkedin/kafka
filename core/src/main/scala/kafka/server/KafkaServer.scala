@@ -83,7 +83,7 @@ object KafkaServer {
 
   val MIN_INCREMENTAL_FETCH_SESSION_EVICTION_MS: Long = 120000
   private val EXPONENTIAL_BACKOFF_MULTIPLIER = 2
-  private val EXPONENTIAL_BACKOFF_MAX_INTERVAL_MS = 10 * 60 * 1000  // 10 minutes
+  private val EXPONENTIAL_BACKOFF_MAX_INTERVAL_MS = 5 * 60 * 1000  // 10 minutes
   private val EXPONENTIAL_BACKOFF_JITTER = -0.01 // no randomness
 }
 

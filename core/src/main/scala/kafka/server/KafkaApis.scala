@@ -990,24 +990,20 @@ class KafkaApis(val requestChannel: RequestChannel,
         val bandwidthThrottleTimeMs = quotas.fetch.maybeRecordAndGetThrottleTimeMs(request, responseSize, timeMs)
 
         val maxThrottleTimeMs = math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
+        unconvertedFetchResponse = fetchContext.updateAndGenerateResponseData(partitions)
+
         // [LIKAFKA-45345] even if the throttleTimeMs is 0, we still record it so that
         // the throttle-time sensor does not expire before the byte-rate sensor in quotas.fetch
         // or the request-time sensor in quotas.request.
         val (effectiveBandwidthThrottleTime, effectiveRequestThrottleTime) = if (maxThrottleTimeMs > 0) {
           request.apiThrottleTimeMs = maxThrottleTimeMs
-          // Even if we need to throttle for request quota violation, we should "unrecord" the already recorded value
-          // from the fetch quota because we are going to return an empty response.
-          quotas.fetch.unrecordQuotaSensor(request, responseSize, timeMs)
-          // If throttling is required, return an empty response.
-          unconvertedFetchResponse = fetchContext.getThrottledResponse(maxThrottleTimeMs)
+
           if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
             (bandwidthThrottleTimeMs, 0)
           } else {
             (0, requestThrottleTimeMs)
           }
         } else {
-          // Get the actual response. This will update the fetch context.
-          unconvertedFetchResponse = fetchContext.updateAndGenerateResponseData(partitions)
           trace(s"Sending Fetch response with partitions.size=$responseSize, metadata=${unconvertedFetchResponse.sessionId}")
           (0, 0)
         }

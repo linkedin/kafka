@@ -990,6 +990,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         val bandwidthThrottleTimeMs = quotas.fetch.maybeRecordAndGetThrottleTimeMs(request, responseSize, timeMs)
 
         val maxThrottleTimeMs = math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
+
+        // [LIKAFKA-59133] We made a change here to actually fill in the data to the fetch response even when throttling happens.
+        //  This prevents the consumers completely getting stuck when throttling happens intensively.
         unconvertedFetchResponse = fetchContext.updateAndGenerateResponseData(partitions)
 
         // [LIKAFKA-45345] even if the throttleTimeMs is 0, we still record it so that

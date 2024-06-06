@@ -17,24 +17,23 @@
 package org.apache.kafka.common.requests;
 
 import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.types.Struct;
-import org.junit.Test;
+import org.apache.kafka.common.protocol.ObjectSerializationCache;
+import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 
-import static org.apache.kafka.test.TestUtils.toBuffer;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RequestHeaderTest {
 
     @Test
     public void testSerdeControlledShutdownV0() {
         // Verify that version 0 of controlled shutdown does not include the clientId field
-
+        short apiVersion = 0;
         int correlationId = 2342;
         ByteBuffer rawBuffer = ByteBuffer.allocate(32);
         rawBuffer.putShort(ApiKeys.CONTROLLED_SHUTDOWN.id);
-        rawBuffer.putShort((short) 0);
+        rawBuffer.putShort(apiVersion);
         rawBuffer.putInt(correlationId);
         rawBuffer.flip();
 
@@ -43,9 +42,9 @@ public class RequestHeaderTest {
         assertEquals(0, deserialized.apiVersion());
         assertEquals(correlationId, deserialized.correlationId());
         assertEquals("", deserialized.clientId());
+        assertEquals(0, deserialized.headerVersion());
 
-        Struct serialized = deserialized.toStruct();
-        ByteBuffer serializedBuffer = toBuffer(serialized);
+        ByteBuffer serializedBuffer = RequestTestUtils.serializeRequestHeader(deserialized);
 
         assertEquals(ApiKeys.CONTROLLED_SHUTDOWN.id, serializedBuffer.getShort(0));
         assertEquals(0, serializedBuffer.getShort(2));
@@ -54,23 +53,44 @@ public class RequestHeaderTest {
     }
 
     @Test
-    public void testRequestHeader() {
-        RequestHeader header = new RequestHeader(ApiKeys.FIND_COORDINATOR, (short) 1, "", 10);
-        ByteBuffer buffer = toBuffer(header.toStruct());
+    public void testRequestHeaderV1() {
+        short apiVersion = 1;
+        RequestHeader header = new RequestHeader(ApiKeys.FIND_COORDINATOR, apiVersion, "", 10);
+        assertEquals(1, header.headerVersion());
+
+        ByteBuffer buffer = RequestTestUtils.serializeRequestHeader(header);
+        assertEquals(10, buffer.remaining());
         RequestHeader deserialized = RequestHeader.parse(buffer);
         assertEquals(header, deserialized);
     }
 
     @Test
-    public void testRequestHeaderWithNullClientId() {
-        RequestHeader header = new RequestHeader(ApiKeys.FIND_COORDINATOR, (short) 1, null, 10);
-        Struct headerStruct = header.toStruct();
-        ByteBuffer buffer = toBuffer(headerStruct);
+    public void testRequestHeaderV2() {
+        short apiVersion = 2;
+        RequestHeader header = new RequestHeader(ApiKeys.CREATE_DELEGATION_TOKEN, apiVersion, "", 10);
+        assertEquals(2, header.headerVersion());
+
+        ByteBuffer buffer = RequestTestUtils.serializeRequestHeader(header);
+        assertEquals(11, buffer.remaining());
         RequestHeader deserialized = RequestHeader.parse(buffer);
-        assertEquals(header.apiKey(), deserialized.apiKey());
-        assertEquals(header.apiVersion(), deserialized.apiVersion());
-        assertEquals(header.correlationId(), deserialized.correlationId());
-        assertEquals("", deserialized.clientId()); // null defaults to ""
+        assertEquals(header, deserialized);
     }
 
+    @Test
+    public void parseHeaderFromBufferWithNonZeroPosition() {
+        ByteBuffer buffer = ByteBuffer.allocate(64);
+        buffer.position(10);
+
+        RequestHeader header = new RequestHeader(ApiKeys.FIND_COORDINATOR, (short) 1, "", 10);
+        ObjectSerializationCache serializationCache = new ObjectSerializationCache();
+        // size must be called before write to avoid an NPE with the current implementation
+        header.size(serializationCache);
+        header.write(buffer, serializationCache);
+        int limit = buffer.position();
+        buffer.position(10);
+        buffer.limit(limit);
+
+        RequestHeader parsed = RequestHeader.parse(buffer);
+        assertEquals(header, parsed);
+    }
 }

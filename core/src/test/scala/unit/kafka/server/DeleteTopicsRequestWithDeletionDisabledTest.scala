@@ -17,43 +17,79 @@
 
 package kafka.server
 
-import kafka.network.SocketServer
+import java.util.Collections
+
 import kafka.utils._
-import org.apache.kafka.common.protocol.{ApiKeys, Errors}
+import org.apache.kafka.clients.admin.NewTopic
+import org.apache.kafka.common.message.DeleteTopicsRequestData
+import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{DeleteTopicsRequest, DeleteTopicsResponse}
-import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Test
 
 import scala.collection.JavaConverters._
 
 class DeleteTopicsRequestWithDeletionDisabledTest extends BaseRequestTest {
 
-  override def numBrokers: Int = 1
+  override def brokerCount: Int = 1
 
   override def generateConfigs = {
-    val props = TestUtils.createBrokerConfigs(numBrokers, zkConnect,
+    val props = TestUtils.createBrokerConfigs(brokerCount, zkConnect,
       enableControlledShutdown = false, enableDeleteTopic = false,
       interBrokerSecurityProtocol = Some(securityProtocol),
       trustStoreFile = trustStoreFile, saslProperties = serverSaslProperties, logDirCount = logDirCount)
-    props.foreach(propertyOverrides)
+    props.foreach(brokerPropertyOverrides)
     props.map(KafkaConfig.fromProps)
   }
 
   @Test
-  def testDeleteRecordsRequest() {
+  def testDeleteRecordsRequest(): Unit = {
     val topic = "topic-1"
-    val request = new DeleteTopicsRequest.Builder(Set(topic).asJava, 1000).build()
+    val request = new DeleteTopicsRequest.Builder(
+        new DeleteTopicsRequestData()
+          .setTopicNames(Collections.singletonList(topic))
+          .setTimeoutMs(1000)).build()
     val response = sendDeleteTopicsRequest(request)
-    assertEquals(Errors.TOPIC_DELETION_DISABLED, response.errors.get(topic))
+    assertEquals(Errors.TOPIC_DELETION_DISABLED.code, response.data.responses.find(topic).errorCode)
 
-    val v2request = new DeleteTopicsRequest.Builder(Set(topic).asJava, 1000).build(2)
+    val v2request = new DeleteTopicsRequest.Builder(
+        new DeleteTopicsRequestData()
+        .setTopicNames(Collections.singletonList(topic))
+        .setTimeoutMs(1000)).build(2)
     val v2response = sendDeleteTopicsRequest(v2request)
-    assertEquals(Errors.INVALID_REQUEST, v2response.errors.get(topic))
+    assertEquals(Errors.INVALID_REQUEST.code, v2response.data.responses.find(topic).errorCode)
   }
 
-  private def sendDeleteTopicsRequest(request: DeleteTopicsRequest, socketServer: SocketServer = controllerSocketServer): DeleteTopicsResponse = {
-    val response = connectAndSend(request, ApiKeys.DELETE_TOPICS, socketServer)
-    DeleteTopicsResponse.parse(response, request.version)
+  private def sendDeleteTopicsRequest(request: DeleteTopicsRequest): DeleteTopicsResponse = {
+    connectAndReceive[DeleteTopicsResponse](request, destination = controllerSocketServer)
+  }
+
+  @Test
+  def testDeletionDynamicFlag(): Unit = {
+    val topic = "topic-1"
+    val admin = createAdminClient()
+    // Prepare:
+    // 1. Config has topic deletion disabled
+    // 2. Create topic
+    // 3. Wait until topic is present
+    admin.createTopics(List(new NewTopic(topic, 1, brokerCount.toShort)).asJava)
+    TestUtils.waitUntilTopicPresent(admin, topic)
+
+    // Execute:
+    // 1. Set topic deletion flag
+    // 2. Delete topic
+    zkClient.setTopicDeletionFlag("true")
+    val request = new DeleteTopicsRequest.Builder(
+      new DeleteTopicsRequestData()
+        .setTopicNames(Collections.singletonList(topic))
+        .setTimeoutMs(1000)).build()
+    val response = sendDeleteTopicsRequest(request)
+
+    // Assert:
+    // 1. Delete should be enabled
+    // 2. Topic should eventually be deleted
+    assertEquals(Errors.NONE, Errors.forCode(response.data.responses.find(topic).errorCode()))
+    TestUtils.waitUntilTopicNotPresent(admin, topic)
   }
 
 }

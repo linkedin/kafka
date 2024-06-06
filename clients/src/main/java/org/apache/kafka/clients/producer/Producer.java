@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.clients.producer;
 
+import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -50,8 +51,15 @@ public interface Producer<K, V> extends Closeable {
     /**
      * See {@link KafkaProducer#sendOffsetsToTransaction(Map, String)}
      */
+    @Deprecated
     void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
                                   String consumerGroupId) throws ProducerFencedException;
+
+    /**
+     * See {@link KafkaProducer#sendOffsetsToTransaction(Map, ConsumerGroupMetadata)}
+     */
+    void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
+                                  ConsumerGroupMetadata groupMetadata) throws ProducerFencedException;
 
     /**
      * See {@link KafkaProducer#commitTransaction()}
@@ -79,6 +87,11 @@ public interface Producer<K, V> extends Closeable {
     void flush();
 
     /**
+     * See {@link KafkaProducer#flush(long, TimeUnit)}
+     */
+    void flush(long timeout, TimeUnit unit);
+
+     /**
      * See {@link KafkaProducer#partitionsFor(String)}
      */
     List<PartitionInfo> partitionsFor(String topic);
@@ -92,11 +105,6 @@ public interface Producer<K, V> extends Closeable {
      * See {@link KafkaProducer#close()}
      */
     void close();
-
-    @Deprecated
-    default void close(long timeout, TimeUnit unit) {
-        close(Duration.ofMillis(unit.toMillis(timeout)));
-    }
 
     /**
      * See {@link KafkaProducer#close(Duration)}

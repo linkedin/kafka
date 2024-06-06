@@ -67,10 +67,6 @@ public class SourceTaskOffsetCommitterTest extends ThreadedTest {
         Map<String, String> workerProps = new HashMap<>();
         workerProps.put("key.converter", "org.apache.kafka.connect.json.JsonConverter");
         workerProps.put("value.converter", "org.apache.kafka.connect.json.JsonConverter");
-        workerProps.put("internal.key.converter", "org.apache.kafka.connect.json.JsonConverter");
-        workerProps.put("internal.value.converter", "org.apache.kafka.connect.json.JsonConverter");
-        workerProps.put("internal.key.converter.schemas.enable", "false");
-        workerProps.put("internal.value.converter.schemas.enable", "false");
         workerProps.put("offset.storage.file.filename", "/tmp/connect.offsets");
         workerProps.put("offset.flush.interval.ms",
                 Long.toString(DEFAULT_OFFSET_COMMIT_INTERVAL_MS));
@@ -147,6 +143,8 @@ public class SourceTaskOffsetCommitterTest extends ThreadedTest {
         EasyMock.expect(taskFuture.cancel(eq(false))).andReturn(false);
         EasyMock.expect(taskFuture.isDone()).andReturn(false);
         EasyMock.expect(taskFuture.get()).andReturn(null);
+        EasyMock.expect(taskId.connector()).andReturn("MyConnector");
+        EasyMock.expect(taskId.task()).andReturn(1);
         PowerMock.replayAll();
 
         committers.put(taskId, taskFuture);
@@ -160,6 +158,8 @@ public class SourceTaskOffsetCommitterTest extends ThreadedTest {
         EasyMock.expect(taskFuture.cancel(eq(false))).andReturn(false);
         EasyMock.expect(taskFuture.isDone()).andReturn(false);
         EasyMock.expect(taskFuture.get()).andThrow(new CancellationException());
+        EasyMock.expect(taskId.connector()).andReturn("MyConnector");
+        EasyMock.expect(taskId.task()).andReturn(1);
         mockLog.trace(EasyMock.anyString(), EasyMock.<Object>anyObject());
         PowerMock.expectLastCall();
         PowerMock.replayAll();
@@ -175,6 +175,8 @@ public class SourceTaskOffsetCommitterTest extends ThreadedTest {
         EasyMock.expect(taskFuture.cancel(eq(false))).andReturn(false);
         EasyMock.expect(taskFuture.isDone()).andReturn(false);
         EasyMock.expect(taskFuture.get()).andThrow(new InterruptedException());
+        EasyMock.expect(taskId.connector()).andReturn("MyConnector");
+        EasyMock.expect(taskId.task()).andReturn(1);
         PowerMock.replayAll();
 
         try {

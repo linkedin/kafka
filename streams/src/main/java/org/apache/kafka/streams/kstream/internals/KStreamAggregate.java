@@ -16,33 +16,37 @@
  */
 package org.apache.kafka.streams.kstream.internals;
 
+import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.streams.kstream.Aggregator;
 import org.apache.kafka.streams.kstream.Initializer;
-import org.apache.kafka.streams.processor.AbstractProcessor;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.kafka.streams.processor.internals.metrics.TaskMetrics.droppedRecordsSensor;
+import static org.apache.kafka.streams.state.ValueAndTimestamp.getValueOrNull;
+
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
 public class KStreamAggregate<K, V, T> implements KStreamAggProcessorSupplier<K, K, V, T> {
     private static final Logger LOG = LoggerFactory.getLogger(KStreamAggregate.class);
     private final String storeName;
     private final Initializer<T> initializer;
     private final Aggregator<? super K, ? super V, T> aggregator;
 
-
     private boolean sendOldValues = false;
 
-    KStreamAggregate(final String storeName, final Initializer<T> initializer, final Aggregator<? super K, ? super V, T> aggregator) {
+    KStreamAggregate(final String storeName,
+                     final Initializer<T> initializer,
+                     final Aggregator<? super K, ? super V, T> aggregator) {
         this.storeName = storeName;
         this.initializer = initializer;
         this.aggregator = aggregator;
     }
 
     @Override
-    public Processor<K, V> get() {
+    public org.apache.kafka.streams.processor.Processor<K, V> get() {
         return new KStreamAggregateProcessor();
     }
 
@@ -51,21 +55,26 @@ public class KStreamAggregate<K, V, T> implements KStreamAggProcessorSupplier<K,
         sendOldValues = true;
     }
 
-    private class KStreamAggregateProcessor extends AbstractProcessor<K, V> {
 
-        private KeyValueStore<K, T> store;
-        private StreamsMetricsImpl metrics;
-        private TupleForwarder<K, T> tupleForwarder;
+    private class KStreamAggregateProcessor extends org.apache.kafka.streams.processor.AbstractProcessor<K, V> {
+        private TimestampedKeyValueStore<K, T> store;
+        private Sensor droppedRecordsSensor;
+        private TimestampedTupleForwarder<K, T> tupleForwarder;
 
-        @SuppressWarnings("unchecked")
         @Override
-        public void init(final ProcessorContext context) {
+        public void init(final org.apache.kafka.streams.processor.ProcessorContext context) {
             super.init(context);
-            metrics = (StreamsMetricsImpl) context.metrics();
-            store = (KeyValueStore<K, T>) context.getStateStore(storeName);
-            tupleForwarder = new TupleForwarder<>(store, context, new ForwardingCacheFlushListener<>(context), sendOldValues);
+            droppedRecordsSensor = droppedRecordsSensor(
+                Thread.currentThread().getName(),
+                context.taskId().toString(),
+                (StreamsMetricsImpl) context.metrics());
+            store =  context.getStateStore(storeName);
+            tupleForwarder = new TimestampedTupleForwarder<>(
+                store,
+                context,
+                new TimestampedCacheFlushListener<>(context),
+                sendOldValues);
         }
-
 
         @Override
         public void process(final K key, final V value) {
@@ -75,30 +84,33 @@ public class KStreamAggregate<K, V, T> implements KStreamAggProcessorSupplier<K,
                     "Skipping record due to null key or value. key=[{}] value=[{}] topic=[{}] partition=[{}] offset=[{}]",
                     key, value, context().topic(), context().partition(), context().offset()
                 );
-                metrics.skippedRecordsSensor().record();
+                droppedRecordsSensor.record();
                 return;
             }
 
-            T oldAgg = store.get(key);
+            final ValueAndTimestamp<T> oldAggAndTimestamp = store.get(key);
+            T oldAgg = getValueOrNull(oldAggAndTimestamp);
+
+            final T newAgg;
+            final long newTimestamp;
 
             if (oldAgg == null) {
                 oldAgg = initializer.apply();
+                newTimestamp = context().timestamp();
+            } else {
+                oldAgg = oldAggAndTimestamp.value();
+                newTimestamp = Math.max(context().timestamp(), oldAggAndTimestamp.timestamp());
             }
 
-            T newAgg = oldAgg;
+            newAgg = aggregator.apply(key, value, oldAgg);
 
-            // try to add the new value
-            newAgg = aggregator.apply(key, value, newAgg);
-
-            // update the store with the new value
-            store.put(key, newAgg);
-            tupleForwarder.maybeForward(key, newAgg, sendOldValues ? oldAgg : null);
+            store.put(key, ValueAndTimestamp.make(newAgg, newTimestamp));
+            tupleForwarder.maybeForward(key, newAgg, sendOldValues ? oldAgg : null, newTimestamp);
         }
     }
 
     @Override
     public KTableValueGetterSupplier<K, T> view() {
-
         return new KTableValueGetterSupplier<K, T>() {
 
             public KTableValueGetter<K, T> get() {
@@ -113,22 +125,16 @@ public class KStreamAggregate<K, V, T> implements KStreamAggProcessorSupplier<K,
     }
 
     private class KStreamAggregateValueGetter implements KTableValueGetter<K, T> {
+        private TimestampedKeyValueStore<K, T> store;
 
-        private KeyValueStore<K, T> store;
-
-        @SuppressWarnings("unchecked")
         @Override
-        public void init(final ProcessorContext context) {
-            store = (KeyValueStore<K, T>) context.getStateStore(storeName);
+        public void init(final org.apache.kafka.streams.processor.ProcessorContext context) {
+            store = context.getStateStore(storeName);
         }
 
         @Override
-        public T get(final K key) {
+        public ValueAndTimestamp<T> get(final K key) {
             return store.get(key);
-        }
-
-        @Override
-        public void close() {
         }
     }
 }

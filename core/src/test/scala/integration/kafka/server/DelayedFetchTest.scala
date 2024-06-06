@@ -18,15 +18,18 @@ package kafka.server
 
 import java.util.Optional
 
+import scala.collection.Seq
 import kafka.cluster.Partition
+import kafka.log.LogOffsetSnapshot
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.FencedLeaderEpochException
+import org.apache.kafka.common.errors.{FencedLeaderEpochException, NotLeaderOrFollowerException}
+import org.apache.kafka.common.message.OffsetForLeaderEpochResponseData.EpochEndOffset
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.record.MemoryRecords
 import org.apache.kafka.common.requests.FetchRequest
 import org.easymock.{EasyMock, EasyMockSupport}
-import org.junit.Test
-import org.junit.Assert._
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions._
 
 class DelayedFetchTest extends EasyMockSupport {
   private val maxBytes = 1024
@@ -56,16 +59,20 @@ class DelayedFetchTest extends EasyMockSupport {
       fetchMetadata = fetchMetadata,
       replicaManager = replicaManager,
       quota = replicaQuota,
+      clientMetadata = None,
       responseCallback = callback)
 
     val partition: Partition = mock(classOf[Partition])
 
-    EasyMock.expect(replicaManager.getPartitionOrException(topicPartition, expectLeader = true))
+    EasyMock.expect(replicaManager.getPartitionOrException(topicPartition))
         .andReturn(partition)
-    EasyMock.expect(partition.fetchOffsetSnapshot(currentLeaderEpoch, fetchOnlyFromLeader = true))
+    EasyMock.expect(partition.fetchOffsetSnapshot(
+        currentLeaderEpoch,
+        fetchOnlyFromLeader = true))
         .andThrow(new FencedLeaderEpochException("Requested epoch has been fenced"))
+    EasyMock.expect(replicaManager.isAddingReplica(EasyMock.anyObject(), EasyMock.anyInt())).andReturn(false)
 
-    expectReadFromReplicaWithError(replicaId, topicPartition, fetchStatus.fetchInfo, Errors.FENCED_LEADER_EPOCH)
+    expectReadFromReplica(replicaId, topicPartition, fetchStatus.fetchInfo, Errors.FENCED_LEADER_EPOCH)
 
     replayAll()
 
@@ -75,6 +82,93 @@ class DelayedFetchTest extends EasyMockSupport {
 
     val fetchResult = fetchResultOpt.get
     assertEquals(Errors.FENCED_LEADER_EPOCH, fetchResult.error)
+  }
+
+  @Test
+  def testNotLeaderOrFollower(): Unit = {
+    val topicPartition = new TopicPartition("topic", 0)
+    val fetchOffset = 500L
+    val logStartOffset = 0L
+    val currentLeaderEpoch = Optional.of[Integer](10)
+    val replicaId = 1
+
+    val fetchStatus = FetchPartitionStatus(
+      startOffsetMetadata = LogOffsetMetadata(fetchOffset),
+      fetchInfo = new FetchRequest.PartitionData(fetchOffset, logStartOffset, maxBytes, currentLeaderEpoch))
+    val fetchMetadata = buildFetchMetadata(replicaId, topicPartition, fetchStatus)
+
+    var fetchResultOpt: Option[FetchPartitionData] = None
+    def callback(responses: Seq[(TopicPartition, FetchPartitionData)]): Unit = {
+      fetchResultOpt = Some(responses.head._2)
+    }
+
+    val delayedFetch = new DelayedFetch(
+      delayMs = 500,
+      fetchMetadata = fetchMetadata,
+      replicaManager = replicaManager,
+      quota = replicaQuota,
+      clientMetadata = None,
+      responseCallback = callback)
+
+    EasyMock.expect(replicaManager.getPartitionOrException(topicPartition))
+      .andThrow(new NotLeaderOrFollowerException(s"Replica for $topicPartition not available"))
+    expectReadFromReplica(replicaId, topicPartition, fetchStatus.fetchInfo, Errors.NOT_LEADER_OR_FOLLOWER)
+    EasyMock.expect(replicaManager.isAddingReplica(EasyMock.anyObject(), EasyMock.anyInt())).andReturn(false)
+
+    replayAll()
+
+    assertTrue(delayedFetch.tryComplete())
+    assertTrue(delayedFetch.isCompleted)
+    assertTrue(fetchResultOpt.isDefined)
+  }
+
+  @Test
+  def testDivergingEpoch(): Unit = {
+    val topicPartition = new TopicPartition("topic", 0)
+    val fetchOffset = 500L
+    val logStartOffset = 0L
+    val currentLeaderEpoch = Optional.of[Integer](10)
+    val lastFetchedEpoch = Optional.of[Integer](9)
+    val replicaId = 1
+
+    val fetchStatus = FetchPartitionStatus(
+      startOffsetMetadata = LogOffsetMetadata(fetchOffset),
+      fetchInfo = new FetchRequest.PartitionData(fetchOffset, logStartOffset, maxBytes, currentLeaderEpoch, lastFetchedEpoch))
+    val fetchMetadata = buildFetchMetadata(replicaId, topicPartition, fetchStatus)
+
+    var fetchResultOpt: Option[FetchPartitionData] = None
+    def callback(responses: Seq[(TopicPartition, FetchPartitionData)]): Unit = {
+      fetchResultOpt = Some(responses.head._2)
+    }
+
+    val delayedFetch = new DelayedFetch(
+      delayMs = 500,
+      fetchMetadata = fetchMetadata,
+      replicaManager = replicaManager,
+      quota = replicaQuota,
+      clientMetadata = None,
+      responseCallback = callback)
+
+    val partition: Partition = mock(classOf[Partition])
+    EasyMock.expect(replicaManager.getPartitionOrException(topicPartition)).andReturn(partition)
+    val endOffsetMetadata = LogOffsetMetadata(messageOffset = 500L, segmentBaseOffset = 0L, relativePositionInSegment = 500)
+    EasyMock.expect(partition.fetchOffsetSnapshot(
+      currentLeaderEpoch,
+      fetchOnlyFromLeader = true))
+      .andReturn(LogOffsetSnapshot(0L, endOffsetMetadata, endOffsetMetadata, endOffsetMetadata))
+    EasyMock.expect(partition.lastOffsetForLeaderEpoch(currentLeaderEpoch, lastFetchedEpoch.get, fetchOnlyFromLeader = false))
+      .andReturn(new EpochEndOffset()
+        .setPartition(topicPartition.partition)
+        .setErrorCode(Errors.NONE.code)
+        .setLeaderEpoch(lastFetchedEpoch.get)
+        .setEndOffset(fetchOffset - 1))
+    EasyMock.expect(replicaManager.isAddingReplica(EasyMock.anyObject(), EasyMock.anyInt())).andReturn(false)
+    expectReadFromReplica(replicaId, topicPartition, fetchStatus.fetchInfo, Errors.NONE)
+    replayAll()
+
+    assertTrue(delayedFetch.tryComplete())
+    assertTrue(delayedFetch.isCompleted)
+    assertTrue(fetchResultOpt.isDefined)
   }
 
   private def buildFetchMetadata(replicaId: Int,
@@ -90,10 +184,10 @@ class DelayedFetchTest extends EasyMockSupport {
       fetchPartitionStatus = Seq((topicPartition, fetchStatus)))
   }
 
-  private def expectReadFromReplicaWithError(replicaId: Int,
-                                             topicPartition: TopicPartition,
-                                             fetchPartitionData: FetchRequest.PartitionData,
-                                             error: Errors): Unit = {
+  private def expectReadFromReplica(replicaId: Int,
+                                    topicPartition: TopicPartition,
+                                    fetchPartitionData: FetchRequest.PartitionData,
+                                    error: Errors): Unit = {
     EasyMock.expect(replicaManager.readFromLocalLog(
       replicaId = replicaId,
       fetchOnlyFromLeader = true,
@@ -101,20 +195,21 @@ class DelayedFetchTest extends EasyMockSupport {
       fetchMaxBytes = maxBytes,
       hardMaxBytesLimit = false,
       readPartitionInfo = Seq((topicPartition, fetchPartitionData)),
+      clientMetadata = None,
       quota = replicaQuota))
-      .andReturn(Seq((topicPartition, buildReadResultWithError(error))))
+      .andReturn(Seq((topicPartition, buildReadResult(error))))
   }
 
-  private def buildReadResultWithError(error: Errors): LogReadResult = {
+  private def buildReadResult(error: Errors): LogReadResult = {
     LogReadResult(
-      exception = Some(error.exception),
+      exception = if (error != Errors.NONE) Some(error.exception) else None,
       info = FetchDataInfo(LogOffsetMetadata.UnknownOffsetMetadata, MemoryRecords.EMPTY),
+      divergingEpoch = None,
       highWatermark = -1L,
       leaderLogStartOffset = -1L,
       leaderLogEndOffset = -1L,
       followerLogStartOffset = -1L,
       fetchTimeMs = -1L,
-      readSize = -1,
       lastStableOffset = None)
   }
 

@@ -58,8 +58,10 @@ object ControllerState {
     def value = 4
   }
 
-  case object PartitionReassignment extends ControllerState {
+  case object AlterPartitionReassignment extends ControllerState {
     def value = 5
+
+    override def rateAndTimeMetricName: Option[String] = Some("PartitionReassignmentRateAndTimeMs")
   }
 
   case object AutoLeaderBalance extends ControllerState {
@@ -98,7 +100,55 @@ object ControllerState {
     def value = 14
   }
 
+  case object ListPartitionReassignment extends ControllerState {
+    def value = 15
+  }
+
+  case object UpdateMetadataResponseReceived extends ControllerState {
+    def value = 16
+
+    override protected def hasRateAndTimeMetric: Boolean = false
+  }
+
+  case object UpdateFeatures extends ControllerState {
+    def value = 17
+  }
+
+  case object TopicMinInSyncReplicasConfigChange extends ControllerState {
+    def value = 18
+  }
+
+  case object SkipControlledShutdownSafetyCheck extends ControllerState {
+    def value = 19
+  }
+
+  case object TopicDeletionFlagChange extends ControllerState {
+    def value = 100
+  }
+
+  case object PreferredControllerChange extends ControllerState {
+    def value = 101
+  }
+
+  case object CorruptedBrokersChange extends ControllerState {
+    def value = 102
+  }
+
+  case object CorruptedBrokerOffsetsReceived extends ControllerState {
+    def value = 103
+  }
+
+  case object DelayedElectionSuccess extends ControllerState {
+    def value = 104
+  }
+
+  case object RegisterCorruptedBroker extends ControllerState {
+    def value = 105
+  }
+
   val values: Seq[ControllerState] = Seq(Idle, ControllerChange, BrokerChange, TopicChange, TopicDeletion,
-    PartitionReassignment, AutoLeaderBalance, ManualLeaderBalance, ControlledShutdown, IsrChange, LeaderAndIsrResponseReceived,
-    LogDirChange, ControllerShutdown, UncleanLeaderElectionEnable, TopicUncleanLeaderElectionEnable)
+    AlterPartitionReassignment, AutoLeaderBalance, ManualLeaderBalance, ControlledShutdown, IsrChange,
+    LeaderAndIsrResponseReceived, LogDirChange, ControllerShutdown, UncleanLeaderElectionEnable,
+    TopicUncleanLeaderElectionEnable, ListPartitionReassignment, UpdateMetadataResponseReceived,
+    UpdateFeatures, TopicMinInSyncReplicasConfigChange, SkipControlledShutdownSafetyCheck, TopicDeletionFlagChange, PreferredControllerChange)
 }

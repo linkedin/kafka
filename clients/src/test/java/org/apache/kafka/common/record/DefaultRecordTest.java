@@ -16,21 +16,33 @@
  */
 package org.apache.kafka.common.record;
 
+import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import org.apache.kafka.common.utils.ByteBufferInputStream;
 import org.apache.kafka.common.utils.ByteBufferOutputStream;
 import org.apache.kafka.common.utils.ByteUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class DefaultRecordTest {
+
+    private byte[] skipArray;
+
+    @BeforeEach
+    public void setUp() {
+        skipArray = new byte[64];
+    }
 
     @Test
     public void testBasicSerde() throws IOException {
@@ -74,11 +86,11 @@ public class DefaultRecordTest {
         }
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
     public void testBasicSerdeInvalidHeaderCountTooHigh() throws IOException {
         Header[] headers = new Header[] {
             new RecordHeader("foo", "value".getBytes()),
-            new RecordHeader("bar", (byte[]) null),
+            new RecordHeader("bar", null),
             new RecordHeader("\"A\\u00ea\\u00f1\\u00fcC\"", "value".getBytes())
         };
 
@@ -96,18 +108,15 @@ public class DefaultRecordTest {
         ByteBuffer buffer = out.buffer();
         buffer.flip();
         buffer.put(14, (byte) 8);
-
-        DefaultRecord logRecord = DefaultRecord.readFrom(buffer, baseOffset, baseTimestamp, baseSequence, null);
-        // force iteration through the record to validate the number of headers
-        assertEquals(DefaultRecord.sizeInBytes(offsetDelta, timestampDelta, record.key(), record.value(),
-                record.headers()), logRecord.sizeInBytes());
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buffer, baseOffset, baseTimestamp, baseSequence, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
     public void testBasicSerdeInvalidHeaderCountTooLow() throws IOException {
         Header[] headers = new Header[] {
             new RecordHeader("foo", "value".getBytes()),
-            new RecordHeader("bar", (byte[]) null),
+            new RecordHeader("bar", null),
             new RecordHeader("\"A\\u00ea\\u00f1\\u00fcC\"", "value".getBytes())
         };
 
@@ -126,13 +135,11 @@ public class DefaultRecordTest {
         buffer.flip();
         buffer.put(14, (byte) 4);
 
-        DefaultRecord logRecord = DefaultRecord.readFrom(buffer, baseOffset, baseTimestamp, baseSequence, null);
-        // force iteration through the record to validate the number of headers
-        assertEquals(DefaultRecord.sizeInBytes(offsetDelta, timestampDelta, record.key(), record.value(),
-                record.headers()), logRecord.sizeInBytes());
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buffer, baseOffset, baseTimestamp, baseSequence, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
     public void testInvalidKeySize() {
         byte attributes = 0;
         long timestampDelta = 2;
@@ -149,11 +156,34 @@ public class DefaultRecordTest {
         buf.position(buf.limit());
 
         buf.flip();
-        DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null);
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
-    public void testInvalidValueSize() throws IOException {
+    @Test
+    public void testInvalidKeySizePartial() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+        int keySize = 105; // use a key size larger than the full message
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(keySize, buf);
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidValueSize() {
         byte attributes = 0;
         long timestampDelta = 2;
         int offsetDelta = 1;
@@ -170,10 +200,224 @@ public class DefaultRecordTest {
         buf.position(buf.limit());
 
         buf.flip();
-        DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null);
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
+    public void testInvalidValueSizePartial() throws IOException {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+        int valueSize = 105; // use a value size larger than the full message
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(valueSize, buf);
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidNumHeaders() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(-1, buf); // -1 num.headers, not allowed
+        buf.position(buf.limit());
+
+        buf.flip();
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidNumHeadersPartial() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(-1, buf); // -1 num.headers, not allowed
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidHeaderKey() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(105, buf); // header key too long
+        buf.position(buf.limit());
+
+        buf.flip();
+        assertThrows(InvalidRecordException.class,
+            () ->  DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidHeaderKeyPartial() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(105, buf); // header key too long
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testNullHeaderKey() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(-1, buf); // null header key not allowed
+        buf.position(buf.limit());
+
+        buf.flip();
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testNullHeaderKeyPartial() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(-1, buf); // null header key not allowed
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidHeaderValue() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(1, buf);
+        buf.put((byte) 1);
+        ByteUtils.writeVarint(105, buf); // header value too long
+        buf.position(buf.limit());
+
+        buf.flip();
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
+    public void testInvalidHeaderValuePartial() {
+        byte attributes = 0;
+        long timestampDelta = 2;
+        int offsetDelta = 1;
+        int sizeOfBodyInBytes = 100;
+
+        ByteBuffer buf = ByteBuffer.allocate(sizeOfBodyInBytes + ByteUtils.sizeOfVarint(sizeOfBodyInBytes));
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+        buf.put(attributes);
+        ByteUtils.writeVarlong(timestampDelta, buf);
+        ByteUtils.writeVarint(offsetDelta, buf);
+        ByteUtils.writeVarint(-1, buf); // null key
+        ByteUtils.writeVarint(-1, buf); // null value
+        ByteUtils.writeVarint(1, buf);
+        ByteUtils.writeVarint(1, buf);
+        buf.put((byte) 1);
+        ByteUtils.writeVarint(105, buf); // header value too long
+        buf.position(buf.limit());
+
+        buf.flip();
+        DataInputStream inputStream = new DataInputStream(new ByteBufferInputStream(buf));
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readPartiallyFrom(inputStream, skipArray, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
+
+    @Test
     public void testUnderflowReadingTimestamp() {
         byte attributes = 0;
         int sizeOfBodyInBytes = 1;
@@ -182,10 +426,11 @@ public class DefaultRecordTest {
         buf.put(attributes);
 
         buf.flip();
-        DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null);
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
     public void testUnderflowReadingVarlong() {
         byte attributes = 0;
         int sizeOfBodyInBytes = 2; // one byte for attributes, one byte for partial timestamp
@@ -196,10 +441,11 @@ public class DefaultRecordTest {
         buf.position(buf.limit() - 1);
 
         buf.flip();
-        DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null);
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
     }
 
-    @Test(expected = InvalidRecordException.class)
+    @Test
     public void testInvalidVarlong() {
         byte attributes = 0;
         int sizeOfBodyInBytes = 11; // one byte for attributes, 10 bytes for max timestamp
@@ -212,7 +458,8 @@ public class DefaultRecordTest {
         buf.put(recordStartPosition + 10, Byte.MIN_VALUE); // use an invalid final byte
 
         buf.flip();
-        DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null);
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
     }
 
     @Test
@@ -234,4 +481,14 @@ public class DefaultRecordTest {
         assertEquals(RecordBatch.NO_SEQUENCE, record.sequence());
     }
 
+    @Test
+    public void testInvalidSizeOfBodyInBytes() {
+        int sizeOfBodyInBytes = 10;
+        ByteBuffer buf = ByteBuffer.allocate(5);
+        ByteUtils.writeVarint(sizeOfBodyInBytes, buf);
+
+        buf.flip();
+        assertThrows(InvalidRecordException.class,
+            () -> DefaultRecord.readFrom(buf, 0L, 0L, RecordBatch.NO_SEQUENCE, null));
+    }
 }

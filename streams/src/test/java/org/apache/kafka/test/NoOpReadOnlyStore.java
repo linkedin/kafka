@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.test;
 
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.state.KeyValueIterator;
@@ -23,15 +24,12 @@ import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 
 import java.io.File;
 
-public class NoOpReadOnlyStore<K, V>
-        implements ReadOnlyKeyValueStore<K, V>, StateStore {
-
+public class NoOpReadOnlyStore<K, V> implements ReadOnlyKeyValueStore<K, V>, StateStore {
     private final String name;
     private final boolean rocksdbStore;
     private boolean open = true;
     public boolean initialized;
     public boolean flushed;
-
 
     public NoOpReadOnlyStore() {
         this("", false);
@@ -58,6 +56,11 @@ public class NoOpReadOnlyStore<K, V>
     }
 
     @Override
+    public <PS extends Serializer<P>, P> KeyValueIterator<K, V> prefixScan(P prefix, PS prefixKeySerializer) {
+        return null;
+    }
+
+    @Override
     public KeyValueIterator<K, V> all() {
         return null;
     }
@@ -72,6 +75,7 @@ public class NoOpReadOnlyStore<K, V>
         return name;
     }
 
+    @Deprecated
     @Override
     public void init(final ProcessorContext context, final StateStore root) {
         if (rocksdbStore) {
@@ -81,6 +85,7 @@ public class NoOpReadOnlyStore<K, V>
             new File(context.stateDir() + File.separator + name).mkdir();
         }
         this.initialized = true;
+        context.register(root, (k, v) -> { });
     }
 
     @Override

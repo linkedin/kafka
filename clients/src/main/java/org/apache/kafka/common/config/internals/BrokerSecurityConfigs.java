@@ -39,10 +39,9 @@ public class BrokerSecurityConfigs {
 
     public static final String PRINCIPAL_BUILDER_CLASS_DOC = "The fully qualified name of a class that implements the " +
             "KafkaPrincipalBuilder interface, which is used to build the KafkaPrincipal object used during " +
-            "authorization. This config also supports the deprecated PrincipalBuilder interface which was previously " +
-            "used for client authentication over SSL. If no principal builder is defined, the default behavior depends " +
-            "on the security protocol in use. For SSL authentication,  the principal will be derived using the" +
-            " rules defined by <code>" + SSL_PRINCIPAL_MAPPING_RULES_CONFIG + "</code> applied on the distinguished " +
+            "authorization. If no principal builder is defined, the default behavior depends " +
+            "on the security protocol in use. For SSL authentication,  the principal will be derived using the " +
+            "rules defined by <code>" + SSL_PRINCIPAL_MAPPING_RULES_CONFIG + "</code> applied on the distinguished " +
             "name from the client certificate if one is provided; otherwise, if client authentication is not required, " +
             "the principal name will be ANONYMOUS. For SASL authentication, the principal will be derived using the " +
             "rules defined by <code>" + SASL_KERBEROS_PRINCIPAL_TO_LOCAL_RULES_CONFIG + "</code> if GSSAPI is in use, " +
@@ -55,7 +54,7 @@ public class BrokerSecurityConfigs {
             " see <a href=\"#security_authz\"> security authorization and acls</a>. Note that this configuration is ignored" +
             " if an extension of KafkaPrincipalBuilder is provided by the <code>" + PRINCIPAL_BUILDER_CLASS_CONFIG + "</code>" +
            " configuration.";
-    public static final List<String> DEFAULT_SSL_PRINCIPAL_MAPPING_RULES = Collections.singletonList("DEFAULT");
+    public static final String DEFAULT_SSL_PRINCIPAL_MAPPING_RULES = "DEFAULT";
 
     public static final String SASL_KERBEROS_PRINCIPAL_TO_LOCAL_RULES_DOC = "A list of rules for mapping from principal " +
             "names to short names (typically operating system usernames). The rules are evaluated in order and the " +
@@ -69,11 +68,11 @@ public class BrokerSecurityConfigs {
     public static final String SSL_CLIENT_AUTH_DOC = "Configures kafka broker to request client authentication."
             + " The following settings are common: "
             + " <ul>"
-            + " <li><code>ssl.client.auth=required</code> If set to required"
-            + " client authentication is required."
+            + " <li><code>ssl.client.auth=required</code> If set to required client authentication is required."
             + " <li><code>ssl.client.auth=requested</code> This means client authentication is optional."
-            + " unlike requested , if this option is set client can choose not to provide authentication information about itself"
-            + " <li><code>ssl.client.auth=none</code> This means client authentication is not needed.";
+            + " unlike required, if this option is set client can choose not to provide authentication information about itself"
+            + " <li><code>ssl.client.auth=none</code> This means client authentication is not needed."
+            + "</ul>";
 
     public static final String SASL_ENABLED_MECHANISMS_DOC = "The list of SASL mechanisms enabled in the Kafka server. "
             + "The list may contain any mechanism for which a security provider is available. "

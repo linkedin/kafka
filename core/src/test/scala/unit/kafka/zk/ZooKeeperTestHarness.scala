@@ -18,26 +18,23 @@
 package kafka.zk
 
 import javax.security.auth.login.Configuration
-
 import kafka.utils.{CoreUtils, Logging, TestUtils}
-import org.junit.{After, AfterClass, Before, BeforeClass}
-import org.junit.Assert._
-import org.scalatest.junit.JUnitSuite
+import org.junit.jupiter.api.{AfterAll, AfterEach, BeforeAll, BeforeEach, Tag}
+import org.junit.jupiter.api.Assertions._
 import org.apache.kafka.common.security.JaasUtils
-import org.apache.kafka.test.IntegrationTest
-import org.junit.experimental.categories.Category
 
 import scala.collection.Set
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.consumer.internals.AbstractCoordinator
 import kafka.controller.ControllerEventManager
 import org.apache.kafka.clients.admin.AdminClientUnitTestEnv
 import org.apache.kafka.common.utils.Time
+import org.apache.zookeeper.client.ZKClientConfig
 import org.apache.zookeeper.{WatchedEvent, Watcher, ZooKeeper}
 
-@Category(Array(classOf[IntegrationTest]))
-abstract class ZooKeeperTestHarness extends JUnitSuite with Logging {
+@Tag("integration")
+abstract class ZooKeeperTestHarness extends Logging {
 
   val zkConnectionTimeout = 10000
   val zkSessionTimeout = 15000 // Allows us to avoid ZK session expiration due to GC up to 2/3 * 15000ms = 10 secs
@@ -53,21 +50,25 @@ abstract class ZooKeeperTestHarness extends JUnitSuite with Logging {
   def zkPort: Int = zookeeper.port
   def zkConnect: String = s"127.0.0.1:$zkPort"
   
-  @Before
-  def setUp() {
+  @BeforeEach
+  def setUp(): Unit = {
     zookeeper = new EmbeddedZookeeper()
-    zkClient = KafkaZkClient(zkConnect, zkAclsEnabled.getOrElse(JaasUtils.isZkSecurityEnabled), zkSessionTimeout,
-      zkConnectionTimeout, zkMaxInFlightRequests, Time.SYSTEM)
+    zkClient = KafkaZkClient(zkConnect, zkAclsEnabled.getOrElse(JaasUtils.isZkSaslEnabled), zkSessionTimeout,
+      zkConnectionTimeout, zkMaxInFlightRequests, Time.SYSTEM, name = "ZooKeeperTestHarness", new ZKClientConfig)
     adminZkClient = new AdminZkClient(zkClient)
   }
 
-  @After
-  def tearDown() {
+  @AfterEach
+  def tearDown(): Unit = {
+    shutdownZooKeeper()
+    Configuration.setConfiguration(null)
+  }
+
+  def shutdownZooKeeper(): Unit = {
     if (zkClient != null)
-     zkClient.close()
+      zkClient.close()
     if (zookeeper != null)
       CoreUtils.swallow(zookeeper.shutdown(), this)
-    Configuration.setConfiguration(null)
   }
 
   // Trigger session expiry by reusing the session id in another client
@@ -84,7 +85,7 @@ abstract class ZooKeeperTestHarness extends JUnitSuite with Logging {
 }
 
 object ZooKeeperTestHarness {
-  val ZkClientEventThreadPrefix = "ZkClient-EventThread"
+  val ZkClientEventThreadSuffix = "-EventThread"
 
   // Threads which may cause transient failures in subsequent tests if not shutdown.
   // These include threads which make connections to brokers and may cause issues
@@ -94,23 +95,23 @@ object ZooKeeperTestHarness {
                                   KafkaProducer.NETWORK_THREAD_PREFIX,
                                   AdminClientUnitTestEnv.kafkaAdminClientNetworkThreadPrefix(),
                                   AbstractCoordinator.HEARTBEAT_THREAD_PREFIX,
-                                  ZkClientEventThreadPrefix)
+                                  ZkClientEventThreadSuffix)
 
   /**
    * Verify that a previous test that doesn't use ZooKeeperTestHarness hasn't left behind an unexpected thread.
    * This assumes that brokers, ZooKeeper clients, producers and consumers are not created in another @BeforeClass,
    * which is true for core tests where this harness is used.
    */
-  @BeforeClass
-  def setUpClass() {
+  @BeforeAll
+  def setUpClass(): Unit = {
     verifyNoUnexpectedThreads("@BeforeClass")
   }
 
   /**
    * Verify that tests from the current test class using ZooKeeperTestHarness haven't left behind an unexpected thread
    */
-  @AfterClass
-  def tearDownClass() {
+  @AfterAll
+  def tearDownClass(): Unit = {
     verifyNoUnexpectedThreads("@AfterClass")
   }
 
@@ -118,15 +119,12 @@ object ZooKeeperTestHarness {
    * Verifies that threads which are known to cause transient failures in subsequent tests
    * have been shutdown.
    */
-  def verifyNoUnexpectedThreads(context: String) {
+  def verifyNoUnexpectedThreads(context: String): Unit = {
     def allThreads = Thread.getAllStackTraces.keySet.asScala.map(thread => thread.getName)
     val (threads, noUnexpected) = TestUtils.computeUntilTrue(allThreads) { threads =>
       threads.forall(t => unexpectedThreadNames.forall(s => !t.contains(s)))
     }
-    assertTrue(
-      s"Found unexpected threads during $context, allThreads=$threads, " +
-        s"unexpected=${threads.filterNot(t => unexpectedThreadNames.forall(s => !t.contains(s)))}",
-      noUnexpected
-    )
+    assertTrue(noUnexpected, s"Found unexpected threads during $context, allThreads=$threads, " +
+      s"unexpected=${threads.filterNot(t => unexpectedThreadNames.forall(s => !t.contains(s)))}")
   }
 }

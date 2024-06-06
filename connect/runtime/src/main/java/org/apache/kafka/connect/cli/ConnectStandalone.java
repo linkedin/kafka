@@ -19,11 +19,12 @@ package org.apache.kafka.connect.cli;
 import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.connect.connector.policy.ConnectorClientConfigOverridePolicy;
 import org.apache.kafka.connect.runtime.Connect;
 import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.Herder;
-import org.apache.kafka.connect.runtime.HerderProvider;
 import org.apache.kafka.connect.runtime.Worker;
+import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.WorkerInfo;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.rest.RestServer;
@@ -31,7 +32,6 @@ import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.runtime.standalone.StandaloneHerder;
 import org.apache.kafka.connect.storage.FileOffsetBackingStore;
-import org.apache.kafka.connect.util.Callback;
 import org.apache.kafka.connect.util.ConnectUtils;
 import org.apache.kafka.connect.util.FutureCallback;
 import org.slf4j.Logger;
@@ -72,7 +72,7 @@ public class ConnectStandalone {
 
             String workerPropsFile = args[0];
             Map<String, String> workerProps = !workerPropsFile.isEmpty() ?
-                    Utils.propsToStringMap(Utils.loadProps(workerPropsFile)) : Collections.<String, String>emptyMap();
+                    Utils.propsToStringMap(Utils.loadProps(workerPropsFile)) : Collections.emptyMap();
 
             log.info("Scanning for plugin classes. This might take a moment ...");
             Plugins plugins = new Plugins(workerProps);
@@ -83,32 +83,30 @@ public class ConnectStandalone {
             log.debug("Kafka cluster ID: {}", kafkaClusterId);
 
             RestServer rest = new RestServer(config);
-            HerderProvider provider = new HerderProvider();
-            rest.start(provider, plugins);
+            rest.initializeServer();
 
             URI advertisedUrl = rest.advertisedUrl();
             String workerId = advertisedUrl.getHost() + ":" + advertisedUrl.getPort();
 
-            Worker worker = new Worker(workerId, time, plugins, config, new FileOffsetBackingStore());
+            ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy = plugins.newPlugin(
+                config.getString(WorkerConfig.CONNECTOR_CLIENT_POLICY_CLASS_CONFIG),
+                config, ConnectorClientConfigOverridePolicy.class);
+            Worker worker = new Worker(workerId, time, plugins, config, new FileOffsetBackingStore(),
+                                       connectorClientConfigOverridePolicy);
 
-            Herder herder = new StandaloneHerder(worker, kafkaClusterId);
+            Herder herder = new StandaloneHerder(worker, kafkaClusterId, connectorClientConfigOverridePolicy);
             final Connect connect = new Connect(herder, rest);
             log.info("Kafka Connect standalone worker initialization took {}ms", time.hiResClockMs() - initStart);
 
             try {
                 connect.start();
-                // herder has initialized now, and ready to be used by the RestServer.
-                provider.setHerder(herder);
                 for (final String connectorPropsFile : Arrays.copyOfRange(args, 1, args.length)) {
                     Map<String, String> connectorProps = Utils.propsToStringMap(Utils.loadProps(connectorPropsFile));
-                    FutureCallback<Herder.Created<ConnectorInfo>> cb = new FutureCallback<>(new Callback<Herder.Created<ConnectorInfo>>() {
-                        @Override
-                        public void onCompletion(Throwable error, Herder.Created<ConnectorInfo> info) {
-                            if (error != null)
-                                log.error("Failed to create job for {}", connectorPropsFile);
-                            else
-                                log.info("Created connector {}", info.result().name());
-                        }
+                    FutureCallback<Herder.Created<ConnectorInfo>> cb = new FutureCallback<>((error, info) -> {
+                        if (error != null)
+                            log.error("Failed to create job for {}", connectorPropsFile);
+                        else
+                            log.info("Created connector {}", info.result().name());
                     });
                     herder.putConnectorConfig(
                             connectorProps.get(ConnectorConfig.NAME_CONFIG),

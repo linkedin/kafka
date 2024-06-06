@@ -16,11 +16,24 @@
  */
 package org.apache.kafka.streams.kstream.internals;
 
-import org.apache.kafka.streams.processor.ProcessorSupplier;
-
-public interface KTableProcessorSupplier<K, V, T> extends ProcessorSupplier<K, Change<V>> {
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
+public interface KTableProcessorSupplier<K, V, T> extends org.apache.kafka.streams.processor.ProcessorSupplier<K, Change<V>> {
 
     KTableValueGetterSupplier<K, T> view();
 
-    void enableSendingOldValues();
+    /**
+     * Potentially enables sending old values.
+     * <p>
+     * If {@code forceMaterialization} is {@code true}, the method will force the materialization of upstream nodes to
+     * enable sending old values.
+     * <p>
+     * If {@code forceMaterialization} is {@code false}, the method will only enable the sending of old values <i>if</i>
+     * an upstream node is already materialized.
+     *
+     * @param forceMaterialization indicates if an upstream node should be forced to materialize to enable sending old
+     *                             values.
+     * @return {@code true} is sending old values is enabled, i.e. either because {@code forceMaterialization} was
+     * {@code true} or some upstream node is materialized.
+     */
+    boolean enableSendingOldValues(boolean forceMaterialization);
 }

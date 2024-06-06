@@ -15,17 +15,15 @@
  * limitations under the License.
  */
 
-package unit.kafka.utils
+package kafka.utils
 
-import kafka.utils.Throttler
-import org.apache.kafka.common.utils.MockTime
-import org.junit.Test
-import org.junit.Assert.{assertTrue, assertEquals}
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions.{assertTrue, assertEquals}
 
 
 class ThrottlerTest {
   @Test
-  def testThrottleDesiredRate() {
+  def testThrottleDesiredRate(): Unit = {
     val throttleCheckIntervalMs = 100
     val desiredCountPerSec = 1000.0
     val desiredCountPerInterval = desiredCountPerSec * throttleCheckIntervalMs / 1000.0

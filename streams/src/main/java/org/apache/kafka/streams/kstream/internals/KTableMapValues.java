@@ -17,14 +17,14 @@
 package org.apache.kafka.streams.kstream.internals;
 
 import org.apache.kafka.streams.kstream.ValueMapperWithKey;
-import org.apache.kafka.streams.processor.AbstractProcessor;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
+
+import static org.apache.kafka.streams.state.ValueAndTimestamp.getValueOrNull;
 
 
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
 class KTableMapValues<K, V, V1> implements KTableProcessorSupplier<K, V, V1> {
-
     private final KTableImpl<K, ?, V> parent;
     private final ValueMapperWithKey<? super K, ? super V, ? extends V1> mapper;
     private final String queryableName;
@@ -39,7 +39,7 @@ class KTableMapValues<K, V, V1> implements KTableProcessorSupplier<K, V, V1> {
     }
 
     @Override
-    public Processor<K, Change<V>> get() {
+    public org.apache.kafka.streams.processor.Processor<K, Change<V>> get() {
         return new KTableMapValuesProcessor();
     }
 
@@ -66,9 +66,17 @@ class KTableMapValues<K, V, V1> implements KTableProcessorSupplier<K, V, V1> {
     }
 
     @Override
-    public void enableSendingOldValues() {
-        parent.enableSendingOldValues();
-        sendOldValues = true;
+    public boolean enableSendingOldValues(final boolean forceMaterialization) {
+        if (queryableName != null) {
+            sendOldValues = true;
+            return true;
+        }
+
+        if (parent.enableSendingOldValues(forceMaterialization)) {
+            sendOldValues = true;
+        }
+
+        return sendOldValues;
     }
 
     private V1 computeValue(final K key, final V value) {
@@ -81,36 +89,62 @@ class KTableMapValues<K, V, V1> implements KTableProcessorSupplier<K, V, V1> {
         return newValue;
     }
 
-    private class KTableMapValuesProcessor extends AbstractProcessor<K, Change<V>> {
-        private KeyValueStore<K, V1> store;
-        private TupleForwarder<K, V1> tupleForwarder;
+    private ValueAndTimestamp<V1> computeValueAndTimestamp(final K key, final ValueAndTimestamp<V> valueAndTimestamp) {
+        V1 newValue = null;
+        long timestamp = 0;
 
-        @SuppressWarnings("unchecked")
+        if (valueAndTimestamp != null) {
+            newValue = mapper.apply(key, valueAndTimestamp.value());
+            timestamp = valueAndTimestamp.timestamp();
+        }
+
+        return ValueAndTimestamp.make(newValue, timestamp);
+    }
+
+
+    private class KTableMapValuesProcessor extends org.apache.kafka.streams.processor.AbstractProcessor<K, Change<V>> {
+        private TimestampedKeyValueStore<K, V1> store;
+        private TimestampedTupleForwarder<K, V1> tupleForwarder;
+
         @Override
-        public void init(final ProcessorContext context) {
+        public void init(final org.apache.kafka.streams.processor.ProcessorContext context) {
             super.init(context);
             if (queryableName != null) {
-                store = (KeyValueStore<K, V1>) context.getStateStore(queryableName);
-                tupleForwarder = new TupleForwarder<>(store, context, new ForwardingCacheFlushListener<K, V1>(context), sendOldValues);
+                store = context.getStateStore(queryableName);
+                tupleForwarder = new TimestampedTupleForwarder<>(
+                    store,
+                    context,
+                    new TimestampedCacheFlushListener<>(context),
+                    sendOldValues);
             }
         }
 
         @Override
         public void process(final K key, final Change<V> change) {
             final V1 newValue = computeValue(key, change.newValue);
-            final V1 oldValue = sendOldValues ? computeValue(key, change.oldValue) : null;
+            final V1 oldValue = computeOldValue(key, change);
 
             if (queryableName != null) {
-                store.put(key, newValue);
+                store.put(key, ValueAndTimestamp.make(newValue, context().timestamp()));
                 tupleForwarder.maybeForward(key, newValue, oldValue);
             } else {
                 context().forward(key, new Change<>(newValue, oldValue));
             }
         }
+
+        private V1 computeOldValue(final K key, final Change<V> change) {
+            if (!sendOldValues) {
+                return null;
+            }
+
+            return queryableName != null
+                ? getValueOrNull(store.get(key))
+                : computeValue(key, change.oldValue);
+        }
     }
 
-    private class KTableMapValuesValueGetter implements KTableValueGetter<K, V1> {
 
+    private class KTableMapValuesValueGetter implements KTableValueGetter<K, V1> {
         private final KTableValueGetter<K, V> parentGetter;
 
         KTableMapValuesValueGetter(final KTableValueGetter<K, V> parentGetter) {
@@ -118,15 +152,14 @@ class KTableMapValues<K, V, V1> implements KTableProcessorSupplier<K, V, V1> {
         }
 
         @Override
-        public void init(final ProcessorContext context) {
+        public void init(final org.apache.kafka.streams.processor.ProcessorContext context) {
             parentGetter.init(context);
         }
 
         @Override
-        public V1 get(final K key) {
-            return computeValue(key, parentGetter.get(key));
+        public ValueAndTimestamp<V1> get(final K key) {
+            return computeValueAndTimestamp(key, parentGetter.get(key));
         }
-
 
         @Override
         public void close() {

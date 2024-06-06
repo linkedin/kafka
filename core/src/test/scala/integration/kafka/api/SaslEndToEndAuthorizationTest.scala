@@ -19,11 +19,11 @@ package kafka.api
 import org.apache.kafka.common.config.SaslConfigs
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.errors.{GroupAuthorizationException, TopicAuthorizationException}
-import org.junit.{Before, Test}
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.jupiter.api.{BeforeEach, Test, Timeout}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
 
 import scala.collection.immutable.List
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 abstract class SaslEndToEndAuthorizationTest extends EndToEndAuthorizationTest {
   override protected def securityProtocol = SecurityProtocol.SASL_SSL
@@ -33,8 +33,8 @@ abstract class SaslEndToEndAuthorizationTest extends EndToEndAuthorizationTest {
   protected def kafkaClientSaslMechanism: String
   protected def kafkaServerSaslMechanisms: List[String]
   
-  @Before
-  override def setUp() {
+  @BeforeEach
+  override def setUp(): Unit = {
     // create static config including client login context with credentials for JaasTestUtils 'client2'
     startSasl(jaasSections(kafkaServerSaslMechanisms, Option(kafkaClientSaslMechanism), Both))
     // set dynamic properties with credentials for JaasTestUtils 'client1' so that dynamic JAAS configuration is also
@@ -42,6 +42,7 @@ abstract class SaslEndToEndAuthorizationTest extends EndToEndAuthorizationTest {
     val clientLoginContext = jaasClientLoginModule(kafkaClientSaslMechanism)
     producerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, clientLoginContext)
     consumerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, clientLoginContext)
+    adminClientConfig.put(SaslConfigs.SASL_JAAS_CONFIG, clientLoginContext)
     super.setUp()
   }
 
@@ -50,7 +51,8 @@ abstract class SaslEndToEndAuthorizationTest extends EndToEndAuthorizationTest {
     * The first consumer succeeds because it is allowed by the ACL, 
     * the second one connects ok, but fails to consume messages due to the ACL.
     */
-  @Test(timeout = 15000)
+  @Timeout(15)
+  @Test
   def testTwoConsumersWithDifferentSaslCredentials(): Unit = {
     setAclsAndProduce(tp)
     val consumer1 = createConsumer()
@@ -74,6 +76,6 @@ abstract class SaslEndToEndAuthorizationTest extends EndToEndAuthorizationTest {
       case e: TopicAuthorizationException => assertTrue(e.unauthorizedTopics.contains(topic))
       case e: GroupAuthorizationException => assertEquals(group, e.groupId)
     }
-    confirmReauthenticationMetrics
+    confirmReauthenticationMetrics()
   }
 }

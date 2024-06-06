@@ -21,7 +21,7 @@ import java.util.Properties
 
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
-import org.junit.Test
+import org.junit.jupiter.api.Test
 
 class MinIsrConfigTest extends KafkaServerTestHarness {
 
@@ -30,8 +30,8 @@ class MinIsrConfigTest extends KafkaServerTestHarness {
   def generateConfigs = TestUtils.createBrokerConfigs(1, zkConnect).map(KafkaConfig.fromProps(_, overridingProps))
 
   @Test
-  def testDefaultKafkaConfig() {
-    assert(servers.head.getLogManager().initialDefaultConfig.minInSyncReplicas == 5)
+  def testDefaultKafkaConfig(): Unit = {
+    assert(servers.head.getLogManager.initialDefaultConfig.minInSyncReplicas == 5)
   }
 
 }

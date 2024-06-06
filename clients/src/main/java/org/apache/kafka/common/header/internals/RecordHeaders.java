@@ -16,16 +16,16 @@
  */
 package org.apache.kafka.common.header.internals;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.record.Record;
 import org.apache.kafka.common.utils.AbstractIterator;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
 
 public class RecordHeaders implements Headers {
 
@@ -37,11 +37,7 @@ public class RecordHeaders implements Headers {
     }
 
     public RecordHeaders(Header[] headers) {
-        if (headers == null) {
-            this.headers = new ArrayList<>();
-        } else {
-            this.headers = new ArrayList<>(Arrays.asList(headers));
-        }
+        this(headers == null ? null : Arrays.asList(headers));
     }
 
     public RecordHeaders(Iterable<Header> headers) {
@@ -50,17 +46,18 @@ public class RecordHeaders implements Headers {
             this.headers = new ArrayList<>();
         } else if (headers instanceof RecordHeaders) {
             this.headers = new ArrayList<>(((RecordHeaders) headers).headers);
-        } else if (headers instanceof Collection) {
-            this.headers = new ArrayList<>((Collection<Header>) headers);
         } else {
             this.headers = new ArrayList<>();
-            for (Header header : headers)
+            for (Header header : headers) {
+                Objects.requireNonNull(header, "Header cannot be null.");
                 this.headers.add(header);
+            }
         }
     }
 
     @Override
     public Headers add(Header header) throws IllegalStateException {
+        Objects.requireNonNull(header, "Header cannot be null.");
         canWrite();
         headers.add(header);
         return this;
@@ -112,7 +109,7 @@ public class RecordHeaders implements Headers {
     }
 
     public Header[] toArray() {
-        return headers.isEmpty() ? Record.EMPTY_HEADERS : headers.toArray(new Header[headers.size()]);
+        return headers.isEmpty() ? Record.EMPTY_HEADERS : headers.toArray(new Header[0]);     
     }
 
     private void checkKey(String key) {
@@ -155,7 +152,7 @@ public class RecordHeaders implements Headers {
 
         RecordHeaders headers1 = (RecordHeaders) o;
 
-        return headers != null ? headers.equals(headers1.headers) : headers1.headers == null;
+        return Objects.equals(headers, headers1.headers);
     }
 
     @Override

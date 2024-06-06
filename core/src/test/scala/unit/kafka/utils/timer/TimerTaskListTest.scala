@@ -16,9 +16,9 @@
  */
 package kafka.utils.timer
 
-import org.junit.Assert._
+import org.junit.jupiter.api.Assertions._
 import java.util.concurrent.atomic._
-import org.junit.Test
+import org.junit.jupiter.api.Test
 
 class TimerTaskListTest {
 
@@ -33,7 +33,7 @@ class TimerTaskListTest {
   }
 
   @Test
-  def testAll() {
+  def testAll(): Unit = {
     val sharedCounter = new AtomicInteger(0)
     val list1 = new TimerTaskList(sharedCounter)
     val list2 = new TimerTaskList(sharedCounter)

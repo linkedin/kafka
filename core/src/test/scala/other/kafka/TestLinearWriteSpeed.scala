@@ -168,13 +168,13 @@ object TestLinearWriteSpeed {
       }
     }
     val elapsedSecs = (System.nanoTime - beginTest) / (1000.0*1000.0*1000.0)
-    println(bytesToWrite / (1024.0 * 1024.0 * elapsedSecs) + " MB per sec")
+    println((bytesToWrite / (1024.0 * 1024.0 * elapsedSecs)).toString + " MB per sec")
     scheduler.shutdown()
   }
 
   trait Writable {
     def write(): Int
-    def close()
+    def close(): Unit
   }
 
   class MmapWritable(val file: File, size: Long, val content: ByteBuffer) extends Writable {
@@ -187,7 +187,7 @@ object TestLinearWriteSpeed {
       content.rewind()
       content.limit()
     }
-    def close() {
+    def close(): Unit = {
       raf.close()
       Utils.delete(file)
     }
@@ -202,7 +202,7 @@ object TestLinearWriteSpeed {
       content.rewind()
       content.limit()
     }
-    def close() {
+    def close(): Unit = {
       channel.close()
       Utils.delete(file)
     }
@@ -211,12 +211,12 @@ object TestLinearWriteSpeed {
   class LogWritable(val dir: File, config: LogConfig, scheduler: Scheduler, val messages: MemoryRecords) extends Writable {
     Utils.delete(dir)
     val log = Log(dir, config, 0L, 0L, scheduler, new BrokerTopicStats, Time.SYSTEM, 60 * 60 * 1000,
-      LogManager.ProducerIdExpirationCheckIntervalMs, new LogDirFailureChannel(10))
+      LogManager.ProducerIdExpirationCheckIntervalMs, new LogDirFailureChannel(10), topicId = None, keepPartitionMetadataFile = true)
     def write(): Int = {
       log.appendAsLeader(messages, leaderEpoch = 0)
       messages.sizeInBytes
     }
-    def close() {
+    def close(): Unit = {
       log.close()
       Utils.delete(log.dir)
     }

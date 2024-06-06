@@ -17,17 +17,16 @@
 
 package org.apache.kafka.message;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.Timeout;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
+@Timeout(120)
 public class MessageGeneratorTest {
-    @Rule
-    final public Timeout globalTimeout = Timeout.millis(120000);
 
     @Test
     public void testCapitalizeFirst() throws Exception {
@@ -55,5 +54,17 @@ public class MessageGeneratorTest {
         assertEquals("foo_bar_baz", MessageGenerator.toSnakeCase("FooBarBaz"));
         assertEquals("foo_bar_baz", MessageGenerator.toSnakeCase("fooBarBaz"));
         assertEquals("fortran", MessageGenerator.toSnakeCase("FORTRAN"));
+    }
+
+    @Test
+    public void stripSuffixTest() throws Exception {
+        assertEquals("FooBa", MessageGenerator.stripSuffix("FooBar", "r"));
+        assertEquals("", MessageGenerator.stripSuffix("FooBar", "FooBar"));
+        assertEquals("Foo", MessageGenerator.stripSuffix("FooBar", "Bar"));
+        try {
+            MessageGenerator.stripSuffix("FooBar", "Baz");
+            fail("expected exception");
+        } catch (RuntimeException e) {
+        }
     }
 }

@@ -18,28 +18,30 @@
 package kafka.tools
 
 import java.io._
-import java.nio.ByteBuffer
 
-import kafka.coordinator.group.{GroupMetadataKey, GroupMetadataManager, OffsetKey}
+import com.fasterxml.jackson.databind.node.{IntNode, JsonNodeFactory, ObjectNode, TextNode}
+import kafka.coordinator.group.GroupMetadataManager
 import kafka.coordinator.transaction.TransactionLog
 import kafka.log._
 import kafka.serializer.Decoder
 import kafka.utils._
-import org.apache.kafka.clients.consumer.internals.ConsumerProtocol
-import org.apache.kafka.common.KafkaException
+import kafka.utils.Implicits._
+import org.apache.kafka.common.metadata.{MetadataJsonConverters, MetadataRecordType}
+import org.apache.kafka.common.protocol.ByteBufferAccessor
 import org.apache.kafka.common.record._
-import org.apache.kafka.common.utils.{Time, Utils}
+import org.apache.kafka.common.utils.Utils
+import org.apache.kafka.metadata.MetadataRecordSerde
 
-import scala.collection.{Map, mutable}
+import scala.jdk.CollectionConverters._
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.JavaConverters._
 
 object DumpLogSegments {
 
   // visible for testing
   private[tools] val RecordIndent = "|"
 
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
     val opts = new DumpLogSegmentsOptions(args)
     CommandLineUtils.printHelpAndExitIfNeeded(opts, "This tool helps to parse a log file and dump its contents to the console, useful for debugging a seemingly corrupt log segment.")
     opts.checkArgs()
@@ -57,7 +59,7 @@ object DumpLogSegments {
       suffix match {
         case Log.LogFileSuffix =>
           dumpLog(file, opts.shouldPrintDataLog, nonConsecutivePairsForLogFilesMap, opts.isDeepIteration,
-            opts.maxMessageSize, opts.messageParser)
+            opts.maxMessageSize, opts.messageParser, opts.skipRecordMetadata)
         case Log.IndexFileSuffix =>
           dumpIndex(file, opts.indexSanityOnly, opts.verifyOnly, misMatchesForIndexFilesMap, opts.maxMessageSize)
         case Log.TimeIndexFileSuffix =>
@@ -71,7 +73,7 @@ object DumpLogSegments {
       }
     }
 
-    misMatchesForIndexFilesMap.foreach { case (fileName, listOfMismatches) =>
+    misMatchesForIndexFilesMap.forKeyValue { (fileName, listOfMismatches) =>
       System.err.println(s"Mismatches in :$fileName")
       listOfMismatches.foreach { case (indexOffset, logOffset) =>
         System.err.println(s"  Index offset: $indexOffset, log offset: $logOffset")
@@ -80,7 +82,7 @@ object DumpLogSegments {
 
     timeIndexDumpErrors.printErrors()
 
-    nonConsecutivePairsForLogFilesMap.foreach { case (fileName, listOfNonConsecutivePairs) =>
+    nonConsecutivePairsForLogFilesMap.forKeyValue { (fileName, listOfNonConsecutivePairs) =>
       System.err.println(s"Non-consecutive offsets in $fileName")
       listOfNonConsecutivePairs.foreach { case (first, second) =>
         System.err.println(s"  $first is followed by $second")
@@ -119,11 +121,16 @@ object DumpLogSegments {
                                indexSanityOnly: Boolean,
                                verifyOnly: Boolean,
                                misMatchesForIndexFilesMap: mutable.Map[String, List[(Long, Long)]],
-                               maxMessageSize: Int) {
+                               maxMessageSize: Int): Unit = {
     val startOffset = file.getName.split("\\.")(0).toLong
     val logFile = new File(file.getAbsoluteFile.getParent, file.getName.split("\\.")(0) + Log.LogFileSuffix)
     val fileRecords = FileRecords.open(logFile, false)
     val index = new OffsetIndex(file, baseOffset = startOffset, writable = false)
+
+    if (index.entries == 0) {
+      println(s"$file is empty.")
+      return
+    }
 
     //Check that index passes sanityCheck, this is the check that determines if indexes will be rebuilt on startup or not.
     if (indexSanityOnly) {
@@ -156,7 +163,7 @@ object DumpLogSegments {
                                    indexSanityOnly: Boolean,
                                    verifyOnly: Boolean,
                                    timeIndexDumpErrors: TimeIndexDumpErrors,
-                                   maxMessageSize: Int) {
+                                   maxMessageSize: Int): Unit = {
     val startOffset = file.getName.split("\\.")(0).toLong
     val logFile = new File(file.getAbsoluteFile.getParent, file.getName.split("\\.")(0) + Log.LogFileSuffix)
     val fileRecords = FileRecords.open(logFile, false)
@@ -212,110 +219,23 @@ object DumpLogSegments {
     }
   }
 
-  private trait MessageParser[K, V] {
+  private[kafka] trait MessageParser[K, V] {
     def parse(record: Record): (Option[K], Option[V])
   }
 
   private class DecoderMessageParser[K, V](keyDecoder: Decoder[K], valueDecoder: Decoder[V]) extends MessageParser[K, V] {
     override def parse(record: Record): (Option[K], Option[V]) = {
-      if (!record.hasValue) {
-        (None, None)
-      } else {
-        val key = if (record.hasKey)
-          Some(keyDecoder.fromBytes(Utils.readBytes(record.key)))
-        else
-          None
+      val key = if (record.hasKey)
+        Some(keyDecoder.fromBytes(Utils.readBytes(record.key)))
+      else
+        None
 
+      if (!record.hasValue) {
+        (key, None)
+      } else {
         val payload = Some(valueDecoder.fromBytes(Utils.readBytes(record.value)))
 
         (key, payload)
-      }
-    }
-  }
-
-  private class TransactionLogMessageParser extends MessageParser[String, String] {
-
-    override def parse(record: Record): (Option[String], Option[String]) = {
-      val txnKey = TransactionLog.readTxnRecordKey(record.key)
-      val txnMetadata = TransactionLog.readTxnRecordValue(txnKey.transactionalId, record.value)
-
-      val keyString = s"transactionalId=${txnKey.transactionalId}"
-      val valueString = s"producerId:${txnMetadata.producerId}," +
-        s"producerEpoch:${txnMetadata.producerEpoch}," +
-        s"state=${txnMetadata.state}," +
-        s"partitions=${txnMetadata.topicPartitions}," +
-        s"txnLastUpdateTimestamp=${txnMetadata.txnLastUpdateTimestamp}," +
-        s"txnTimeoutMs=${txnMetadata.txnTimeoutMs}"
-
-      (Some(keyString), Some(valueString))
-    }
-
-  }
-
-  private class OffsetsMessageParser extends MessageParser[String, String] {
-    private def hex(bytes: Array[Byte]): String = {
-      if (bytes.isEmpty)
-        ""
-      else
-        "%X".format(BigInt(1, bytes))
-    }
-
-    private def parseOffsets(offsetKey: OffsetKey, payload: ByteBuffer) = {
-      val group = offsetKey.key.group
-      val topicPartition = offsetKey.key.topicPartition
-      val offset = GroupMetadataManager.readOffsetMessageValue(payload)
-
-      val keyString = s"offset::$group:${topicPartition.topic}:${topicPartition.partition}"
-      val valueString = if (offset.metadata.isEmpty)
-        String.valueOf(offset.offset)
-      else
-        s"${offset.offset}:${offset.metadata}"
-
-      (Some(keyString), Some(valueString))
-    }
-
-    private def parseGroupMetadata(groupMetadataKey: GroupMetadataKey, payload: ByteBuffer) = {
-      val groupId = groupMetadataKey.key
-      val group = GroupMetadataManager.readGroupMessageValue(groupId, payload, Time.SYSTEM)
-      val protocolType = group.protocolType.getOrElse("")
-
-      val assignment = group.allMemberMetadata.map { member =>
-        if (protocolType == ConsumerProtocol.PROTOCOL_TYPE) {
-          val partitionAssignment = ConsumerProtocol.deserializeAssignment(ByteBuffer.wrap(member.assignment))
-          val userData = hex(Utils.toArray(partitionAssignment.userData()))
-
-          if (userData.isEmpty)
-            s"${member.memberId}=${partitionAssignment.partitions()}"
-          else
-            s"${member.memberId}=${partitionAssignment.partitions()}:$userData"
-        } else {
-          s"${member.memberId}=${hex(member.assignment)}"
-        }
-      }.mkString("{", ",", "}")
-
-      val keyString = Json.encodeAsString(Map("metadata" -> groupId).asJava)
-
-      val valueString = Json.encodeAsString(Map(
-        "protocolType" -> protocolType,
-        "protocol" -> group.protocolOrNull,
-        "generationId" -> group.generationId,
-        "assignment" -> assignment
-      ).asJava)
-
-      (Some(keyString), Some(valueString))
-    }
-
-    override def parse(record: Record): (Option[String], Option[String]) = {
-      if (!record.hasValue)
-        (None, None)
-      else if (!record.hasKey) {
-        throw new KafkaException("Failed to decode message using offset topic decoder (message had a missing key)")
-      } else {
-        GroupMetadataManager.readMessageKey(record.key) match {
-          case offsetKey: OffsetKey => parseOffsets(offsetKey, record.value)
-          case groupMetadataKey: GroupMetadataKey => parseGroupMetadata(groupMetadataKey, record.value)
-          case _ => throw new KafkaException("Failed to decode message using offset topic decoder (message had an invalid key)")
-        }
       }
     }
   }
@@ -326,7 +246,8 @@ object DumpLogSegments {
                       nonConsecutivePairsForLogFilesMap: mutable.Map[String, List[(Long, Long)]],
                       isDeepIteration: Boolean,
                       maxMessageSize: Int,
-                      parser: MessageParser[_, _]) {
+                      parser: MessageParser[_, _],
+                      skipRecordMetadata: Boolean): Unit = {
     val startOffset = file.getName.split("\\.")(0).toLong
     println("Starting offset: " + startOffset)
     val fileRecords = FileRecords.open(file, false)
@@ -347,27 +268,37 @@ object DumpLogSegments {
             }
             lastOffset = record.offset
 
-            print(s"$RecordIndent offset: ${record.offset} ${batch.timestampType}: ${record.timestamp} " +
-              s"keysize: ${record.keySize} valuesize: ${record.valueSize}")
+            var prefix = s"$RecordIndent "
+            if (!skipRecordMetadata) {
+              print(s"${prefix}offset: ${record.offset} ${batch.timestampType}: ${record.timestamp} " +
+                s"keySize: ${record.keySize} valueSize: ${record.valueSize}")
+              prefix = " "
 
-            if (batch.magic >= RecordBatch.MAGIC_VALUE_V2) {
-              print(" sequence: " + record.sequence + " headerKeys: " + record.headers.map(_.key).mkString("[", ",", "]"))
-            } else {
-              print(s" crc: ${record.checksumOrNull} isvalid: ${record.isValid}")
-            }
-
-            if (batch.isControlBatch) {
-              val controlTypeId = ControlRecordType.parseTypeId(record.key)
-              ControlRecordType.fromTypeId(controlTypeId) match {
-                case ControlRecordType.ABORT | ControlRecordType.COMMIT =>
-                  val endTxnMarker = EndTransactionMarker.deserialize(record)
-                  print(s" endTxnMarker: ${endTxnMarker.controlType} coordinatorEpoch: ${endTxnMarker.coordinatorEpoch}")
-                case controlType =>
-                  print(s" controlType: $controlType($controlTypeId)")
+              if (batch.magic >= RecordBatch.MAGIC_VALUE_V2) {
+                print(" sequence: " + record.sequence + " headerKeys: " + record.headers.map(_.key).mkString("[", ",", "]"))
               }
-            } else if (printContents) {
+              record match {
+                case r: AbstractLegacyRecordBatch => print(s" isValid: ${r.isValid} crc: ${r.checksum}}")
+                case _ =>
+              }
+
+              if (batch.isControlBatch) {
+                val controlTypeId = ControlRecordType.parseTypeId(record.key)
+                ControlRecordType.fromTypeId(controlTypeId) match {
+                  case ControlRecordType.ABORT | ControlRecordType.COMMIT =>
+                    val endTxnMarker = EndTransactionMarker.deserialize(record)
+                    print(s" endTxnMarker: ${endTxnMarker.controlType} coordinatorEpoch: ${endTxnMarker.coordinatorEpoch}")
+                  case controlType =>
+                    print(s" controlType: $controlType($controlTypeId)")
+                }
+              }
+            }
+            if (printContents && !batch.isControlBatch) {
               val (key, payload) = parser.parse(record)
-              key.foreach(key => print(s" key: $key"))
+              key.foreach { key =>
+                print(s"${prefix}key: $key")
+                prefix = " "
+              }
               payload.foreach(payload => print(s" payload: $payload"))
             }
             println()
@@ -393,7 +324,7 @@ object DumpLogSegments {
 
     println(" position: " + accumulativeBytes + " " + batch.timestampType + ": " + batch.maxTimestamp +
       " size: " + batch.sizeInBytes + " magic: " + batch.magic +
-      " compresscodec: " + batch.compressionType + " crc: " + batch.checksum + " isvalid: " + batch.isValid)
+      " compresscodec: " + batch.compressionType.name + " crc: " + batch.checksum + " isvalid: " + batch.isValid)
   }
 
   class TimeIndexDumpErrors {
@@ -401,28 +332,28 @@ object DumpLogSegments {
     val outOfOrderTimestamp = mutable.Map[String, ArrayBuffer[(Long, Long)]]()
     val shallowOffsetNotFound = mutable.Map[String, ArrayBuffer[(Long, Long)]]()
 
-    def recordMismatchTimeIndex(file: File, indexTimestamp: Long, logTimestamp: Long) {
+    def recordMismatchTimeIndex(file: File, indexTimestamp: Long, logTimestamp: Long): Unit = {
       val misMatchesSeq = misMatchesForTimeIndexFilesMap.getOrElse(file.getAbsolutePath, new ArrayBuffer[(Long, Long)]())
       if (misMatchesSeq.isEmpty)
         misMatchesForTimeIndexFilesMap.put(file.getAbsolutePath, misMatchesSeq)
       misMatchesSeq += ((indexTimestamp, logTimestamp))
     }
 
-    def recordOutOfOrderIndexTimestamp(file: File, indexTimestamp: Long, prevIndexTimestamp: Long) {
+    def recordOutOfOrderIndexTimestamp(file: File, indexTimestamp: Long, prevIndexTimestamp: Long): Unit = {
       val outOfOrderSeq = outOfOrderTimestamp.getOrElse(file.getAbsolutePath, new ArrayBuffer[(Long, Long)]())
       if (outOfOrderSeq.isEmpty)
         outOfOrderTimestamp.put(file.getAbsolutePath, outOfOrderSeq)
       outOfOrderSeq += ((indexTimestamp, prevIndexTimestamp))
     }
 
-    def recordShallowOffsetNotFound(file: File, indexOffset: Long, logOffset: Long) {
+    def recordShallowOffsetNotFound(file: File, indexOffset: Long, logOffset: Long): Unit = {
       val shallowOffsetNotFoundSeq = shallowOffsetNotFound.getOrElse(file.getAbsolutePath, new ArrayBuffer[(Long, Long)]())
       if (shallowOffsetNotFoundSeq.isEmpty)
         shallowOffsetNotFound.put(file.getAbsolutePath, shallowOffsetNotFoundSeq)
       shallowOffsetNotFoundSeq += ((indexOffset, logOffset))
     }
 
-    def printErrors() {
+    def printErrors(): Unit = {
       misMatchesForTimeIndexFilesMap.foreach {
         case (fileName, listOfMismatches) => {
           System.err.println("Found timestamp mismatch in :" + fileName)
@@ -447,6 +378,42 @@ object DumpLogSegments {
           System.err.println(s"Indexed offset: $indexedOffset, found log offset: $logOffset")
         }
       }
+    }
+  }
+
+  private class OffsetsMessageParser extends MessageParser[String, String] {
+    override def parse(record: Record): (Option[String], Option[String]) = {
+      GroupMetadataManager.formatRecordKeyAndValue(record)
+    }
+  }
+
+  private class TransactionLogMessageParser extends MessageParser[String, String] {
+    override def parse(record: Record): (Option[String], Option[String]) = {
+      TransactionLog.formatRecordKeyAndValue(record)
+    }
+  }
+
+  private class ClusterMetadataLogMessageParser extends MessageParser[String, String] {
+    val metadataRecordSerde = new MetadataRecordSerde()
+
+    override def parse(record: Record): (Option[String], Option[String]) = {
+      val output = try {
+        val messageAndVersion = metadataRecordSerde.
+          read(new ByteBufferAccessor(record.value), record.valueSize())
+        val json = new ObjectNode(JsonNodeFactory.instance)
+        json.set("type", new TextNode(MetadataRecordType.fromId(
+          messageAndVersion.message().apiKey()).toString))
+        json.set("version", new IntNode(messageAndVersion.version()))
+        json.set("data", MetadataJsonConverters.writeJson(
+          messageAndVersion.message(), messageAndVersion.version()))
+        json.toString()
+      } catch {
+        case e: Throwable => {
+          s"Error at ${record.offset}, skipping. ${e.getMessage}"
+        }
+      }
+      // No keys for metadata records
+      (None, Some(output))
     }
   }
 
@@ -477,6 +444,8 @@ object DumpLogSegments {
       "__consumer_offsets topic.")
     val transactionLogOpt = parser.accepts("transaction-log-decoder", "if set, log data will be parsed as " +
       "transaction metadata from the __transaction_state topic.")
+    val clusterMetadataOpt = parser.accepts("cluster-metadata-decoder", "if set, log data will be parsed as cluster metadata records.")
+    val skipRecordMetadataOpt = parser.accepts("skip-record-metadata", "whether to skip printing metadata for each record.")
     options = parser.parse(args : _*)
 
     def messageParser: MessageParser[_, _] =
@@ -484,6 +453,8 @@ object DumpLogSegments {
         new OffsetsMessageParser
       } else if (options.has(transactionLogOpt)) {
         new TransactionLogMessageParser
+      } else if (options.has(clusterMetadataOpt)) {
+        new ClusterMetadataLogMessageParser
       } else {
         val valueDecoder: Decoder[_] = CoreUtils.createObject[Decoder[_]](options.valueOf(valueDecoderOpt), new VerifiableProperties)
         val keyDecoder: Decoder[_] = CoreUtils.createObject[Decoder[_]](options.valueOf(keyDecoderOpt), new VerifiableProperties)
@@ -493,9 +464,11 @@ object DumpLogSegments {
     lazy val shouldPrintDataLog: Boolean = options.has(printOpt) ||
       options.has(offsetsOpt) ||
       options.has(transactionLogOpt) ||
+      options.has(clusterMetadataOpt) ||
       options.has(valueDecoderOpt) ||
       options.has(keyDecoderOpt)
 
+    lazy val skipRecordMetadata = options.has(skipRecordMetadataOpt)
     lazy val isDeepIteration: Boolean = options.has(deepIterationOpt) || shouldPrintDataLog
     lazy val verifyOnly: Boolean = options.has(verifyOpt)
     lazy val indexSanityOnly: Boolean = options.has(indexSanityOpt)

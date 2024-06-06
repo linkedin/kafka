@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.clients;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
@@ -23,30 +25,39 @@ import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.ChannelBuilders;
 import org.apache.kafka.common.security.JaasContext;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
+import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.Closeable;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.common.utils.Utils.getHost;
 import static org.apache.kafka.common.utils.Utils.getPort;
 
 public final class ClientUtils {
     private static final Logger log = LoggerFactory.getLogger(ClientUtils.class);
+    private static final long DUPLICATE_WINDOW_MS = 1000; // 1 second
+    private static final Map<String, Long> ERROR_DEDUPLICATION_CACHE = new ConcurrentHashMap<>();
 
     private ClientUtils() {
     }
 
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, String clientDnsLookupConfig) {
         return parseAndValidateAddresses(urls, ClientDnsLookup.forConfig(clientDnsLookupConfig));
+    }
+
+    /**
+     * Kafka does not use this function directly. However,
+     * some third-party applications still rely on this API to parse and validate addresses.
+     */
+    public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls) {
+        return parseAndValidateAddresses(urls, ClientDnsLookup.USE_ALL_DNS_IPS);
     }
 
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, ClientDnsLookup clientDnsLookup) {
@@ -65,7 +76,9 @@ public final class ClientUtils {
                             String resolvedCanonicalName = inetAddress.getCanonicalHostName();
                             InetSocketAddress address = new InetSocketAddress(resolvedCanonicalName, port);
                             if (address.isUnresolved()) {
-                                log.warn("Couldn't resolve server {} from {} as DNS resolution of the canonical hostname [} failed for {}", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, resolvedCanonicalName, host);
+                                String message = String.format("Couldn't resolve server %s from %s as DNS resolution of the canonical hostname %s failed for %s",
+                                    url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, resolvedCanonicalName, host);
+                                dedupeAndHandleMessage(message, false);
                             } else {
                                 addresses.add(address);
                             }
@@ -73,7 +86,8 @@ public final class ClientUtils {
                     } else {
                         InetSocketAddress address = new InetSocketAddress(host, port);
                         if (address.isUnresolved()) {
-                            log.warn("Couldn't resolve server {} from {} as DNS resolution failed for {}", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, host);
+                            String message = String.format("Couldn't resolve server %s from %s as DNS resolution failed for %s", url, CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, host);
+                            dedupeAndHandleMessage(message, false);
                         } else {
                             addresses.add(address);
                         }
@@ -87,41 +101,58 @@ public final class ClientUtils {
             }
         }
         if (addresses.isEmpty())
-            throw new ConfigException("No resolvable bootstrap urls given in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+            dedupeAndHandleMessage("No resolvable bootstrap server in provided urls: " + String.join(",", urls), true);
         return addresses;
     }
 
-    public static void closeQuietly(Closeable c, String name, AtomicReference<Throwable> firstException) {
-        if (c != null) {
-            try {
-                c.close();
-            } catch (Throwable t) {
-                firstException.compareAndSet(null, t);
-                log.error("Failed to close " + name, t);
+    public static void dedupeAndHandleMessage(String message, Boolean isError) {
+        long currentTime = System.currentTimeMillis();
+        if (!isDuplicateError(message, currentTime)) {
+            ERROR_DEDUPLICATION_CACHE.put(message, currentTime);
+            if (isError) {
+                throw new ConfigException(message);
+            } else {
+                log.warn(message);
             }
         }
     }
 
+    private static boolean isDuplicateError(String message, long currentTime) {
+        Long previousTime = ERROR_DEDUPLICATION_CACHE.get(message);
+        return previousTime != null && (currentTime - previousTime) < DUPLICATE_WINDOW_MS;
+    }
+
     /**
+     * Create a new channel builder from the provided configuration.
+     *
      * @param config client configs
+     * @param time the time implementation
+     * @param logContext the logging context
+     *
      * @return configured ChannelBuilder based on the configs.
      */
-    public static ChannelBuilder createChannelBuilder(AbstractConfig config, Time time) {
+    public static ChannelBuilder createChannelBuilder(AbstractConfig config, Time time, LogContext logContext) {
         SecurityProtocol securityProtocol = SecurityProtocol.forName(config.getString(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG));
         String clientSaslMechanism = config.getString(SaslConfigs.SASL_MECHANISM);
         return ChannelBuilders.clientChannelBuilder(securityProtocol, JaasContext.Type.CLIENT, config, null,
-                clientSaslMechanism, time, true);
+                clientSaslMechanism, time, true, logContext);
     }
 
-    static List<InetAddress> resolve(String host, ClientDnsLookup clientDnsLookup) throws UnknownHostException {
-        InetAddress[] addresses = InetAddress.getAllByName(host);
-        if (ClientDnsLookup.USE_ALL_DNS_IPS == clientDnsLookup) {
-            return filterPreferredAddresses(addresses);
-        } else {
-            return Collections.singletonList(addresses[0]);
-        }
+    static List<InetAddress> resolve(String host, HostResolver hostResolver) throws UnknownHostException {
+        InetAddress[] addresses = hostResolver.resolve(host);
+        List<InetAddress> result = filterPreferredAddresses(addresses);
+        if (log.isDebugEnabled())
+            log.debug("Resolved host {} as {}", host, result.stream().map(i -> i.getHostAddress()).collect(Collectors.joining(",")));
+        return result;
     }
 
+    /**
+     * Return a list containing the first address in `allAddresses` and subsequent addresses
+     * that are a subtype of the first address.
+     *
+     * The outcome is that all returned addresses are either IPv4 or IPv6 (InetAddress has two
+     * subclasses: Inet4Address and Inet6Address).
+     */
     static List<InetAddress> filterPreferredAddresses(InetAddress[] allAddresses) {
         List<InetAddress> preferredAddresses = new ArrayList<>();
         Class<? extends InetAddress> clazz = null;

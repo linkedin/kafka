@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.connect.storage;
 
+import org.apache.kafka.connect.runtime.RestartRequest;
+import org.apache.kafka.connect.runtime.SessionKey;
 import org.apache.kafka.connect.runtime.TargetState;
 import org.apache.kafka.connect.runtime.distributed.ClusterConfigState;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -88,6 +90,14 @@ public interface ConfigBackingStore {
      */
     void putTargetState(String connector, TargetState state);
 
+    void putSessionKey(SessionKey sessionKey);
+
+    /**
+     * Request a restart of a connector and optionally its tasks.
+     * @param restartRequest the restart request details
+     */
+    void putRestartRequest(RestartRequest restartRequest);
+
     /**
      * Set an update listener to get notifications when there are config/target state
      * changes.
@@ -119,6 +129,18 @@ public interface ConfigBackingStore {
          * @param connector name of the connector
          */
         void onConnectorTargetStateChange(String connector);
+
+        /**
+         * Invoked when the leader has distributed a new session key
+         * @param sessionKey the {@link SessionKey session key}
+         */
+        void onSessionKeyUpdate(SessionKey sessionKey);
+
+        /**
+         * Invoked when a connector and possibly its tasks have been requested to be restarted.
+         * @param restartRequest the {@link RestartRequest restart request}
+         */
+        void onRestartRequest(RestartRequest restartRequest);
     }
 
 }

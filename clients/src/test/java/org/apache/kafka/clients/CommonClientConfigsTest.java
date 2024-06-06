@@ -19,14 +19,14 @@ package org.apache.kafka.clients;
 
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CommonClientConfigsTest {
     private static class TestConfig extends AbstractConfig {
@@ -58,7 +58,7 @@ public class CommonClientConfigsTest {
     }
 
     @Test
-    public void testExponentialBackoffDefaults() throws Exception {
+    public void testExponentialBackoffDefaults() {
         TestConfig defaultConf = new TestConfig(Collections.emptyMap());
         assertEquals(Long.valueOf(50L),
                 defaultConf.getLong(CommonClientConfigs.RECONNECT_BACKOFF_MS_CONFIG));

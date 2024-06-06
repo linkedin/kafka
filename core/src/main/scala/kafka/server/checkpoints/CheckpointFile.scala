@@ -19,9 +19,8 @@ package kafka.server.checkpoints
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.nio.file.{FileAlreadyExistsException, Files, Paths}
-
-import kafka.server.LogDirFailureChannel
-import kafka.utils.Logging
+import kafka.server.{GlobalConfig, LogDirFailureChannel}
+import kafka.utils.{CoreUtils, Logging}
 import org.apache.kafka.common.errors.KafkaStorageException
 import org.apache.kafka.common.utils.Utils
 
@@ -31,6 +30,75 @@ trait CheckpointFileFormatter[T]{
   def toLine(entry: T): String
 
   def fromLine(line: String): Option[T]
+}
+
+class CheckpointReadBuffer[T](location: String,
+                              reader: BufferedReader,
+                              version: Int,
+                              formatter: CheckpointFileFormatter[T]) extends Logging {
+  def read(): Seq[T] = {
+    def malformedLineException(line: String) =
+      new IOException(s"Malformed line in checkpoint file ($location): '$line'")
+
+    var line: String = null
+    try {
+      line = reader.readLine()
+      if (line == null)
+        return Seq.empty
+      line.toInt match {
+        case fileVersion if fileVersion == version =>
+          line = reader.readLine()
+          if (line == null)
+            return Seq.empty
+          val expectedSize = line.toInt
+          val entries = mutable.Buffer[T]()
+          line = reader.readLine()
+          while (line != null) {
+            val entry = formatter.fromLine(line)
+            entry match {
+              case Some(e) =>
+                entries += e
+                line = reader.readLine()
+              case _ => return dropCorruptedFileOrThrow(malformedLineException(line))
+            }
+          }
+          if (entries.size != expectedSize)
+            return dropCorruptedFileOrThrow(new IOException(s"Expected $expectedSize entries in checkpoint file ($location), but found only ${entries.size}"))
+          entries
+        case _ =>
+          dropCorruptedFileOrThrow(new IOException(s"Unrecognized version of the checkpoint file ($location): " + line))
+      }
+    } catch {
+      case _: NumberFormatException => dropCorruptedFileOrThrow(malformedLineException(line))
+    }
+  }
+
+  private def dropCorruptedFileOrThrow(e: Exception): Seq[T] = {
+    if (GlobalConfig.liDropCorruptedFilesEnable) {
+      // clear contents of the file and return an empty sequence
+      CoreUtils.truncateToZero(location)
+      Seq.empty[T]
+    } else {
+      throw e
+    }
+  }
+}
+
+class CheckpointWriteBuffer[T](writer: BufferedWriter,
+                               version: Int,
+                               formatter: CheckpointFileFormatter[T]) {
+  def write(entries: Iterable[T]): Unit = {
+      writer.write(version.toString)
+      writer.newLine()
+
+      writer.write(entries.size.toString)
+      writer.newLine()
+
+      entries.foreach { entry =>
+        writer.write(formatter.toLine(entry))
+        writer.newLine()
+      }
+  }
 }
 
 class CheckpointFile[T](val file: File,
@@ -45,24 +113,15 @@ class CheckpointFile[T](val file: File,
   try Files.createFile(file.toPath) // create the file if it doesn't exist
   catch { case _: FileAlreadyExistsException => }
 
-  def write(entries: Seq[T]) {
+  def write(entries: Iterable[T]): Unit = {
     lock synchronized {
       try {
         // write to temp file and then swap with the existing file
         val fileOutputStream = new FileOutputStream(tempPath.toFile)
         val writer = new BufferedWriter(new OutputStreamWriter(fileOutputStream, StandardCharsets.UTF_8))
+        val checkpointWriteBuffer = new CheckpointWriteBuffer[T](writer, version, formatter)
         try {
-          writer.write(version.toString)
-          writer.newLine()
-
-          writer.write(entries.size.toString)
-          writer.newLine()
-
-          entries.foreach { entry =>
-            writer.write(formatter.toLine(entry))
-            writer.newLine()
-          }
-
+          checkpointWriteBuffer.write(entries)
           writer.flush()
           fileOutputStream.getFD().sync()
         } finally {
@@ -80,41 +139,12 @@ class CheckpointFile[T](val file: File,
   }
 
   def read(): Seq[T] = {
-    def malformedLineException(line: String) =
-      new IOException(s"Malformed line in checkpoint file (${file.getAbsolutePath}): $line'")
     lock synchronized {
       try {
         val reader = Files.newBufferedReader(path)
-        var line: String = null
         try {
-          line = reader.readLine()
-          if (line == null)
-            return Seq.empty
-          line.toInt match {
-            case fileVersion if fileVersion == version =>
-              line = reader.readLine()
-              if (line == null)
-                return Seq.empty
-              val expectedSize = line.toInt
-              val entries = mutable.Buffer[T]()
-              line = reader.readLine()
-              while (line != null) {
-                val entry = formatter.fromLine(line)
-                entry match {
-                  case Some(e) =>
-                    entries += e
-                    line = reader.readLine()
-                  case _ => throw malformedLineException(line)
-                }
-              }
-              if (entries.size != expectedSize)
-                throw new IOException(s"Expected $expectedSize entries in checkpoint file (${file.getAbsolutePath}), but found only ${entries.size}")
-              entries
-            case _ =>
-              throw new IOException(s"Unrecognized version of the checkpoint file (${file.getAbsolutePath}): " + version)
-          }
-        } catch {
-          case _: NumberFormatException => throw malformedLineException(line)
+          val checkpointBuffer = new CheckpointReadBuffer[T](file.getAbsolutePath, reader, version, formatter)
+          checkpointBuffer.read()
         } finally {
           reader.close()
         }

@@ -17,9 +17,12 @@
 package org.apache.kafka.streams.state.internals;
 
 import org.easymock.EasyMockRunner;
-import org.easymock.Mock;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.rocksdb.AbstractCompactionFilter;
+import org.rocksdb.AbstractCompactionFilter.Context;
+import org.rocksdb.AbstractCompactionFilterFactory;
+import org.rocksdb.AbstractWalFilter;
 import org.rocksdb.AccessHint;
 import org.rocksdb.BuiltinComparator;
 import org.rocksdb.ColumnFamilyOptions;
@@ -35,11 +38,15 @@ import org.rocksdb.Logger;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
 import org.rocksdb.RateLimiter;
+import org.rocksdb.RemoveEmptyValueCompactionFilter;
 import org.rocksdb.RocksDB;
 import org.rocksdb.SstFileManager;
 import org.rocksdb.StringAppendOperator;
 import org.rocksdb.VectorMemTableConfig;
 import org.rocksdb.WALRecoveryMode;
+import org.rocksdb.WalProcessingOption;
+import org.rocksdb.WriteBatch;
+import org.rocksdb.WriteBufferManager;
 import org.rocksdb.util.BytewiseComparator;
 
 import java.lang.reflect.InvocationTargetException;
@@ -47,7 +54,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import static org.easymock.EasyMock.mock;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.reset;
 import static org.easymock.EasyMock.verify;
@@ -66,6 +75,7 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
     private final List<String> ignoreMethods = new LinkedList<String>() {
         {
             add("isOwningHandle");
+            add("getNativeHandle");
             add("dispose");
             add("wait");
             add("equals");
@@ -74,13 +84,9 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
             add("notify");
             add("notifyAll");
             add("toString");
+            add("getOptionStringFromProps");
         }
     };
-
-    @Mock
-    private DBOptions dbOptions;
-    @Mock
-    private ColumnFamilyOptions columnFamilyOptions;
 
     @Test
     public void shouldOverwriteAllOptionsMethods() throws Exception {
@@ -105,14 +111,15 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
     }
 
     private void verifyDBOptionsMethodCall(final Method method) throws Exception {
+        final DBOptions mockedDbOptions = mock(DBOptions.class);
         final RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter optionsFacadeDbOptions
-            = new RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter(dbOptions, new ColumnFamilyOptions());
+            = new RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter(mockedDbOptions, new ColumnFamilyOptions());
 
         final Object[] parameters = getDBOptionsParameters(method.getParameterTypes());
 
         try {
-            reset(dbOptions);
-            replay(dbOptions);
+            reset(mockedDbOptions);
+            replay(mockedDbOptions);
             method.invoke(optionsFacadeDbOptions, parameters);
             verify();
             fail("Should have called DBOptions." + method.getName() + "()");
@@ -167,8 +174,29 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
                 case "org.rocksdb.WALRecoveryMode":
                     parameters[i] = WALRecoveryMode.AbsoluteConsistency;
                     break;
+                case "org.rocksdb.WriteBufferManager":
+                    parameters[i] = new WriteBufferManager(1L, new LRUCache(1L));
+                    break;
+                case "org.rocksdb.AbstractWalFilter":
+                    class TestWalFilter extends AbstractWalFilter {
+                        @Override
+                        public void columnFamilyLogNumberMap(final Map<Integer, Long> cfLognumber, final Map<String, Integer> cfNameId) {
+                        }
+
+                        @Override
+                        public LogRecordFoundResult logRecordFound(final long logNumber, final String logFileName, final WriteBatch batch, final WriteBatch newBatch) {
+                            return new LogRecordFoundResult(WalProcessingOption.CONTINUE_PROCESSING, false);
+                        }
+
+                        @Override
+                        public String name() {
+                            return "TestWalFilter";
+                        }
+                    }
+                    parameters[i] = new TestWalFilter();
+                    break;
                 default:
-                    parameters[i] = parameterTypes[i].newInstance();
+                    parameters[i] = parameterTypes[i].getConstructor().newInstance();
             }
         }
 
@@ -188,14 +216,15 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
     }
 
     private void verifyColumnFamilyOptionsMethodCall(final Method method) throws Exception {
+        final ColumnFamilyOptions mockedColumnFamilyOptions = mock(ColumnFamilyOptions.class);
         final RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter optionsFacadeColumnFamilyOptions
-            = new RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter(new DBOptions(), columnFamilyOptions);
+            = new RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapter(new DBOptions(), mockedColumnFamilyOptions);
 
         final Object[] parameters = getColumnFamilyOptionsParameters(method.getParameterTypes());
 
         try {
-            reset(columnFamilyOptions);
-            replay(columnFamilyOptions);
+            reset(mockedColumnFamilyOptions);
+            replay(mockedColumnFamilyOptions);
             method.invoke(optionsFacadeColumnFamilyOptions, parameters);
             verify();
             fail("Should have called ColumnFamilyOptions." + method.getName() + "()");
@@ -229,6 +258,23 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
                 case "java.util.List":
                     parameters[i] = new ArrayList<>();
                     break;
+                case "org.rocksdb.AbstractCompactionFilter":
+                    parameters[i] = new RemoveEmptyValueCompactionFilter();
+                    break;
+                case "org.rocksdb.AbstractCompactionFilterFactory":
+                    parameters[i] = new AbstractCompactionFilterFactory<AbstractCompactionFilter<?>>() {
+
+                        @Override
+                        public AbstractCompactionFilter<?> createCompactionFilter(final Context context) {
+                            return null;
+                        }
+
+                        @Override
+                        public String name() {
+                            return "AbstractCompactionFilterFactory";
+                        }
+                    };
+                    break;
                 case "org.rocksdb.AbstractComparator":
                     parameters[i] = new BytewiseComparator(new ComparatorOptions());
                     break;
@@ -254,7 +300,7 @@ public class RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest {
                     parameters[i] = new PlainTableConfig();
                     break;
                 default:
-                    parameters[i] = parameterTypes[i].newInstance();
+                    parameters[i] = parameterTypes[i].getConstructor().newInstance();
             }
         }
 

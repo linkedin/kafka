@@ -19,11 +19,12 @@ package org.apache.kafka.streams.kstream.internals;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.kstream.Aggregator;
 import org.apache.kafka.streams.kstream.Initializer;
-import org.apache.kafka.streams.processor.AbstractProcessor;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 
+import static org.apache.kafka.streams.state.ValueAndTimestamp.getValueOrNull;
+
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
 public class KTableAggregate<K, V, T> implements KTableProcessorSupplier<K, V, T> {
 
     private final String storeName;
@@ -44,25 +45,31 @@ public class KTableAggregate<K, V, T> implements KTableProcessorSupplier<K, V, T
     }
 
     @Override
-    public void enableSendingOldValues() {
+    public boolean enableSendingOldValues(final boolean forceMaterialization) {
+        // Aggregates are always materialized:
         sendOldValues = true;
+        return true;
     }
 
     @Override
-    public Processor<K, Change<V>> get() {
+    public org.apache.kafka.streams.processor.Processor<K, Change<V>> get() {
         return new KTableAggregateProcessor();
     }
 
-    private class KTableAggregateProcessor extends AbstractProcessor<K, Change<V>> {
-        private KeyValueStore<K, T> store;
-        private TupleForwarder<K, T> tupleForwarder;
+    private class KTableAggregateProcessor extends org.apache.kafka.streams.processor.AbstractProcessor<K, Change<V>> {
+        private TimestampedKeyValueStore<K, T> store;
+        private TimestampedTupleForwarder<K, T> tupleForwarder;
 
         @SuppressWarnings("unchecked")
         @Override
-        public void init(final ProcessorContext context) {
+        public void init(final org.apache.kafka.streams.processor.ProcessorContext context) {
             super.init(context);
-            store = (KeyValueStore<K, T>) context.getStateStore(storeName);
-            tupleForwarder = new TupleForwarder<>(store, context, new ForwardingCacheFlushListener<>(context), sendOldValues);
+            store = (TimestampedKeyValueStore<K, T>) context.getStateStore(storeName);
+            tupleForwarder = new TimestampedTupleForwarder<>(
+                store,
+                context,
+                new TimestampedCacheFlushListener<>(context),
+                sendOldValues);
         }
 
         /**
@@ -75,27 +82,40 @@ public class KTableAggregate<K, V, T> implements KTableProcessorSupplier<K, V, T
                 throw new StreamsException("Record key for KTable aggregate operator with state " + storeName + " should not be null.");
             }
 
-            T oldAgg = store.get(key);
-
-            if (oldAgg == null) {
-                oldAgg = initializer.apply();
-            }
-
-            T newAgg = oldAgg;
+            final ValueAndTimestamp<T> oldAggAndTimestamp = store.get(key);
+            final T oldAgg = getValueOrNull(oldAggAndTimestamp);
+            final T intermediateAgg;
+            long newTimestamp = context().timestamp();
 
             // first try to remove the old value
-            if (value.oldValue != null) {
-                newAgg = remove.apply(key, value.oldValue, newAgg);
+            if (value.oldValue != null && oldAgg != null) {
+                intermediateAgg = remove.apply(key, value.oldValue, oldAgg);
+                newTimestamp = Math.max(context().timestamp(), oldAggAndTimestamp.timestamp());
+            } else {
+                intermediateAgg = oldAgg;
             }
 
             // then try to add the new value
+            final T newAgg;
             if (value.newValue != null) {
-                newAgg = add.apply(key, value.newValue, newAgg);
+                final T initializedAgg;
+                if (intermediateAgg == null) {
+                    initializedAgg = initializer.apply();
+                } else {
+                    initializedAgg = intermediateAgg;
+                }
+
+                newAgg = add.apply(key, value.newValue, initializedAgg);
+                if (oldAggAndTimestamp != null) {
+                    newTimestamp = Math.max(context().timestamp(), oldAggAndTimestamp.timestamp());
+                }
+            } else {
+                newAgg = intermediateAgg;
             }
 
             // update the store with the new value
-            store.put(key, newAgg);
-            tupleForwarder.maybeForward(key, newAgg, sendOldValues ? oldAgg : null);
+            store.put(key, ValueAndTimestamp.make(newAgg, newTimestamp));
+            tupleForwarder.maybeForward(key, newAgg, sendOldValues ? oldAgg : null, newTimestamp);
         }
 
     }

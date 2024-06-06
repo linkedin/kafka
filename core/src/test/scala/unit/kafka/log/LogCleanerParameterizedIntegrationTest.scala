@@ -19,7 +19,6 @@ package kafka.log
 
 import java.io.File
 import java.util.Properties
-
 import kafka.api.KAFKA_0_11_0_IV0
 import kafka.api.{KAFKA_0_10_0_IV1, KAFKA_0_9_0}
 import kafka.server.KafkaConfig
@@ -27,31 +26,29 @@ import kafka.server.checkpoints.OffsetCheckpointFile
 import kafka.utils._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.record._
-import org.junit.Assert._
-import org.junit._
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
-import org.junit.runners.Parameterized.Parameters
+import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.extension.ExtensionContext
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, ArgumentsProvider, ArgumentsSource}
 
-import scala.Seq
+import scala.annotation.nowarn
 import scala.collection._
+import scala.jdk.CollectionConverters._
 
 /**
  * This is an integration test that tests the fully integrated log cleaner
  */
-@RunWith(value = classOf[Parameterized])
-class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends AbstractLogCleanerIntegrationTest {
+class LogCleanerParameterizedIntegrationTest extends AbstractLogCleanerIntegrationTest {
 
-  val codec: CompressionType = CompressionType.forName(compressionCodec)
   val time = new MockTime()
 
   val topicPartitions = Array(new TopicPartition("log", 0), new TopicPartition("log", 1), new TopicPartition("log", 2))
 
-
-  @Test
-  def cleanerTest() {
+  @ParameterizedTest
+  @ArgumentsSource(classOf[LogCleanerParameterizedIntegrationTest.ExcludePassthrough])
+  def cleanerTest(codec: CompressionType): Unit = {
     val largeMessageKey = 20
-    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.CURRENT_MAGIC_VALUE)
+    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.CURRENT_MAGIC_VALUE, codec)
     val maxMessageSize = largeMessageSet.sizeInBytes
 
     cleaner = makeCleaner(partitions = topicPartitions, maxMessageSize = maxMessageSize)
@@ -64,12 +61,12 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     val firstDirty = log.activeSegment.baseOffset
     checkLastCleaned("log", 0, firstDirty)
     val compactedSize = log.logSegments.map(_.size).sum
-    assertTrue(s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize", startSize > compactedSize)
+    assertTrue(startSize > compactedSize, s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize")
 
     checkLogAfterAppendingDups(log, startSize, appends)
 
     val appendInfo = log.appendAsLeader(largeMessageSet, leaderEpoch = 0)
-    val largeMessageOffset = appendInfo.firstOffset.get
+    val largeMessageOffset = appendInfo.firstOffset.get.messageOffset
 
     val dups = writeDups(startKey = largeMessageKey + 1, numKeys = 100, numDups = 3, log = log, codec = codec)
     val appends2 = appends ++ Seq((largeMessageKey, largeMessageValue, largeMessageOffset)) ++ dups
@@ -82,14 +79,15 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     // force a checkpoint
     // and make sure its gone from checkpoint file
     cleaner.logs.remove(topicPartitions(0))
-    cleaner.updateCheckpoints(logDir)
+    cleaner.updateCheckpoints(logDir, partitionToRemove = Option(topicPartitions(0)))
     val checkpoints = new OffsetCheckpointFile(new File(logDir, cleaner.cleanerManager.offsetCheckpointFile)).read()
     // we expect partition 0 to be gone
     assertFalse(checkpoints.contains(topicPartitions(0)))
   }
 
-  @Test
-  def testCleansCombinedCompactAndDeleteTopic(): Unit = {
+  @ParameterizedTest
+  @ArgumentsSource(classOf[LogCleanerParameterizedIntegrationTest.ExcludePassthrough])
+  def testCleansCombinedCompactAndDeleteTopic(codec: CompressionType): Unit = {
     val logProps  = new Properties()
     val retentionMs: Integer = 100000
     logProps.put(LogConfig.RetentionMsProp, retentionMs: Integer)
@@ -102,7 +100,7 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
       val messages = writeDups(numKeys = numKeys, numDups = 3, log = log, codec = codec)
       val startSize = log.size
 
-      log.onHighWatermarkIncremented(log.logEndOffset)
+      log.updateHighWatermark(log.logEndOffset)
 
       val firstDirty = log.activeSegment.baseOffset
       cleaner.startup()
@@ -110,15 +108,17 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
       // should compact the log
       checkLastCleaned("log", 0, firstDirty)
       val compactedSize = log.logSegments.map(_.size).sum
-      assertTrue(s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize", startSize > compactedSize)
+      assertTrue(startSize > compactedSize, s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize")
       (log, messages)
     }
 
     val (log, _) = runCleanerAndCheckCompacted(100)
-    // should delete old segments
-    log.logSegments.foreach(_.lastModified = time.milliseconds - (2 * retentionMs))
 
-    TestUtils.waitUntilTrue(() => log.numberOfSegments == 1, "There should only be 1 segment remaining", 10000L)
+    // Set the last modified time to an old value to force deletion of old segments
+    val endOffset = log.logEndOffset
+    log.logSegments.foreach(_.lastModified = time.milliseconds - (2 * retentionMs))
+    TestUtils.waitUntilTrue(() => log.logStartOffset == endOffset,
+      "Timed out waiting for deletion of old segments")
     assertEquals(1, log.numberOfSegments)
 
     cleaner.shutdown()
@@ -126,17 +126,15 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     // run the cleaner again to make sure if there are no issues post deletion
     val (log2, messages) = runCleanerAndCheckCompacted(20)
     val read = readFromLog(log2)
-    assertEquals("Contents of the map shouldn't change", toMap(messages), toMap(read))
+    assertEquals(toMap(messages), toMap(read), "Contents of the map shouldn't change")
   }
 
-  @Test
-  def testCleanerWithMessageFormatV0(): Unit = {
-    // zstd compression is not supported with older message formats
-    if (codec == CompressionType.ZSTD)
-      return
-
+  @nowarn("cat=deprecation")
+  @ParameterizedTest
+  @ArgumentsSource(classOf[LogCleanerParameterizedIntegrationTest.ExcludeZstdAndPassthrough])
+  def testCleanerWithMessageFormatV0(codec: CompressionType): Unit = {
     val largeMessageKey = 20
-    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.MAGIC_VALUE_V0)
+    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.MAGIC_VALUE_V0, codec)
     val maxMessageSize = codec match {
       case CompressionType.NONE => largeMessageSet.sizeInBytes
       case _ =>
@@ -161,14 +159,14 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     val firstDirty = log.activeSegment.baseOffset
     checkLastCleaned("log", 0, firstDirty)
     val compactedSize = log.logSegments.map(_.size).sum
-    assertTrue(s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize", startSize > compactedSize)
+    assertTrue(startSize > compactedSize, s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize")
 
     checkLogAfterAppendingDups(log, startSize, appends)
 
     val appends2: Seq[(Int, String, Long)] = {
       val dupsV0 = writeDups(numKeys = 40, numDups = 3, log = log, codec = codec, magicValue = RecordBatch.MAGIC_VALUE_V0)
       val appendInfo = log.appendAsLeader(largeMessageSet, leaderEpoch = 0)
-      val largeMessageOffset = appendInfo.firstOffset.get
+      val largeMessageOffset = appendInfo.firstOffset.map(_.messageOffset).get
 
       // also add some messages with version 1 and version 2 to check that we handle mixed format versions correctly
       props.put(LogConfig.MessageFormatVersionProp, KAFKA_0_11_0_IV0.version)
@@ -183,12 +181,10 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     checkLogAfterAppendingDups(log, startSize, appends2)
   }
 
-  @Test
-  def testCleaningNestedMessagesWithMultipleVersions(): Unit = {
-    // zstd compression is not supported with older message formats
-    if (codec == CompressionType.ZSTD)
-      return
-
+  @nowarn("cat=deprecation")
+  @ParameterizedTest
+  @ArgumentsSource(classOf[LogCleanerParameterizedIntegrationTest.ExcludeZstdAndPassthrough])
+  def testCleaningNestedMessagesWithV0AndV1(codec: CompressionType): Unit = {
     val maxMessageSize = 192
     cleaner = makeCleaner(partitions = topicPartitions, maxMessageSize = maxMessageSize, segmentSize = 256)
 
@@ -219,15 +215,16 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
 
     checkLastCleaned("log", 0, firstDirty)
     val compactedSize = log.logSegments.map(_.size).sum
-    assertTrue(s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize", startSize > compactedSize)
+    assertTrue(startSize > compactedSize, s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize")
 
     checkLogAfterAppendingDups(log, startSize, appends)
   }
 
-  @Test
-  def cleanerConfigUpdateTest() {
+  @ParameterizedTest
+  @ArgumentsSource(classOf[LogCleanerParameterizedIntegrationTest.ExcludePassthrough])
+  def cleanerConfigUpdateTest(codec: CompressionType): Unit = {
     val largeMessageKey = 20
-    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.CURRENT_MAGIC_VALUE)
+    val (largeMessageValue, largeMessageSet) = createLargeSingleMessageSet(largeMessageKey, RecordBatch.CURRENT_MAGIC_VALUE, codec)
     val maxMessageSize = largeMessageSet.sizeInBytes
 
     cleaner = makeCleaner(partitions = topicPartitions, backOffMs = 1, maxMessageSize = maxMessageSize,
@@ -243,7 +240,7 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     val firstDirty = log.activeSegment.baseOffset
     val topicPartition = new TopicPartition("log", 0)
     cleaner.awaitCleaned(topicPartition, firstDirty, maxWaitMs = 10)
-    assertTrue("Should not have cleaned", cleaner.cleanerManager.allCleanerCheckpoints.isEmpty)
+    assertTrue(cleaner.cleanerManager.allCleanerCheckpoints.isEmpty, "Should not have cleaned")
 
     def kafkaConfigWithCleanerConfig(cleanerConfig: CleanerConfig): KafkaConfig = {
       val props = TestUtils.createBrokerConfig(0, "localhost:2181")
@@ -271,22 +268,21 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     assertEquals(2, cleaner.cleanerCount)
     checkLastCleaned("log", 0, firstDirty)
     val compactedSize = log.logSegments.map(_.size).sum
-    assertTrue(s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize", startSize > compactedSize)
+    assertTrue(startSize > compactedSize, s"log should have been compacted: startSize=$startSize compactedSize=$compactedSize")
   }
 
-  private def checkLastCleaned(topic: String, partitionId: Int, firstDirty: Long) {
+  private def checkLastCleaned(topic: String, partitionId: Int, firstDirty: Long): Unit = {
     // wait until cleaning up to base_offset, note that cleaning happens only when "log dirty ratio" is higher than
     // LogConfig.MinCleanableDirtyRatioProp
     val topicPartition = new TopicPartition(topic, partitionId)
     cleaner.awaitCleaned(topicPartition, firstDirty)
     val lastCleaned = cleaner.cleanerManager.allCleanerCheckpoints(topicPartition)
-    assertTrue(s"log cleaner should have processed up to offset $firstDirty, but lastCleaned=$lastCleaned",
-      lastCleaned >= firstDirty)
+    assertTrue(lastCleaned >= firstDirty, s"log cleaner should have processed up to offset $firstDirty, but lastCleaned=$lastCleaned")
   }
 
-  private def checkLogAfterAppendingDups(log: Log, startSize: Long, appends: Seq[(Int, String, Long)]) {
+  private def checkLogAfterAppendingDups(log: Log, startSize: Long, appends: Seq[(Int, String, Long)]): Unit = {
     val read = readFromLog(log)
-    assertEquals("Contents of the map shouldn't change", toMap(appends), toMap(read))
+    assertEquals(toMap(appends), toMap(read), "Contents of the map shouldn't change")
     assertTrue(startSize > log.size)
   }
 
@@ -295,7 +291,6 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
   }
 
   private def readFromLog(log: Log): Iterable[(Int, String, Long)] = {
-    import JavaConverters._
     for (segment <- log.logSegments; deepLogEntry <- segment.log.records.asScala) yield {
       val key = TestUtils.readString(deepLogEntry.key).toInt
       val value = TestUtils.readString(deepLogEntry.value)
@@ -316,19 +311,29 @@ class LogCleanerParameterizedIntegrationTest(compressionCodec: String) extends A
     }
 
     val appendInfo = log.appendAsLeader(MemoryRecords.withRecords(magicValue, codec, records: _*), leaderEpoch = 0)
-    val offsets = appendInfo.firstOffset.get to appendInfo.lastOffset
+    val offsets = appendInfo.firstOffset.get.messageOffset to appendInfo.lastOffset
 
     kvs.zip(offsets).map { case (kv, offset) => (kv._1, kv._2, offset) }
+
   }
 
 }
 
 object LogCleanerParameterizedIntegrationTest {
-  @Parameters
-  def parameters: java.util.Collection[Array[String]] = {
-    val list = new java.util.ArrayList[Array[String]]()
-    for (codec <- CompressionType.values)
-      list.add(Array(codec.name))
-    list
+  // Passthrough is Linkedin customized version
+  // Current tests does not support them yet
+  class ExcludePassthrough extends ArgumentsProvider {
+    override def provideArguments(context: ExtensionContext): java.util.stream.Stream[_ <: Arguments] =
+      java.util.Arrays.stream(CompressionType.values.filter(_ != CompressionType.PASSTHROUGH).map(codec => Arguments.of(codec)))
+  }
+
+  // zstd compression is not supported with older message formats (i.e supported by V0 and V1)
+  class ExcludeZstdAndPassthrough extends ArgumentsProvider {
+    override def provideArguments(context: ExtensionContext): java.util.stream.Stream[_ <: Arguments] =
+      java.util.Arrays.stream(
+        CompressionType.values
+          .filter(!Set(CompressionType.ZSTD, CompressionType.PASSTHROUGH).contains(_))
+          .map(codec => Arguments.of(codec))
+      )
   }
 }

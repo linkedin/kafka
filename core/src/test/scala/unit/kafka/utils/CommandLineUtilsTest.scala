@@ -20,60 +20,60 @@ package kafka.utils
 import java.util.Properties
 
 import joptsimple.{OptionParser, OptionSpec}
-import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Test
 
 class CommandLineUtilsTest {
 
 
-  @Test(expected = classOf[java.lang.IllegalArgumentException])
-  def testParseEmptyArg() {
+  @Test
+  def testParseEmptyArg(): Unit = {
     val argArray = Array("my.empty.property=")
 
-    CommandLineUtils.parseKeyValueArgs(argArray, acceptMissingValue = false)
-  }
-
-  @Test(expected = classOf[java.lang.IllegalArgumentException])
-  def testParseEmptyArgWithNoDelimiter() {
-    val argArray = Array("my.empty.property")
-
-    CommandLineUtils.parseKeyValueArgs(argArray, acceptMissingValue = false)
+    assertThrows(classOf[java.lang.IllegalArgumentException], () => CommandLineUtils.parseKeyValueArgs(argArray, acceptMissingValue = false))
   }
 
   @Test
-  def testParseEmptyArgAsValid() {
+  def testParseEmptyArgWithNoDelimiter(): Unit = {
+    val argArray = Array("my.empty.property")
+
+    assertThrows(classOf[java.lang.IllegalArgumentException], () => CommandLineUtils.parseKeyValueArgs(argArray, acceptMissingValue = false))
+  }
+
+  @Test
+  def testParseEmptyArgAsValid(): Unit = {
     val argArray = Array("my.empty.property=", "my.empty.property1")
     val props = CommandLineUtils.parseKeyValueArgs(argArray)
 
-    assertEquals("Value of a key with missing value should be an empty string", props.getProperty("my.empty.property"), "")
-    assertEquals("Value of a key with missing value with no delimiter should be an empty string", props.getProperty("my.empty.property1"), "")
+    assertEquals(props.getProperty("my.empty.property"), "", "Value of a key with missing value should be an empty string")
+    assertEquals(props.getProperty("my.empty.property1"), "", "Value of a key with missing value with no delimiter should be an empty string")
   }
 
   @Test
-  def testParseSingleArg() {
+  def testParseSingleArg(): Unit = {
     val argArray = Array("my.property=value")
     val props = CommandLineUtils.parseKeyValueArgs(argArray)
 
-    assertEquals("Value of a single property should be 'value' ", props.getProperty("my.property"), "value")
+    assertEquals(props.getProperty("my.property"), "value", "Value of a single property should be 'value' ")
   }
 
   @Test
-  def testParseArgs() {
+  def testParseArgs(): Unit = {
     val argArray = Array("first.property=first","second.property=second")
     val props = CommandLineUtils.parseKeyValueArgs(argArray)
 
-    assertEquals("Value of first property should be 'first'", props.getProperty("first.property"), "first")
-    assertEquals("Value of second property should be 'second'", props.getProperty("second.property"), "second")
+    assertEquals(props.getProperty("first.property"), "first", "Value of first property should be 'first'")
+    assertEquals(props.getProperty("second.property"), "second", "Value of second property should be 'second'")
   }
 
   @Test
-  def testParseArgsWithMultipleDelimiters() {
+  def testParseArgsWithMultipleDelimiters(): Unit = {
     val argArray = Array("first.property==first", "second.property=second=", "third.property=thi=rd")
     val props = CommandLineUtils.parseKeyValueArgs(argArray)
 
-    assertEquals("Value of first property should be '=first'", props.getProperty("first.property"), "=first")
-    assertEquals("Value of second property should be 'second='", props.getProperty("second.property"), "second=")
-    assertEquals("Value of second property should be 'thi=rd'", props.getProperty("third.property"), "thi=rd")
+    assertEquals(props.getProperty("first.property"), "=first", "Value of first property should be '=first'")
+    assertEquals(props.getProperty("second.property"), "second=", "Value of second property should be 'second='")
+    assertEquals(props.getProperty("third.property"), "thi=rd", "Value of second property should be 'thi=rd'")
   }
 
   val props = new Properties()

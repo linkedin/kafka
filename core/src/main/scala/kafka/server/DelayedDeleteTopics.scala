@@ -26,15 +26,23 @@ import scala.collection._
   */
 case class DeleteTopicMetadata(topic: String, error: Errors)
 
+object DeleteTopicMetadata {
+  def apply(topic: String, throwable: Throwable): DeleteTopicMetadata = {
+    DeleteTopicMetadata(topic, Errors.forException(throwable))
+  }
+}
+
 /**
   * A delayed delete topics operation that can be created by the admin manager and watched
   * in the topic purgatory
   */
 class DelayedDeleteTopics(delayMs: Long,
                           deleteMetadata: Seq[DeleteTopicMetadata],
-                          adminManager: AdminManager,
+                          adminManager: ZkAdminManager,
                           responseCallback: Map[String, Errors] => Unit)
   extends DelayedOperation(delayMs) {
+
+  import DelayedOperation._
 
   /**
     * The operation can be completed if all of the topics not in error have been removed
@@ -57,7 +65,7 @@ class DelayedDeleteTopics(delayMs: Long,
   /**
     * Check for partitions that still exist, update their error code and call the responseCallback
     */
-  override def onComplete() {
+  override def onComplete(): Unit = {
     trace(s"Completing operation for $deleteMetadata")
     val results = deleteMetadata.map { metadata =>
       // ignore topics that already have errors

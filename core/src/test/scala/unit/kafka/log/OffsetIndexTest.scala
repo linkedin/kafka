@@ -20,37 +20,37 @@ package kafka.log
 import java.io._
 import java.nio.file.Files
 
-import org.junit.Assert._
+import org.junit.jupiter.api.Assertions._
 import java.util.{Arrays, Collections}
 
-import org.junit._
-import org.scalatest.junit.JUnitSuite
+import org.junit.jupiter.api._
 
 import scala.collection._
 import scala.util.Random
 import kafka.utils.TestUtils
 import org.apache.kafka.common.errors.InvalidOffsetException
 
-class OffsetIndexTest extends JUnitSuite {
+class OffsetIndexTest {
   
   var idx: OffsetIndex = null
   val maxEntries = 30
   val baseOffset = 45L
   
-  @Before
-  def setup() {
+  @BeforeEach
+  def setup(): Unit = {
     this.idx = new OffsetIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 8)
   }
   
-  @After
-  def teardown() {
+  @AfterEach
+  def teardown(): Unit = {
     if(this.idx != null)
       this.idx.file.delete()
   }
-  
+
   @Test
-  def randomLookupTest() {
-    assertEquals("Not present value should return physical offset 0.", OffsetPosition(idx.baseOffset, 0), idx.lookup(92L))
+  def randomLookupTest(): Unit = {
+    assertEquals(OffsetPosition(idx.baseOffset, 0), idx.lookup(92L),
+      "Not present value should return physical offset 0.")
     
     // append some random values
     val base = idx.baseOffset.toInt + 1
@@ -60,7 +60,8 @@ class OffsetIndexTest extends JUnitSuite {
     
     // should be able to find all those values
     for((logical, physical) <- vals)
-      assertEquals("Should be able to find values that are present.", OffsetPosition(logical, physical), idx.lookup(logical))
+      assertEquals(OffsetPosition(logical, physical), idx.lookup(logical),
+        "Should be able to find values that are present.")
       
     // for non-present values we should find the offset of the largest value less than or equal to this 
     val valMap = new immutable.TreeMap[Long, (Long, Int)]() ++ vals.map(p => (p._1, p))
@@ -72,13 +73,15 @@ class OffsetIndexTest extends JUnitSuite {
           OffsetPosition(idx.baseOffset, 0)
         else
           OffsetPosition(valMap.to(offset).last._1, valMap.to(offset).last._2._2)
-      assertEquals("The index should give the same answer as the sorted map", rightAnswer, idx.lookup(offset))
+      assertEquals(rightAnswer, idx.lookup(offset),
+        "The index should give the same answer as the sorted map")
     }
   }
   
   @Test
-  def lookupExtremeCases() {
-    assertEquals("Lookup on empty file", OffsetPosition(idx.baseOffset, 0), idx.lookup(idx.baseOffset))
+  def lookupExtremeCases(): Unit = {
+    assertEquals(OffsetPosition(idx.baseOffset, 0), idx.lookup(idx.baseOffset),
+      "Lookup on empty file")
     for(i <- 0 until idx.maxEntries)
       idx.append(idx.baseOffset + i + 1, i)
     // check first and last entry
@@ -94,13 +97,13 @@ class OffsetIndexTest extends JUnitSuite {
       assertEquals(OffsetPosition(idx.baseOffset + i + 1, i), idx.entry(i))
   }
 
-  @Test(expected = classOf[IllegalArgumentException])
+  @Test
   def testEntryOverflow(): Unit = {
-    idx.entry(0)
+    assertThrows(classOf[IllegalArgumentException], () => idx.entry(0))
   }
   
   @Test
-  def appendTooMany() {
+  def appendTooMany(): Unit = {
     for(i <- 0 until idx.maxEntries) {
       val offset = idx.baseOffset + i + 1
       idx.append(offset, i)
@@ -108,14 +111,14 @@ class OffsetIndexTest extends JUnitSuite {
     assertWriteFails("Append should fail on a full index", idx, idx.maxEntries + 1, classOf[IllegalArgumentException])
   }
   
-  @Test(expected = classOf[InvalidOffsetException])
-  def appendOutOfOrder() {
+  @Test
+  def appendOutOfOrder(): Unit = {
     idx.append(51, 0)
-    idx.append(50, 1)
+    assertThrows(classOf[InvalidOffsetException], () => idx.append(50, 1))
   }
 
   @Test
-  def testFetchUpperBoundOffset() {
+  def testFetchUpperBoundOffset(): Unit = {
     val first = OffsetPosition(baseOffset + 0, 0)
     val second = OffsetPosition(baseOffset + 1, 10)
     val third = OffsetPosition(baseOffset + 2, 23)
@@ -137,7 +140,7 @@ class OffsetIndexTest extends JUnitSuite {
   }
 
   @Test
-  def testReopen() {
+  def testReopen(): Unit = {
     val first = OffsetPosition(51, 0)
     val sec = OffsetPosition(52, 1)
     idx.append(first.offset, first.position)
@@ -152,7 +155,7 @@ class OffsetIndexTest extends JUnitSuite {
   }
   
   @Test
-  def truncate() {
+  def truncate(): Unit = {
 	val idx = new OffsetIndex(nonExistentTempFile(), baseOffset = 0L, maxIndexSize = 10 * 8)
 	idx.truncate()
     for(i <- 1 until 10)
@@ -160,27 +163,35 @@ class OffsetIndexTest extends JUnitSuite {
       
     // now check the last offset after various truncate points and validate that we can still append to the index.      
     idx.truncateTo(12)
-    assertEquals("Index should be unchanged by truncate past the end", OffsetPosition(9, 9), idx.lookup(10))
-    assertEquals("9 should be the last entry in the index", 9, idx.lastOffset)
+    assertEquals(OffsetPosition(9, 9), idx.lookup(10),
+      "Index should be unchanged by truncate past the end")
+    assertEquals(9, idx.lastOffset,
+      "9 should be the last entry in the index")
     
     idx.append(10, 10)
     idx.truncateTo(10)
-    assertEquals("Index should be unchanged by truncate at the end", OffsetPosition(9, 9), idx.lookup(10))
-    assertEquals("9 should be the last entry in the index", 9, idx.lastOffset)
+    assertEquals(OffsetPosition(9, 9), idx.lookup(10),
+      "Index should be unchanged by truncate at the end")
+    assertEquals(9, idx.lastOffset,
+      "9 should be the last entry in the index")
     idx.append(10, 10)
     
     idx.truncateTo(9)
-    assertEquals("Index should truncate off last entry", OffsetPosition(8, 8), idx.lookup(10))
-    assertEquals("8 should be the last entry in the index", 8, idx.lastOffset)
+    assertEquals(OffsetPosition(8, 8), idx.lookup(10),
+      "Index should truncate off last entry")
+    assertEquals(8, idx.lastOffset,
+      "8 should be the last entry in the index")
     idx.append(9, 9)
     
     idx.truncateTo(5)
-    assertEquals("4 should be the last entry in the index", OffsetPosition(4, 4), idx.lookup(10))
-    assertEquals("4 should be the last entry in the index", 4, idx.lastOffset)
+    assertEquals(OffsetPosition(4, 4), idx.lookup(10),
+      "4 should be the last entry in the index")
+    assertEquals(4, idx.lastOffset,
+      "4 should be the last entry in the index")
     idx.append(5, 5)
     
     idx.truncate()
-    assertEquals("Full truncation should leave no entries", 0, idx.entries)
+    assertEquals(0, idx.entries, "Full truncation should leave no entries")
     idx.append(0, 0)
   }
 
@@ -189,7 +200,7 @@ class OffsetIndexTest extends JUnitSuite {
     val idx = new OffsetIndex(nonExistentTempFile(), baseOffset = 0L, maxIndexSize = 10 * 8)
     idx.forceUnmap()
     // mmap should be null after unmap causing lookup to throw a NPE
-    intercept[NullPointerException](idx.lookup(1))
+    assertThrows(classOf[NullPointerException], () => idx.lookup(1))
   }
 
   @Test
@@ -201,13 +212,9 @@ class OffsetIndexTest extends JUnitSuite {
     idx.sanityCheck()
   }
   
-  def assertWriteFails[T](message: String, idx: OffsetIndex, offset: Int, klass: Class[T]) {
-    try {
-      idx.append(offset, 1)
-      fail(message)
-    } catch {
-      case e: Exception => assertEquals("Got an unexpected exception.", klass, e.getClass)
-    }
+  def assertWriteFails[T](message: String, idx: OffsetIndex, offset: Int, klass: Class[T]): Unit = {
+    val e = assertThrows(classOf[Exception], () => idx.append(offset, 1), () => message)
+    assertEquals(klass, e.getClass, "Got an unexpected exception.")
   }
 
   def monotonicSeq(base: Int, len: Int): Seq[Int] = {

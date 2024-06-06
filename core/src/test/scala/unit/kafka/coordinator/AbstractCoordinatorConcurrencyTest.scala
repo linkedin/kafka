@@ -17,14 +17,15 @@
 
 package kafka.coordinator
 
-import java.util.{Collections, Random}
 import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.{Collections, Random}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.Lock
-
 import kafka.coordinator.AbstractCoordinatorConcurrencyTest._
-import kafka.log.Log
+import kafka.log.{AppendOrigin, Log, LogConfig}
 import kafka.server._
+import kafka.server.instrumentation.ProduceRequestInstrumentation
+import kafka.server.instrumentation.ProduceRequestInstrumentation.NoOpProduceRequestInstrumentation
 import kafka.utils._
 import kafka.utils.timer.MockTimer
 import kafka.zk.KafkaZkClient
@@ -33,10 +34,10 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.record.{MemoryRecords, RecordBatch, RecordConversionStats}
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.easymock.EasyMock
-import org.junit.{After, Before}
+import org.junit.jupiter.api.{AfterEach, BeforeEach}
 
 import scala.collection._
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
 
@@ -51,8 +52,8 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
   val serverProps = TestUtils.createBrokerConfig(nodeId = 0, zkConnect = "")
   val random = new Random
 
-  @Before
-  def setUp() {
+  @BeforeEach
+  def setUp(): Unit = {
 
     replicaManager = EasyMock.partialMockBuilder(classOf[TestReplicaManager]).createMock()
     replicaManager.createDelayedProducePurgatory(timer)
@@ -60,8 +61,8 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
     zkClient = EasyMock.createNiceMock(classOf[KafkaZkClient])
   }
 
-  @After
-  def tearDown() {
+  @AfterEach
+  def tearDown(): Unit = {
     EasyMock.reset(replicaManager)
     if (executor != null)
       executor.shutdownNow()
@@ -70,7 +71,7 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
   /**
     * Verify that concurrent operations run in the normal sequence produce the expected results.
     */
-  def verifyConcurrentOperations(createMembers: String => Set[M], operations: Seq[Operation]) {
+  def verifyConcurrentOperations(createMembers: String => Set[M], operations: Seq[Operation]): Unit = {
     OrderedOperationSequence(createMembers("verifyConcurrentOperations"), operations).run()
   }
 
@@ -78,7 +79,7 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
     * Verify that arbitrary operations run in some random sequence don't leave the coordinator
     * in a bad state. Operations in the normal sequence should continue to work as expected.
     */
-  def verifyConcurrentRandomSequences(createMembers: String => Set[M], operations: Seq[Operation]) {
+  def verifyConcurrentRandomSequences(createMembers: String => Set[M], operations: Seq[Operation]): Unit = {
     EasyMock.reset(replicaManager)
     for (i <- 0 to 10) {
       // Run some random operations
@@ -89,7 +90,7 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
     }
   }
 
-  def verifyConcurrentActions(actions: Set[Action]) {
+  def verifyConcurrentActions(actions: Set[Action]): Unit = {
     val futures = actions.map(executor.submit)
     futures.map(_.get)
     enableCompletion()
@@ -97,7 +98,7 @@ abstract class AbstractCoordinatorConcurrencyTest[M <: CoordinatorMember] {
   }
 
   def enableCompletion(): Unit = {
-    replicaManager.tryCompleteDelayedRequests()
+    replicaManager.tryCompleteActions()
     scheduler.tick()
   }
 
@@ -158,26 +159,29 @@ object AbstractCoordinatorConcurrencyTest {
   }
 
   class TestReplicaManager extends ReplicaManager(
-    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, None) {
+    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, None, null, null) {
 
+    @volatile var logs: mutable.Map[TopicPartition, (Log, Long)] = _
     var producePurgatory: DelayedOperationPurgatory[DelayedProduce] = _
     var watchKeys: mutable.Set[TopicPartitionOperationKey] = _
+
     def createDelayedProducePurgatory(timer: MockTimer): Unit = {
       producePurgatory = new DelayedOperationPurgatory[DelayedProduce]("Produce", timer, 1, reaperEnabled = false)
       watchKeys = Collections.newSetFromMap(new ConcurrentHashMap[TopicPartitionOperationKey, java.lang.Boolean]()).asScala
     }
-    def tryCompleteDelayedRequests(): Unit = {
-      watchKeys.map(producePurgatory.checkAndComplete)
-    }
+
+    override def tryCompleteActions(): Unit = watchKeys.map(producePurgatory.checkAndComplete)
 
     override def appendRecords(timeout: Long,
                                requiredAcks: Short,
                                internalTopicsAllowed: Boolean,
-                               isFromClient: Boolean,
+                               origin: AppendOrigin,
                                entriesPerPartition: Map[TopicPartition, MemoryRecords],
                                responseCallback: Map[TopicPartition, PartitionResponse] => Unit,
                                delayedProduceLock: Option[Lock] = None,
-                               processingStatsCallback: Map[TopicPartition, RecordConversionStats] => Unit = _ => ()) {
+                               processingStatsCallback: Map[TopicPartition, RecordConversionStats] => Unit = _ => (),
+                               requestLocal: RequestLocal = RequestLocal.NoCaching,
+                               produceRequestInstrumentation: ProduceRequestInstrumentation = NoOpProduceRequestInstrumentation): Unit = {
 
       if (entriesPerPartition.isEmpty)
         return
@@ -194,32 +198,39 @@ object AbstractCoordinatorConcurrencyTest {
           else
             false
         }
-        override def onComplete() {
+        override def onComplete(): Unit = {
           responseCallback(entriesPerPartition.map {
             case (tp, _) =>
               (tp, new PartitionResponse(Errors.NONE, 0L, RecordBatch.NO_TIMESTAMP, 0L))
           })
         }
       }
-      val producerRequestKeys = entriesPerPartition.keys.map(new TopicPartitionOperationKey(_)).toSeq
+      val producerRequestKeys = entriesPerPartition.keys.map(TopicPartitionOperationKey(_)).toSeq
       watchKeys ++= producerRequestKeys
       producePurgatory.tryCompleteElseWatch(delayedProduce, producerRequestKeys)
-      tryCompleteDelayedRequests()
     }
+
     override def getMagic(topicPartition: TopicPartition): Option[Byte] = {
       Some(RecordBatch.MAGIC_VALUE_V2)
     }
-    @volatile var logs: mutable.Map[TopicPartition, (Log, Long)] = _
+
     def getOrCreateLogs(): mutable.Map[TopicPartition, (Log, Long)] = {
       if (logs == null)
         logs = mutable.Map[TopicPartition, (Log, Long)]()
       logs
     }
+
     def updateLog(topicPartition: TopicPartition, log: Log, endOffset: Long): Unit = {
       getOrCreateLogs().put(topicPartition, (log, endOffset))
     }
+
+    override def getLogConfig(topicPartition: TopicPartition): Option[LogConfig] = {
+      getOrCreateLogs().get(topicPartition).map(_._1.config)
+    }
+
     override def getLog(topicPartition: TopicPartition): Option[Log] =
       getOrCreateLogs().get(topicPartition).map(l => l._1)
+
     override def getLogEndOffset(topicPartition: TopicPartition): Option[Long] =
       getOrCreateLogs().get(topicPartition).map(l => l._2)
   }

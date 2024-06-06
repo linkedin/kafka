@@ -18,13 +18,21 @@
 package kafka.server
 
 import kafka.utils._
+import org.apache.kafka.common.Uuid
+import org.apache.kafka.common.message.CreateTopicsRequestData
+import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopicCollection
+import org.apache.kafka.common.protocol.ApiKeys
 import org.apache.kafka.common.protocol.Errors
-import org.junit.Assert._
-import org.junit.Test
+import org.apache.kafka.common.requests.CreateTopicsRequest
+import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Test
+
+import scala.jdk.CollectionConverters._
 
 class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
+
   @Test
-  def testValidCreateTopicsRequests() {
+  def testValidCreateTopicsRequests(): Unit = {
     // Generated assignments
     validateValidCreateTopicsRequests(topicsReq(Seq(topicReq("topic1"))))
     validateValidCreateTopicsRequests(topicsReq(Seq(topicReq("topic2", replicationFactor = 3))))
@@ -43,19 +51,26 @@ class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
       topicReq("topic10", numPartitions = 5, replicationFactor = 2),
       topicReq("topic11", assignment = Map(0 -> List(0, 1), 1 -> List(1, 0), 2 -> List(1, 2)))),
       validateOnly = true))
+    // Defaults
+    validateValidCreateTopicsRequests(topicsReq(Seq(
+      topicReq("topic12", replicationFactor = -1, numPartitions = -1))))
+    validateValidCreateTopicsRequests(topicsReq(Seq(
+      topicReq("topic13", replicationFactor = 2, numPartitions = -1))))
+    validateValidCreateTopicsRequests(topicsReq(Seq(
+      topicReq("topic14", replicationFactor = -1, numPartitions = 2))))
   }
 
   @Test
-  def testErrorCreateTopicsRequests() {
+  def testErrorCreateTopicsRequests(): Unit = {
     val existingTopic = "existing-topic"
     createTopic(existingTopic, 1, 1)
     // Basic
     validateErrorCreateTopicsRequests(topicsReq(Seq(topicReq(existingTopic))),
       Map(existingTopic -> error(Errors.TOPIC_ALREADY_EXISTS, Some("Topic 'existing-topic' already exists."))))
-    validateErrorCreateTopicsRequests(topicsReq(Seq(topicReq("error-partitions", numPartitions = -1))),
+    validateErrorCreateTopicsRequests(topicsReq(Seq(topicReq("error-partitions", numPartitions = -2))),
       Map("error-partitions" -> error(Errors.INVALID_PARTITIONS)), checkErrorMessage = false)
     validateErrorCreateTopicsRequests(topicsReq(Seq(topicReq("error-replication",
-      replicationFactor = numBrokers + 1))),
+      replicationFactor = brokerCount + 1))),
       Map("error-replication" -> error(Errors.INVALID_REPLICATION_FACTOR)), checkErrorMessage = false)
     validateErrorCreateTopicsRequests(topicsReq(Seq(topicReq("error-config",
       config=Map("not.a.property" -> "error")))),
@@ -70,8 +85,8 @@ class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
     // Partial
     validateErrorCreateTopicsRequests(topicsReq(Seq(
       topicReq(existingTopic),
-      topicReq("partial-partitions", numPartitions = -1),
-      topicReq("partial-replication", replicationFactor=numBrokers + 1),
+      topicReq("partial-partitions", numPartitions = -2),
+      topicReq("partial-replication", replicationFactor=brokerCount + 1),
       topicReq("partial-assignment", assignment=Map(0 -> List(0, 1), 1 -> List(0))),
       topicReq("partial-none"))),
       Map(
@@ -97,16 +112,16 @@ class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
       topicReq("error-timeout-negative", numPartitions = 10, replicationFactor = 3)), timeout = -1),
       Map("error-timeout-negative" -> error(Errors.REQUEST_TIMED_OUT)), checkErrorMessage = false)
     // The topics should still get created eventually
-    TestUtils.waitUntilMetadataIsPropagated(servers, "error-timeout", 0)
-    TestUtils.waitUntilMetadataIsPropagated(servers, "error-timeout-zero", 0)
-    TestUtils.waitUntilMetadataIsPropagated(servers, "error-timeout-negative", 0)
+    TestUtils.waitForPartitionMetadata(servers, "error-timeout", 0)
+    TestUtils.waitForPartitionMetadata(servers, "error-timeout-zero", 0)
+    TestUtils.waitForPartitionMetadata(servers, "error-timeout-negative", 0)
     validateTopicExists("error-timeout")
     validateTopicExists("error-timeout-zero")
     validateTopicExists("error-timeout-negative")
   }
 
   @Test
-  def testInvalidCreateTopicsRequests() {
+  def testInvalidCreateTopicsRequests(): Unit = {
     // Partitions/ReplicationFactor and ReplicaAssignment
     validateErrorCreateTopicsRequests(topicsReq(Seq(
       topicReq("bad-args-topic", numPartitions = 10, replicationFactor = 3,
@@ -120,9 +135,47 @@ class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
   }
 
   @Test
-  def testNotController() {
+  def testNotController(): Unit = {
     val req = topicsReq(Seq(topicReq("topic1")))
     val response = sendCreateTopicRequest(req, notControllerSocketServer)
     assertEquals(1, response.errorCounts().get(Errors.NOT_CONTROLLER))
+  }
+
+  @Test
+  def testCreateTopicsRequestVersions(): Unit = {
+    for (version <- ApiKeys.CREATE_TOPICS.oldestVersion to ApiKeys.CREATE_TOPICS.latestVersion) {
+      val topic = s"topic_$version"
+      val data = new CreateTopicsRequestData()
+      data.setTimeoutMs(10000)
+      data.setValidateOnly(false)
+      data.setTopics(new CreatableTopicCollection(List(
+        topicReq(topic, numPartitions = 1, replicationFactor = 1,
+          config = Map("min.insync.replicas" -> "2"))
+      ).asJava.iterator()))
+
+      val request = new CreateTopicsRequest.Builder(data).build(version.asInstanceOf[Short])
+      val response = sendCreateTopicRequest(request)
+
+      val topicResponse = response.data.topics.find(topic)
+      assertNotNull(topicResponse)
+      assertEquals(topic, topicResponse.name)
+      assertEquals(Errors.NONE.code, topicResponse.errorCode)
+      if (version >= 5) {
+        assertEquals(1, topicResponse.numPartitions)
+        assertEquals(1, topicResponse.replicationFactor)
+        val config = topicResponse.configs().asScala.find(_.name == "min.insync.replicas")
+        assertTrue(config.isDefined)
+        assertEquals("2", config.get.value)
+      } else {
+        assertEquals(-1, topicResponse.numPartitions)
+        assertEquals(-1, topicResponse.replicationFactor)
+        assertTrue(topicResponse.configs.isEmpty)
+      }
+
+      if (version >= 7)
+        assertNotEquals(Uuid.ZERO_UUID, topicResponse.topicId())
+      else
+        assertEquals(Uuid.ZERO_UUID, topicResponse.topicId())
+    }
   }
 }

@@ -20,13 +20,13 @@ import kafka.server.LogDirFailureChannel
 import kafka.utils.{Logging, TestUtils}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.KafkaStorageException
-import org.junit.Assert._
-import org.junit.Test
-import org.scalatest.junit.JUnitSuite
+import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 
 import scala.collection.Map
 
-class OffsetCheckpointFileTest extends JUnitSuite with Logging {
+class OffsetCheckpointFileTest extends Logging {
 
   @Test
   def shouldPersistAndOverwriteAndReloadFile(): Unit = {
@@ -89,14 +89,46 @@ class OffsetCheckpointFileTest extends JUnitSuite with Logging {
     assertEquals(Map(), checkpoint.read())
   }
 
-  @Test(expected = classOf[KafkaStorageException])
+  @Test
   def shouldThrowIfVersionIsNotRecognised(): Unit = {
     val file = TestUtils.tempFile()
     val logDirFailureChannel = new LogDirFailureChannel(10)
     val checkpointFile = new CheckpointFile(file, OffsetCheckpointFile.CurrentVersion + 1,
       OffsetCheckpointFile.Formatter, logDirFailureChannel, file.getParent)
     checkpointFile.write(Seq(new TopicPartition("foo", 5) -> 10L))
-    new OffsetCheckpointFile(checkpointFile.file, logDirFailureChannel).read()
+    assertThrows(classOf[KafkaStorageException], () => new OffsetCheckpointFile(checkpointFile.file, logDirFailureChannel).read())
+  }
+
+  @Test
+  def testLazyOffsetCheckpoint(): Unit = {
+    val logDir = "/tmp/kafka-logs"
+    val mockCheckpointFile = Mockito.mock(classOf[OffsetCheckpointFile])
+
+    val lazyCheckpoints = new LazyOffsetCheckpoints(Map(logDir -> mockCheckpointFile))
+    Mockito.verify(mockCheckpointFile, Mockito.never()).read()
+
+    val partition0 = new TopicPartition("foo", 0)
+    val partition1 = new TopicPartition("foo", 1)
+    val partition2 = new TopicPartition("foo", 2)
+
+    Mockito.when(mockCheckpointFile.read()).thenReturn(Map(
+      partition0 -> 1000L,
+      partition1 -> 2000L
+    ))
+
+    assertEquals(Some(1000L), lazyCheckpoints.fetch(logDir, partition0))
+    assertEquals(Some(2000L), lazyCheckpoints.fetch(logDir, partition1))
+    assertEquals(None, lazyCheckpoints.fetch(logDir, partition2))
+
+    Mockito.verify(mockCheckpointFile, Mockito.times(1)).read()
+  }
+
+  @Test
+  def testLazyOffsetCheckpointFileInvalidLogDir(): Unit = {
+    val logDir = "/tmp/kafka-logs"
+    val mockCheckpointFile = Mockito.mock(classOf[OffsetCheckpointFile])
+    val lazyCheckpoints = new LazyOffsetCheckpoints(Map(logDir -> mockCheckpointFile))
+    assertThrows(classOf[IllegalArgumentException], () => lazyCheckpoints.fetch("/invalid/kafka-logs", new TopicPartition("foo", 0)))
   }
 
 }

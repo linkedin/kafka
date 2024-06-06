@@ -20,12 +20,12 @@ package kafka
 import java.util.Properties
 
 import joptsimple.OptionParser
+import kafka.server.{KafkaConfig, KafkaRaftServer, KafkaServer, Server}
 import kafka.utils.Implicits._
-import kafka.server.{KafkaServer, KafkaServerStartable}
 import kafka.utils.{CommandLineUtils, Exit, Logging}
-import org.apache.kafka.common.utils.{Java, LoggingSignalHandler, OperatingSystem, Utils}
+import org.apache.kafka.common.utils.{Java, LoggingSignalHandler, OperatingSystem, Time, Utils}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object Kafka extends Logging {
 
@@ -34,9 +34,19 @@ object Kafka extends Logging {
     val overrideOpt = optionParser.accepts("override", "Optional property that should override values set in server.properties file")
       .withRequiredArg()
       .ofType(classOf[String])
+    // This is just to make the parameter show up in the help output, we are not actually using this due the
+    // fact that this class ignores the first parameter which is interpreted as positional and mandatory
+    // but would not be mandatory if --version is specified
+    // This is a bit of an ugly crutch till we get a chance to rework the entire command line parsing
+    optionParser.accepts("version", "Print version information and exit.")
 
-    if (args.length == 0) {
-      CommandLineUtils.printUsageAndDie(optionParser, "USAGE: java [options] %s server.properties [--override property=value]*".format(classOf[KafkaServer].getSimpleName()))
+    if (args.length == 0 || args.contains("--help")) {
+      CommandLineUtils.printUsageAndDie(optionParser,
+        "USAGE: java [options] %s server.properties [--override property=value]*".format(this.getClass.getCanonicalName.split('$').head))
+    }
+
+    if (args.contains("--version")) {
+      CommandLineUtils.printVersionAndDie()
     }
 
     val props = Utils.loadProps(args(0))
@@ -53,10 +63,28 @@ object Kafka extends Logging {
     props
   }
 
+  private def buildServer(props: Properties): Server = {
+    val config = KafkaConfig.fromProps(props, false)
+    if (config.requiresZookeeper) {
+      new KafkaServer(
+        config,
+        Time.SYSTEM,
+        threadNamePrefix = None,
+        enableForwarding = false
+      )
+    } else {
+      new KafkaRaftServer(
+        config,
+        Time.SYSTEM,
+        threadNamePrefix = None
+      )
+    }
+  }
+
   def main(args: Array[String]): Unit = {
     try {
       val serverProps = getPropsFromArgs(args)
-      val kafkaServerStartable = KafkaServerStartable.fromProps(serverProps)
+      val server = buildServer(serverProps)
 
       try {
         if (!OperatingSystem.IS_WINDOWS && !Java.isIbmJdk)
@@ -68,12 +96,25 @@ object Kafka extends Logging {
       }
 
       // attach shutdown handler to catch terminating signals as well as normal termination
-      Runtime.getRuntime().addShutdownHook(new Thread("kafka-shutdown-hook") {
-        override def run(): Unit = kafkaServerStartable.shutdown()
+      Exit.addShutdownHook("kafka-shutdown-hook", {
+        try server.shutdown()
+        catch {
+          case _: Throwable =>
+            fatal("Halting Kafka.")
+            // Calling exit() can lead to deadlock as exit() can be called multiple times. Force exit.
+            Exit.halt(1)
+        }
       })
 
-      kafkaServerStartable.startup()
-      kafkaServerStartable.awaitShutdown()
+      try server.startup()
+      catch {
+        case e: Throwable =>
+          // KafkaServer.startup() calls shutdown() in case of exceptions, so we invoke `exit` to set the status code
+          fatal("Exiting Kafka due to fatal exception during startup.", e)
+          Exit.exit(1)
+      }
+
+      server.awaitShutdown()
     }
     catch {
       case e: Throwable =>

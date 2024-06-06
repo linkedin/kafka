@@ -17,29 +17,32 @@
 
 package kafka.metrics
 
+import java.lang.management.ManagementFactory
 import java.util.Properties
-import javax.management.ObjectName
 
-import com.yammer.metrics.Metrics
-import com.yammer.metrics.core.{Meter, MetricPredicate}
-import org.junit.Test
-import org.junit.Assert._
+import javax.management.ObjectName
+import com.yammer.metrics.core.MetricPredicate
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions._
 import kafka.integration.KafkaServerTestHarness
 import kafka.server._
 import kafka.utils._
 
 import scala.collection._
-import scala.collection.JavaConverters._
-import scala.util.matching.Regex
+import scala.jdk.CollectionConverters._
 import kafka.log.LogConfig
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.metrics.JmxReporter
+import org.apache.kafka.common.utils.Time
 
 class MetricsTest extends KafkaServerTestHarness with Logging {
   val numNodes = 2
   val numParts = 2
 
+  val requiredKafkaServerPrefix = "kafka.server:type=KafkaServer,name"
   val overridingProps = new Properties
   overridingProps.put(KafkaConfig.NumPartitionsProp, numParts.toString)
+  overridingProps.put(JmxReporter.EXCLUDE_CONFIG, s"$requiredKafkaServerPrefix=ClusterId")
 
   def generateConfigs =
     TestUtils.createBrokerConfigs(numNodes, zkConnect).map(KafkaConfig.fromProps(_, overridingProps))
@@ -47,33 +50,94 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
   val nMessages = 2
 
   @Test
-  def testMetricsReporterAfterDeletingTopic() {
+  def testMetricsReporterAfterDeletingTopic(): Unit = {
     val topic = "test-topic-metric"
     createTopic(topic, 1, 1)
     adminZkClient.deleteTopic(topic)
     TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
-    assertEquals("Topic metrics exists after deleteTopic", Set.empty, topicMetricGroups(topic))
+    assertEquals(Set.empty, topicMetricGroups(topic), "Topic metrics exists after deleteTopic")
   }
 
   @Test
-  def testBrokerTopicMetricsUnregisteredAfterDeletingTopic() {
+  def testBrokerTopicMetricsUnregisteredAfterDeletingTopic(): Unit = {
     val topic = "test-broker-topic-metric"
     createTopic(topic, 2, 1)
     // Produce a few messages to create the metrics
     // Don't consume messages as it may cause metrics to be re-created causing the test to fail, see KAFKA-5238
     TestUtils.generateAndProduceMessages(servers, topic, nMessages)
-    assertTrue("Topic metrics don't exist", topicMetricGroups(topic).nonEmpty)
+    assertTrue(topicMetricGroups(topic).nonEmpty, "Topic metrics don't exist")
     servers.foreach(s => assertNotNull(s.brokerTopicStats.topicStats(topic)))
     adminZkClient.deleteTopic(topic)
     TestUtils.verifyTopicDeletion(zkClient, topic, 1, servers)
-    assertEquals("Topic metrics exists after deleteTopic", Set.empty, topicMetricGroups(topic))
+    assertEquals(Set.empty, topicMetricGroups(topic), "Topic metrics exists after deleteTopic")
   }
 
   @Test
   def testClusterIdMetric(): Unit = {
     // Check if clusterId metric exists.
-    val metrics = Metrics.defaultRegistry.allMetrics
-    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.server:type=KafkaServer,name=ClusterId"), 1)
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == s"$requiredKafkaServerPrefix=ClusterId"), 1)
+  }
+
+  @Test
+  def testBrokerStateMetric(): Unit = {
+    // Check if BrokerState metric exists.
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == s"$requiredKafkaServerPrefix=BrokerState"), 1)
+  }
+
+  @Test
+  def testYammerMetricsCountMetric(): Unit = {
+    // Check if yammer-metrics-count metric exists.
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == s"$requiredKafkaServerPrefix=yammer-metrics-count"), 1)
+  }
+
+  @Test
+  def testLinuxIoMetrics(): Unit = {
+    // Check if linux-disk-{read,write}-bytes metrics either do or do not exist depending on whether we are or are not
+    // able to collect those metrics on the platform where this test is running.
+    val usable = new LinuxIoMetricsCollector("/proc", Time.SYSTEM, logger.underlying).usable()
+    val expectedCount = if (usable) 1 else 0
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
+    Set("linux-disk-read-bytes", "linux-disk-write-bytes").foreach(name =>
+      assertEquals(metrics.keySet.asScala.count(_.getMBeanName == s"$requiredKafkaServerPrefix=$name"), expectedCount))
+  }
+
+  @Test
+  def testJMXFilter(): Unit = {
+    // Check if cluster id metrics is not exposed in JMX
+    assertTrue(ManagementFactory.getPlatformMBeanServer
+                 .isRegistered(new ObjectName("kafka.controller:type=KafkaController,name=ActiveControllerCount")))
+    assertFalse(ManagementFactory.getPlatformMBeanServer
+                  .isRegistered(new ObjectName(s"$requiredKafkaServerPrefix=ClusterId")))
+  }
+
+  @Test
+  def testUpdateJMXFilter(): Unit = {
+    // verify previously exposed metrics are removed and existing matching metrics are added
+    servers.foreach(server => server.kafkaYammerMetrics.reconfigure(
+      Map(JmxReporter.EXCLUDE_CONFIG -> "kafka.controller:type=KafkaController,name=ActiveControllerCount").asJava
+    ))
+    assertFalse(ManagementFactory.getPlatformMBeanServer
+                 .isRegistered(new ObjectName("kafka.controller:type=KafkaController,name=ActiveControllerCount")))
+    assertTrue(ManagementFactory.getPlatformMBeanServer
+                  .isRegistered(new ObjectName(s"$requiredKafkaServerPrefix=ClusterId")))
+  }
+
+  @Test
+  def testGeneralBrokerTopicMetricsAreGreedilyRegistered(): Unit = {
+    val topic = "test-broker-topic-metric"
+    createTopic(topic, 2, 1)
+
+    // The broker metrics for all topics should be greedily registered
+    assertTrue(topicMetrics(None).nonEmpty, "General topic metrics don't exist")
+    assertEquals(servers.head.brokerTopicStats.allTopicsStats.metricMap.size +
+      servers.head.brokerTopicStats.allTopicsStats.counterMetricMap.size, topicMetrics(None).size)
+    // topic metrics should be lazily registered
+    assertTrue(topicMetricGroups(topic).isEmpty, "Topic metrics aren't lazily registered")
+    TestUtils.generateAndProduceMessages(servers, topic, nMessages)
+    assertTrue(topicMetricGroups(topic).nonEmpty, "Topic metrics aren't registered")
   }
 
   @Test
@@ -106,39 +170,45 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
       val log = server.logManager.getLog(new TopicPartition(topic, 0))
       val brokerId = server.config.brokerId
       val logSize = log.map(_.size)
-      assertTrue(s"Expected broker $brokerId to have a Log for $topicPartition with positive size, actual: $logSize",
-        logSize.map(_ > 0).getOrElse(false))
+      assertTrue(logSize.exists(_ > 0), s"Expected broker $brokerId to have a Log for $topicPartition with positive size, actual: $logSize")
     }
 
-    val initialReplicationBytesIn = meterCount(replicationBytesIn)
-    val initialReplicationBytesOut = meterCount(replicationBytesOut)
-    val initialBytesIn = meterCount(bytesIn)
-    val initialBytesOut = meterCount(bytesOut)
+    // Consume messages to make bytesOut tick
+    TestUtils.consumeTopicRecords(servers, topic, nMessages)
+    val initialReplicationBytesIn = TestUtils.meterCount(replicationBytesIn)
+    val initialReplicationBytesOut = TestUtils.meterCount(replicationBytesOut)
+    val initialBytesIn = TestUtils.meterCount(bytesIn)
+    val initialBytesOut = TestUtils.meterCount(bytesOut)
+
+    // BytesOut doesn't include replication, so it shouldn't have changed
+    assertEquals(initialBytesOut, TestUtils.meterCount(bytesOut))
 
     // Produce a few messages to make the metrics tick
     TestUtils.generateAndProduceMessages(servers, topic, nMessages)
 
-    assertTrue(meterCount(replicationBytesIn) > initialReplicationBytesIn)
-    assertTrue(meterCount(replicationBytesOut) > initialReplicationBytesOut)
-    assertTrue(meterCount(bytesIn) > initialBytesIn)
-    // BytesOut doesn't include replication, so it shouldn't have changed
-    assertEquals(initialBytesOut, meterCount(bytesOut))
+    assertTrue(TestUtils.meterCount(replicationBytesIn) > initialReplicationBytesIn)
+    assertTrue(TestUtils.meterCount(replicationBytesOut) > initialReplicationBytesOut)
+    assertTrue(TestUtils.meterCount(bytesIn) > initialBytesIn)
 
     // Consume messages to make bytesOut tick
-    TestUtils.consumeTopicRecords(servers, topic, nMessages * 2)
+    TestUtils.consumeTopicRecords(servers, topic, nMessages)
 
-    assertTrue(meterCount(bytesOut) > initialBytesOut)
+    assertTrue(TestUtils.meterCount(bytesOut) > initialBytesOut)
   }
 
   @Test
   def testControllerMetrics(): Unit = {
-    val metrics = Metrics.defaultRegistry.allMetrics
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
 
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=ActiveControllerCount"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=OfflinePartitionsCount"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=PreferredReplicaImbalanceCount"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=GlobalTopicCount"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=GlobalPartitionCount"), 1)
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=TopicsToDeleteCount"), 1)
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=ReplicasToDeleteCount"), 1)
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=TopicsIneligibleToDeleteCount"), 1)
+    assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.controller:type=KafkaController,name=ReplicasIneligibleToDeleteCount"), 1)
   }
 
   /**
@@ -147,26 +217,25 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
    */
   @Test
   def testSessionExpireListenerMetrics(): Unit = {
-    val metrics = Metrics.defaultRegistry.allMetrics
+    val metrics = KafkaYammerMetrics.defaultRegistry.allMetrics
 
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.server:type=SessionExpireListener,name=SessionState"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.server:type=SessionExpireListener,name=ZooKeeperExpiresPerSec"), 1)
     assertEquals(metrics.keySet.asScala.count(_.getMBeanName == "kafka.server:type=SessionExpireListener,name=ZooKeeperDisconnectsPerSec"), 1)
   }
 
-  private def meterCount(metricName: String): Long = {
-    Metrics.defaultRegistry.allMetrics.asScala
-      .filterKeys(_.getMBeanName.endsWith(metricName))
-      .values
-      .headOption
-      .getOrElse(fail(s"Unable to find metric $metricName"))
-      .asInstanceOf[Meter]
-      .count
+  private def topicMetrics(topic: Option[String]): Set[String] = {
+    val metricNames = KafkaYammerMetrics.defaultRegistry.allMetrics().keySet.asScala.map(_.getMBeanName)
+    filterByTopicMetricRegex(metricNames, topic)
   }
 
   private def topicMetricGroups(topic: String): Set[String] = {
-    val topicMetricRegex = new Regex(".*BrokerTopicMetrics.*("+topic+")$")
-    val metricGroups = Metrics.defaultRegistry.groupedMetrics(MetricPredicate.ALL).keySet.asScala
-    metricGroups.filter(topicMetricRegex.pattern.matcher(_).matches)
+    val metricGroups = KafkaYammerMetrics.defaultRegistry.groupedMetrics(MetricPredicate.ALL).keySet.asScala
+    filterByTopicMetricRegex(metricGroups, Some(topic))
+  }
+
+  private def filterByTopicMetricRegex(metrics: Set[String], topic: Option[String]): Set[String] = {
+    val pattern = (".*BrokerTopicMetrics.*" + topic.map(t => s"($t)$$").getOrElse("")).r.pattern
+    metrics.filter(pattern.matcher(_).matches())
   }
 }

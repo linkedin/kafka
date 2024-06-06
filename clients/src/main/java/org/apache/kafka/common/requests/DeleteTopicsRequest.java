@@ -16,135 +16,106 @@
  */
 package org.apache.kafka.common.requests;
 
+import org.apache.kafka.common.Uuid;
+import org.apache.kafka.common.message.DeleteTopicsRequestData;
+import org.apache.kafka.common.message.DeleteTopicsResponseData;
+import org.apache.kafka.common.message.DeleteTopicsResponseData.DeletableTopicResult;
+import org.apache.kafka.common.message.DeleteTopicsRequestData.DeleteTopicState;
 import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.Errors;
-import org.apache.kafka.common.protocol.types.ArrayOf;
-import org.apache.kafka.common.protocol.types.Field;
-import org.apache.kafka.common.protocol.types.Schema;
-import org.apache.kafka.common.protocol.types.Struct;
-import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.common.protocol.ByteBufferAccessor;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
-import static org.apache.kafka.common.protocol.types.Type.INT32;
-import static org.apache.kafka.common.protocol.types.Type.STRING;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class DeleteTopicsRequest extends AbstractRequest {
-    private static final String TOPICS_KEY_NAME = "topics";
-    private static final String TIMEOUT_KEY_NAME = "timeout";
-
-    /* DeleteTopic api */
-    private static final Schema DELETE_TOPICS_REQUEST_V0 = new Schema(
-            new Field(TOPICS_KEY_NAME, new ArrayOf(STRING), "An array of topics to be deleted."),
-            new Field(TIMEOUT_KEY_NAME, INT32, "The time in ms to wait for a topic to be completely deleted on the " +
-                    "controller node. Values <= 0 will trigger topic deletion and return immediately"));
-
-    /* v1 request is the same as v0. Throttle time has been added to the response */
-    private static final Schema DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0;
-
-    /**
-     * The version number is bumped to indicate that on quota violation brokers send out responses before throttling.
-     */
-    private static final Schema DELETE_TOPICS_REQUEST_V2 = DELETE_TOPICS_REQUEST_V1;
-
-    /**
-     * v3 request is the same that as v2. The response is different based on the request version.
-     * In v3 version a TopicDeletionDisabledException is returned
-     */
-    private static final Schema DELETE_TOPICS_REQUEST_V3 = DELETE_TOPICS_REQUEST_V2;
-
-    public static Schema[] schemaVersions() {
-        return new Schema[]{DELETE_TOPICS_REQUEST_V0, DELETE_TOPICS_REQUEST_V1,
-            DELETE_TOPICS_REQUEST_V2, DELETE_TOPICS_REQUEST_V3};
-    }
-
-    private final Set<String> topics;
-    private final Integer timeout;
 
     public static class Builder extends AbstractRequest.Builder<DeleteTopicsRequest> {
-        private final Set<String> topics;
-        private final Integer timeout;
+        private DeleteTopicsRequestData data;
 
-        public Builder(Set<String> topics, Integer timeout) {
+        public Builder(DeleteTopicsRequestData data) {
             super(ApiKeys.DELETE_TOPICS);
-            this.topics = topics;
-            this.timeout = timeout;
+            this.data = data;
         }
 
         @Override
         public DeleteTopicsRequest build(short version) {
-            return new DeleteTopicsRequest(topics, timeout, version);
+            if (version >= 6 && !data.topicNames().isEmpty()) {
+                data.setTopics(groupByTopic(data.topicNames()));
+            }
+            return new DeleteTopicsRequest(data, version);
+        }
+        
+        private List<DeleteTopicState> groupByTopic(List<String> topics) {
+            List<DeleteTopicState> topicStates = new ArrayList<>();
+            for (String topic : topics) {
+                topicStates.add(new DeleteTopicState().setName(topic));
+            }
+            return topicStates;
         }
 
         @Override
         public String toString() {
-            StringBuilder bld = new StringBuilder();
-            bld.append("(type=DeleteTopicsRequest").
-                append(", topics=(").append(Utils.join(topics, ", ")).append(")").
-                append(", timeout=").append(timeout).
-                append(")");
-            return bld.toString();
+            return data.toString();
         }
     }
 
-    private DeleteTopicsRequest(Set<String> topics, Integer timeout, short version) {
-        super(ApiKeys.DELETE_TOPICS, version);
-        this.topics = topics;
-        this.timeout = timeout;
-    }
+    private DeleteTopicsRequestData data;
 
-    public DeleteTopicsRequest(Struct struct, short version) {
+    private DeleteTopicsRequest(DeleteTopicsRequestData data, short version) {
         super(ApiKeys.DELETE_TOPICS, version);
-        Object[] topicsArray = struct.getArray(TOPICS_KEY_NAME);
-        Set<String> topics = new HashSet<>(topicsArray.length);
-        for (Object topic : topicsArray)
-            topics.add((String) topic);
-
-        this.topics = topics;
-        this.timeout = struct.getInt(TIMEOUT_KEY_NAME);
+        this.data = data;
     }
 
     @Override
-    protected Struct toStruct() {
-        Struct struct = new Struct(ApiKeys.DELETE_TOPICS.requestSchema(version()));
-        struct.set(TOPICS_KEY_NAME, topics.toArray());
-        struct.set(TIMEOUT_KEY_NAME, timeout);
-        return struct;
+    public DeleteTopicsRequestData data() {
+        return data;
     }
 
     @Override
     public AbstractResponse getErrorResponse(int throttleTimeMs, Throwable e) {
-        Map<String, Errors> topicErrors = new HashMap<>();
-        for (String topic : topics)
-            topicErrors.put(topic, Errors.forException(e));
-
-        switch (version()) {
-            case 0:
-                return new DeleteTopicsResponse(topicErrors);
-            case 1:
-            case 2:
-            case 3:
-                return new DeleteTopicsResponse(throttleTimeMs, topicErrors);
-            default:
-                throw new IllegalArgumentException(String.format("Version %d is not valid. Valid versions for %s are 0 to %d",
-                    version(), this.getClass().getSimpleName(), ApiKeys.DELETE_TOPICS.latestVersion()));
+        DeleteTopicsResponseData response = new DeleteTopicsResponseData();
+        if (version() >= 1) {
+            response.setThrottleTimeMs(throttleTimeMs);
         }
+        ApiError apiError = ApiError.fromThrowable(e);
+        for (DeleteTopicState topic : topics()) {
+            response.responses().add(new DeletableTopicResult()
+                    .setName(topic.name())
+                    .setTopicId(topic.topicId())
+                    .setErrorCode(apiError.error().code()));
+        }
+        return new DeleteTopicsResponse(response);
+    }
+    
+    public List<String> topicNames() {
+        if (version() >= 6)
+            return data.topics().stream().map(topic -> topic.name()).collect(Collectors.toList());
+        return data.topicNames(); 
     }
 
-    public Set<String> topics() {
-        return topics;
+    public int numberOfTopics() {
+        if (version() >= 6)
+            return data.topics().size();
+        return data.topicNames().size();
     }
-
-    public Integer timeout() {
-        return this.timeout;
+    
+    public List<Uuid> topicIds() {
+        if (version() >= 6)
+            return data.topics().stream().map(topic -> topic.topicId()).collect(Collectors.toList());
+        return Collections.emptyList();
+    }
+    
+    public List<DeleteTopicState> topics() {
+        if (version() >= 6)
+            return data.topics();
+        return data.topicNames().stream().map(name -> new DeleteTopicState().setName(name)).collect(Collectors.toList()); 
     }
 
     public static DeleteTopicsRequest parse(ByteBuffer buffer, short version) {
-        return new DeleteTopicsRequest(ApiKeys.DELETE_TOPICS.parseRequest(version, buffer), version);
+        return new DeleteTopicsRequest(new DeleteTopicsRequestData(new ByteBufferAccessor(buffer), version), version);
     }
 
 }

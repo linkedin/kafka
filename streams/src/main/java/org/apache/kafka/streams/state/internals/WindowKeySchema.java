@@ -23,11 +23,15 @@ import org.apache.kafka.streams.kstream.Window;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.apache.kafka.streams.kstream.internals.TimeWindow;
 import org.apache.kafka.streams.state.StateSerdes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.List;
 
 public class WindowKeySchema implements RocksDBSegmentedBytesStore.KeySchema {
+
+    private static final Logger LOG = LoggerFactory.getLogger(WindowKeySchema.class);
 
     private static final int SEQNUM_SIZE = 4;
     private static final int TIMESTAMP_SIZE = 8;
@@ -89,8 +93,9 @@ public class WindowKeySchema implements RocksDBSegmentedBytesStore.KeySchema {
     @Override
     public <S extends Segment> List<S> segmentsToSearch(final Segments<S> segments,
                                                         final long from,
-                                                        final long to) {
-        return segments.segments(from, to);
+                                                        final long to,
+                                                        final boolean forward) {
+        return segments.segments(from, to, forward);
     }
 
     /**
@@ -99,8 +104,13 @@ public class WindowKeySchema implements RocksDBSegmentedBytesStore.KeySchema {
      */
     static TimeWindow timeWindowForSize(final long startMs,
                                         final long windowSize) {
-        final long endMs = startMs + windowSize;
-        return new TimeWindow(startMs, endMs < 0 ? Long.MAX_VALUE : endMs);
+        long endMs = startMs + windowSize;
+
+        if (endMs < 0) {
+            LOG.warn("Warning: window end time was truncated to Long.MAX");
+            endMs = Long.MAX_VALUE;
+        }
+        return new TimeWindow(startMs, endMs);
     }
 
     // for pipe serdes

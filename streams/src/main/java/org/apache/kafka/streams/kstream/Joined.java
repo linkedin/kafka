@@ -20,15 +20,15 @@ import org.apache.kafka.common.serialization.Serde;
 
 /**
  * The {@code Joined} class represents optional params that can be passed to
- * {@link KStream#join}, {@link KStream#leftJoin}, and  {@link KStream#outerJoin} operations.
+ * {@link KStream#join(KTable, ValueJoiner, Joined) KStream#join(KTable,...)} and
+ * {@link KStream#leftJoin(KTable, ValueJoiner) KStream#leftJoin(KTable,...)} operations.
  */
-public class Joined<K, V, VO> {
+public class Joined<K, V, VO> implements NamedOperation<Joined<K, V, VO>> {
 
-    private final Serde<K> keySerde;
-    private final Serde<V> valueSerde;
-    private final Serde<VO> otherValueSerde;
-    private final String name;
-
+    protected final Serde<K> keySerde;
+    protected final Serde<V> valueSerde;
+    protected final Serde<VO> otherValueSerde;
+    protected final String name;
 
     private Joined(final Serde<K> keySerde,
                    final Serde<V> valueSerde,
@@ -38,6 +38,10 @@ public class Joined<K, V, VO> {
         this.valueSerde = valueSerde;
         this.otherValueSerde = otherValueSerde;
         this.name = name;
+    }
+
+    protected Joined(final Joined<K, V, VO> joined) {
+        this(joined.keySerde, joined.valueSerde, joined.otherValueSerde, joined.name);
     }
 
     /**
@@ -135,8 +139,9 @@ public class Joined<K, V, VO> {
      * @param <V> value type
      * @param <VO> other value type
      * @return new {@code Joined} instance configured with the name
+     *
      */
-    public static <K, V, VO> Joined<K, V, VO> named(final String name) {
+    public static <K, V, VO> Joined<K, V, VO> as(final String name) {
         return new Joined<>(null, null, null, name);
     }
 
@@ -182,6 +187,7 @@ public class Joined<K, V, VO> {
      * repartition topics
      * @return new {@code Joined} instance configured with the {@code name}
      */
+    @Override
     public Joined<K, V, VO> withName(final String name) {
         return new Joined<>(keySerde, valueSerde, otherValueSerde, name);
     }
@@ -196,9 +202,5 @@ public class Joined<K, V, VO> {
 
     public Serde<VO> otherValueSerde() {
         return otherValueSerde;
-    }
-
-    public String name() {
-        return name;
     }
 }

@@ -16,11 +16,10 @@
  */
 package org.apache.kafka.streams.kstream.internals;
 
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.internals.AbstractProcessorContext;
 import org.apache.kafka.streams.processor.internals.ProcessorNode;
-import org.apache.kafka.streams.state.KeyValueStore;
-import org.apache.kafka.test.GenericInMemoryKeyValueStore;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.test.GenericInMemoryTimestampedKeyValueStore;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.junit.Test;
 
@@ -32,31 +31,36 @@ import static java.util.Collections.singleton;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
 public class KTableReduceTest {
 
     @Test
     public void shouldAddAndSubtract() {
-        final AbstractProcessorContext context = new InternalMockProcessorContext();
+        final InternalMockProcessorContext<String, Change<Set<String>>> context = new InternalMockProcessorContext<>();
 
-        final Processor<String, Change<Set<String>>> reduceProcessor =
+        final org.apache.kafka.streams.processor.Processor<String, Change<Set<String>>> reduceProcessor =
             new KTableReduce<String, Set<String>>(
                 "myStore",
                 this::unionNotNullArgs,
                 this::differenceNotNullArgs
             ).get();
 
-        final KeyValueStore<String, Set<String>> myStore = new GenericInMemoryKeyValueStore<>("myStore");
+        final TimestampedKeyValueStore<String, Set<String>> myStore =
+            new GenericInMemoryTimestampedKeyValueStore<>("myStore");
 
         context.register(myStore, null);
         reduceProcessor.init(context);
         context.setCurrentNode(new ProcessorNode<>("reduce", reduceProcessor, singleton("myStore")));
 
+        context.setTime(10L);
         reduceProcessor.process("A", new Change<>(singleton("a"), null));
-        assertEquals(singleton("a"), myStore.get("A"));
+        assertEquals(ValueAndTimestamp.make(singleton("a"), 10L), myStore.get("A"));
+        context.setTime(15L);
         reduceProcessor.process("A", new Change<>(singleton("b"), singleton("a")));
-        assertEquals(singleton("b"), myStore.get("A"));
+        assertEquals(ValueAndTimestamp.make(singleton("b"), 15L), myStore.get("A"));
+        context.setTime(12L);
         reduceProcessor.process("A", new Change<>(null, singleton("b")));
-        assertEquals(emptySet(), myStore.get("A"));
+        assertEquals(ValueAndTimestamp.make(emptySet(), 15L), myStore.get("A"));
     }
 
     private Set<String> differenceNotNullArgs(final Set<String> left, final Set<String> right) {

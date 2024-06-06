@@ -17,44 +17,48 @@
 
 package org.apache.kafka.streams.kstream.internals.graph;
 
-import org.apache.kafka.common.utils.Bytes;
-import org.apache.kafka.streams.kstream.internals.KeyValueStoreMaterializer;
-import org.apache.kafka.streams.kstream.internals.MaterializedInternal;
-import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.StoreBuilder;
+import org.apache.kafka.streams.state.TimestampedKeyValueStore;
 
 import java.util.Arrays;
+import java.util.Objects;
+import java.util.Properties;
 
-public class TableProcessorNode<K, V, S extends StateStore> extends StreamsGraphNode {
+public class TableProcessorNode<K, V> extends GraphNode {
 
-    private final MaterializedInternal<K, V, S> materializedInternal;
-    private final ProcessorParameters<K, V> processorParameters;
+    private final ProcessorParameters<K, V, ?, ?> processorParameters;
+    private final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder;
     private final String[] storeNames;
 
     public TableProcessorNode(final String nodeName,
-                              final ProcessorParameters<K, V> processorParameters,
-                              final MaterializedInternal<K, V, S> materializedInternal,
-                              final String[] storeNames) {
+                              final ProcessorParameters<K, V, ?, ?> processorParameters,
+                              final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder) {
+        this(nodeName, processorParameters, storeBuilder, null);
+    }
 
+    public TableProcessorNode(final String nodeName,
+                              final ProcessorParameters<K, V, ?, ?> processorParameters,
+                              // TODO KIP-300: we are enforcing this as a keyvalue store, but it should go beyond any type of stores
+                              final StoreBuilder<TimestampedKeyValueStore<K, V>> storeBuilder,
+                              final String[] storeNames) {
         super(nodeName);
         this.processorParameters = processorParameters;
-        this.materializedInternal = materializedInternal;
-        this.storeNames = storeNames != null ? storeNames : new String[]{};
+        this.storeBuilder = storeBuilder;
+        this.storeNames = storeNames != null ? storeNames : new String[] {};
     }
 
     @Override
     public String toString() {
         return "TableProcessorNode{" +
-               "materializedInternal=" + materializedInternal +
-               ", processorParameters=" + processorParameters +
-               ", storeNames=" + Arrays.toString(storeNames) +
-               "} " + super.toString();
+            ", processorParameters=" + processorParameters +
+            ", storeBuilder=" + (storeBuilder == null ? "null" : storeBuilder.name()) +
+            ", storeNames=" + Arrays.toString(storeNames) +
+            "} " + super.toString();
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public void writeToTopology(final InternalTopologyBuilder topologyBuilder) {
+    public void writeToTopology(final InternalTopologyBuilder topologyBuilder, final Properties props) {
         final String processorName = processorParameters.processorName();
         topologyBuilder.addProcessor(processorName, processorParameters.processorSupplier(), parentNodeNames());
 
@@ -62,15 +66,13 @@ public class TableProcessorNode<K, V, S extends StateStore> extends StreamsGraph
             topologyBuilder.connectProcessorAndStateStores(processorName, storeNames);
         }
 
-        // only materialize if materialized is specified and it is queryable
-        final boolean shouldMaterialize = materializedInternal != null && materializedInternal.queryableStoreName() != null;
-        if (shouldMaterialize) {
-            // TODO: we are enforcing this as a keyvalue store, but it should go beyond any type of stores
-            topologyBuilder.addStateStore(
-                new KeyValueStoreMaterializer<>(
-                    (MaterializedInternal<K, V, KeyValueStore<Bytes, byte[]>>) materializedInternal
-                ).materialize(),
-                processorName);
+        if (processorParameters.kTableSourceSupplier() != null) {
+            if (processorParameters.kTableSourceSupplier().materialized()) {
+                topologyBuilder.addStateStore(Objects.requireNonNull(storeBuilder, "storeBuilder was null"),
+                                              processorName);
+            }
+        } else if (storeBuilder != null) {
+            topologyBuilder.addStateStore(storeBuilder, processorName);
         }
     }
 }

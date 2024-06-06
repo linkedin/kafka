@@ -36,6 +36,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 
 @SuppressWarnings("deprecation")
 public class ConnectMetricsTest {
@@ -45,15 +46,13 @@ public class ConnectMetricsTest {
     static {
         DEFAULT_WORKER_CONFIG.put(WorkerConfig.KEY_CONVERTER_CLASS_CONFIG, "org.apache.kafka.connect.json.JsonConverter");
         DEFAULT_WORKER_CONFIG.put(WorkerConfig.VALUE_CONVERTER_CLASS_CONFIG, "org.apache.kafka.connect.json.JsonConverter");
-        DEFAULT_WORKER_CONFIG.put(WorkerConfig.INTERNAL_KEY_CONVERTER_CLASS_CONFIG, "org.apache.kafka.connect.json.JsonConverter");
-        DEFAULT_WORKER_CONFIG.put(WorkerConfig.INTERNAL_VALUE_CONVERTER_CLASS_CONFIG, "org.apache.kafka.connect.json.JsonConverter");
     }
 
     private ConnectMetrics metrics;
 
     @Before
     public void setUp() {
-        metrics = new ConnectMetrics("worker1", new WorkerConfig(WorkerConfig.baseConfigDef(), DEFAULT_WORKER_CONFIG), new MockTime());
+        metrics = new ConnectMetrics("worker1", new WorkerConfig(WorkerConfig.baseConfigDef(), DEFAULT_WORKER_CONFIG), new MockTime(), "cluster-1");
     }
 
     @After
@@ -68,21 +67,9 @@ public class ConnectMetricsTest {
     }
 
     @Test
-    public void testCreatingTags() {
-        Map<String, String> tags = ConnectMetrics.tags("k1", "v1", "k2", "v2");
-        assertEquals("v1", tags.get("k1"));
-        assertEquals("v2", tags.get("k2"));
-        assertEquals(2, tags.size());
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void testCreatingTagsWithOddNumberOfTags() {
-        ConnectMetrics.tags("k1", "v1", "k2", "v2", "extra");
-    }
-
-    @Test(expected = IllegalArgumentException.class)
     public void testGettingGroupWithOddNumberOfTags() {
-        metrics.group("name", "k1", "v1", "k2", "v2", "extra");
+        assertThrows(IllegalArgumentException.class,
+            () -> metrics.group("name", "k1", "v1", "k2", "v2", "extra"));
     }
 
     @Test
@@ -176,6 +163,6 @@ public class ConnectMetricsTest {
     }
 
     static MetricName metricName(String name) {
-        return new MetricName(name, "test_group", "metrics for testing", Collections.<String, String>emptyMap());
+        return new MetricName(name, "test_group", "metrics for testing", Collections.emptyMap());
     }
 }

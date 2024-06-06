@@ -17,17 +17,17 @@
 package org.apache.kafka.common.config;
 
 import org.apache.kafka.common.config.provider.ConfigProvider;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigTransformerTest {
 
@@ -42,7 +42,7 @@ public class ConfigTransformerTest {
 
     private ConfigTransformer configTransformer;
 
-    @Before
+    @BeforeEach
     public void setup() {
         configTransformer = new ConfigTransformer(Collections.singletonMap("test", new TestConfigProvider()));
     }
@@ -93,6 +93,13 @@ public class ConfigTransformerTest {
         Map<String, Long> ttls = result.ttls();
         assertEquals(TEST_RESULT_NO_PATH, data.get(MY_KEY));
         assertTrue(ttls.isEmpty());
+    }
+
+    @Test
+    public void testReplaceMultipleVariablesWithoutPathInValue() throws Exception {
+        ConfigTransformerResult result = configTransformer.transform(Collections.singletonMap(MY_KEY, "first ${test:testKey}; second ${test:testKey}"));
+        Map<String, String> data = result.data();
+        assertEquals("first testResultNoPath; second testResultNoPath", data.get(MY_KEY));
     }
 
     @Test

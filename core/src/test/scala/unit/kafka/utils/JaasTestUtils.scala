@@ -16,9 +16,12 @@
  */
 package kafka.utils
 
-import java.io.{File, BufferedWriter, FileWriter}
+import java.io.{BufferedWriter, File, FileWriter}
 import java.util.Properties
+
+import scala.collection.Seq
 import kafka.server.KafkaConfig
+import org.apache.kafka.clients.admin.ScramMechanism
 import org.apache.kafka.common.utils.Java
 
 object JaasTestUtils {
@@ -152,10 +155,7 @@ object JaasTestUtils {
   val serviceName = "kafka"
 
   def saslConfigs(saslProperties: Option[Properties]): Properties = {
-    val result = saslProperties match {
-      case Some(properties) => properties
-      case None => new Properties
-    }
+    val result = saslProperties.getOrElse(new Properties)
     // IBM Kerberos module doesn't support the serviceName JAAS property, hence it needs to be
     // passed as a Kafka property
     if (Java.isIbmJdk && !result.contains(KafkaConfig.SaslKerberosServiceNameProp))
@@ -167,6 +167,17 @@ object JaasTestUtils {
     val jaasFile = TestUtils.tempFile()
     writeToFile(jaasFile, jaasSections)
     jaasFile
+  }
+
+  // Returns a SASL/SCRAM configuration using credentials for the given user and password
+  def scramClientLoginModule(mechanism: String, scramUser: String, scramPassword: String): String = {
+    if (ScramMechanism.fromMechanismName(mechanism) == ScramMechanism.UNKNOWN) {
+      throw new IllegalArgumentException("Unsupported SCRAM mechanism " + mechanism)
+    }
+    ScramLoginModule(
+      scramUser,
+      scramPassword
+    ).toString
   }
 
   // Returns the dynamic configuration, using credentials for user #1
@@ -210,14 +221,18 @@ object JaasTestUtils {
             KafkaPlainUser -> KafkaPlainPassword,
             KafkaPlainUser2 -> KafkaPlainPassword2
           ))
-      case "SCRAM-SHA-256" | "SCRAM-SHA-512" =>
-        ScramLoginModule(
-          KafkaScramAdmin,
-          KafkaScramAdminPassword,
-          debug = false)
       case "OAUTHBEARER" =>
         OAuthBearerLoginModule(KafkaOAuthBearerAdmin)
-      case mechanism => throw new IllegalArgumentException("Unsupported server mechanism " + mechanism)
+      case mechanism => {
+        if (ScramMechanism.fromMechanismName(mechanism) != ScramMechanism.UNKNOWN) {
+          ScramLoginModule(
+            KafkaScramAdmin,
+            KafkaScramAdminPassword,
+            debug = false)
+        } else {
+          throw new IllegalArgumentException("Unsupported server mechanism " + mechanism)
+        }
+      }
     }
     JaasSection(contextName, modules)
   }
@@ -243,16 +258,20 @@ object JaasTestUtils {
           plainUser,
           plainPassword
         )
-      case "SCRAM-SHA-256" | "SCRAM-SHA-512" =>
-        ScramLoginModule(
-          scramUser,
-          scramPassword
-        )
       case "OAUTHBEARER" =>
         OAuthBearerLoginModule(
           oauthBearerUser
         )
-      case mechanism => throw new IllegalArgumentException("Unsupported client mechanism " + mechanism)
+      case mechanism => {
+        if (ScramMechanism.fromMechanismName(mechanism) != ScramMechanism.UNKNOWN) {
+          ScramLoginModule(
+            scramUser,
+            scramPassword
+          )
+        } else {
+          throw new IllegalArgumentException("Unsupported client mechanism " + mechanism)
+        }
+      }
     }
   }
 
@@ -267,7 +286,7 @@ object JaasTestUtils {
   private def jaasSectionsToString(jaasSections: Seq[JaasSection]): String =
     jaasSections.mkString
 
-  private def writeToFile(file: File, jaasSections: Seq[JaasSection]) {
+  private def writeToFile(file: File, jaasSections: Seq[JaasSection]): Unit = {
     val writer = new BufferedWriter(new FileWriter(file))
     try writer.write(jaasSectionsToString(jaasSections))
     finally writer.close()

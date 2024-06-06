@@ -18,6 +18,8 @@ package org.apache.kafka.test;
 
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.IntegerDeserializer;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
 import org.apache.kafka.streams.processor.StateStore;
@@ -26,8 +28,13 @@ import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class MockKeyValueStore implements KeyValueStore {
+public class MockKeyValueStore implements KeyValueStore<Object, Object> {
+    // keep a global counter of flushes and a local reference to which store had which
+    // flush, so we can reason about the order in which stores get flushed.
+    private static final AtomicInteger GLOBAL_FLUSH_COUNTER = new AtomicInteger(0);
+    private final AtomicInteger instanceLastFlushCount = new AtomicInteger(-1);
     private final String name;
     private final boolean persistent;
 
@@ -48,6 +55,7 @@ public class MockKeyValueStore implements KeyValueStore {
         return name;
     }
 
+    @Deprecated
     @Override
     public void init(final ProcessorContext context,
                      final StateStore root) {
@@ -58,7 +66,12 @@ public class MockKeyValueStore implements KeyValueStore {
 
     @Override
     public void flush() {
+        instanceLastFlushCount.set(GLOBAL_FLUSH_COUNTER.getAndIncrement());
         flushed = true;
+    }
+
+    public int getLastFlushCount() {
+        return instanceLastFlushCount.get();
     }
 
     @Override
@@ -88,9 +101,7 @@ public class MockKeyValueStore implements KeyValueStore {
     };
 
     @Override
-    public void put(final Object key, final Object value) {
-
-    }
+    public void put(final Object key, final Object value) {}
 
     @Override
     public Object putIfAbsent(final Object key, final Object value) {
@@ -103,9 +114,7 @@ public class MockKeyValueStore implements KeyValueStore {
     }
 
     @Override
-    public void putAll(final List entries) {
-
-    }
+    public void putAll(final List<KeyValue<Object, Object>> entries) {}
 
     @Override
     public Object get(final Object key) {
@@ -113,12 +122,17 @@ public class MockKeyValueStore implements KeyValueStore {
     }
 
     @Override
-    public KeyValueIterator range(final Object from, final Object to) {
+    public KeyValueIterator<Object, Object> range(final Object from, final Object to) {
         return null;
     }
 
     @Override
-    public KeyValueIterator all() {
+    public <PS extends Serializer<P>, P> KeyValueIterator<Object, Object> prefixScan(P prefix, PS prefixKeySerializer) {
+        return null;
+    }
+
+    @Override
+    public KeyValueIterator<Object, Object> all() {
         return null;
     }
 

@@ -17,15 +17,15 @@ package kafka.metrics
  * limitations under the License.
  */
 
-import org.junit.Test
+import org.junit.jupiter.api.Test
 import java.util.concurrent.TimeUnit
-import org.junit.Assert._
+import org.junit.jupiter.api.Assertions._
 import com.yammer.metrics.core.{MetricsRegistry, Clock}
 
 class KafkaTimerTest {
 
   @Test
-  def testKafkaTimer() {
+  def testKafkaTimer(): Unit = {
     val clock = new ManualClock
     val testRegistry = new MetricsRegistry(clock)
     val metric = testRegistry.newTimer(this.getClass, "TestTimer")
@@ -52,7 +52,7 @@ class KafkaTimerTest {
       TimeUnit.NANOSECONDS.toMillis(ticksInNanos)
     }
 
-    def addMillis(millis: Long) {
+    def addMillis(millis: Long): Unit = {
       ticksInNanos += TimeUnit.MILLISECONDS.toNanos(millis)
     }
   }

@@ -23,34 +23,36 @@ import org.apache.kafka.streams.kstream.Aggregator;
 import org.apache.kafka.streams.kstream.Initializer;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.Windowed;
-import org.apache.kafka.streams.processor.AbstractProcessor;
-import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.processor.ProcessorSupplier;
 
-import java.io.File;
 import java.time.Instant;
 
+@SuppressWarnings("deprecation") // Old PAPI. Needs to be migrated.
 public class SmokeTestUtil {
 
     final static int END = Integer.MAX_VALUE;
 
-    static ProcessorSupplier<Object, Object> printProcessorSupplier(final String topic) {
+    static org.apache.kafka.streams.processor.ProcessorSupplier<Object, Object> printProcessorSupplier(final String topic) {
         return printProcessorSupplier(topic, "");
     }
 
-    static ProcessorSupplier<Object, Object> printProcessorSupplier(final String topic, final String name) {
-        return new ProcessorSupplier<Object, Object>() {
+    static org.apache.kafka.streams.processor.ProcessorSupplier<Object, Object> printProcessorSupplier(final String topic, final String name) {
+        return new org.apache.kafka.streams.processor.ProcessorSupplier<Object, Object>() {
             @Override
-            public Processor<Object, Object> get() {
-                return new AbstractProcessor<Object, Object>() {
+            public org.apache.kafka.streams.processor.Processor<Object, Object> get() {
+                return new org.apache.kafka.streams.processor.AbstractProcessor<Object, Object>() {
                     private int numRecordsProcessed = 0;
+                    private long smallestOffset = Long.MAX_VALUE;
+                    private long largestOffset = Long.MIN_VALUE;
 
                     @Override
                     public void init(final ProcessorContext context) {
                         super.init(context);
-                        System.out.println("initializing processor: topic=" + topic + " taskId=" + context.taskId());
+                        System.out.println("[DEV] initializing processor: topic=" + topic + " taskId=" + context.taskId());
+                        System.out.flush();
                         numRecordsProcessed = 0;
+                        smallestOffset = Long.MAX_VALUE;
+                        largestOffset = Long.MIN_VALUE;
                     }
 
                     @Override
@@ -60,6 +62,27 @@ public class SmokeTestUtil {
                             System.out.printf("%s: %s%n", name, Instant.now());
                             System.out.println("processed " + numRecordsProcessed + " records from topic=" + topic);
                         }
+
+                        if (smallestOffset > context().offset()) {
+                            smallestOffset = context().offset();
+                        }
+                        if (largestOffset < context().offset()) {
+                            largestOffset = context().offset();
+                        }
+                    }
+
+                    @Override
+                    public void close() {
+                        System.out.printf("Close processor for task %s%n", context().taskId());
+                        System.out.println("processed " + numRecordsProcessed + " records");
+                        final long processed;
+                        if (largestOffset >= smallestOffset) {
+                            processed = 1L + largestOffset - smallestOffset;
+                        } else {
+                            processed = 0L;
+                        }
+                        System.out.println("offset " + smallestOffset + " to " + largestOffset + " -> processed " + processed);
+                        System.out.flush();
                     }
                 };
             }
@@ -76,39 +99,19 @@ public class SmokeTestUtil {
     public static class Agg {
 
         KeyValueMapper<String, Long, KeyValue<String, Long>> selector() {
-            return new KeyValueMapper<String, Long, KeyValue<String, Long>>() {
-                @Override
-                public KeyValue<String, Long> apply(final String key, final Long value) {
-                    return new KeyValue<>(value == null ? null : Long.toString(value), 1L);
-                }
-            };
+            return (key, value) -> new KeyValue<>(value == null ? null : Long.toString(value), 1L);
         }
 
         public Initializer<Long> init() {
-            return new Initializer<Long>() {
-                @Override
-                public Long apply() {
-                    return 0L;
-                }
-            };
+            return () -> 0L;
         }
 
         Aggregator<String, Long, Long> adder() {
-            return new Aggregator<String, Long, Long>() {
-                @Override
-                public Long apply(final String aggKey, final Long value, final Long aggregate) {
-                    return aggregate + value;
-                }
-            };
+            return (aggKey, value, aggregate) -> aggregate + value;
         }
 
         Aggregator<String, Long, Long> remover() {
-            return new Aggregator<String, Long, Long>() {
-                @Override
-                public Long apply(final String aggKey, final Long value, final Long aggregate) {
-                    return aggregate - value;
-                }
-            };
+            return (aggKey, value, aggregate) -> aggregate - value;
         }
     }
 
@@ -119,14 +122,6 @@ public class SmokeTestUtil {
     static Serde<Long> longSerde = Serdes.Long();
 
     static Serde<Double> doubleSerde = Serdes.Double();
-
-    static File createDir(final File parent, final String child) {
-        final File dir = new File(parent, child);
-
-        dir.mkdir();
-
-        return dir;
-    }
 
     public static void sleep(final long duration) {
         try {

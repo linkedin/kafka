@@ -41,6 +41,8 @@ public class FetcherMetricsRegistry {
     public MetricNameTemplate recordsLeadMin;
     public MetricNameTemplate fetchThrottleTimeAvg;
     public MetricNameTemplate fetchThrottleTimeMax;
+    public MetricNameTemplate metadataRequestRate;
+    public MetricNameTemplate metadataRequestTotal;
     public MetricNameTemplate topicFetchSizeAvg;
     public MetricNameTemplate topicFetchSizeMax;
     public MetricNameTemplate topicBytesConsumedRate;
@@ -54,6 +56,7 @@ public class FetcherMetricsRegistry {
     public MetricNameTemplate partitionRecordsLead;
     public MetricNameTemplate partitionRecordsLeadMin;
     public MetricNameTemplate partitionRecordsLeadAvg;
+    public MetricNameTemplate partitionPreferredReadReplica;
 
     public FetcherMetricsRegistry() {
         this(new HashSet<String>(), "");
@@ -93,7 +96,10 @@ public class FetcherMetricsRegistry {
                 "The number of fetch requests per second.", tags);
         this.fetchRequestTotal = new MetricNameTemplate("fetch-total", groupName,
                 "The total number of fetch requests.", tags);
-
+        this.metadataRequestTotal = new MetricNameTemplate("consumer-metadata-request-total",
+            "consumer-metrics", "The total number of metadata requests sent by the consumer", tags);
+        this.metadataRequestRate = new MetricNameTemplate("consumer-metadata-request-rate", "consumer-metrics",
+            "The average per-second number of metadata request sent by the consumer", tags);
         this.recordsLagMax = new MetricNameTemplate("records-lag-max", groupName,
                 "The maximum lag in terms of number of records for any partition in this window", tags);
         this.recordsLeadMin = new MetricNameTemplate("records-lead-min", groupName,
@@ -139,7 +145,9 @@ public class FetcherMetricsRegistry {
                 "The min lead of the partition", partitionTags);
         this.partitionRecordsLeadAvg = new MetricNameTemplate("records-lead-avg", groupName,
                 "The average lead of the partition", partitionTags);
-
+        this.partitionPreferredReadReplica = new MetricNameTemplate(
+                "preferred-read-replica", "consumer-fetch-manager-metrics",
+                "The current read replica for the partition, or -1 if reading from leader", partitionTags);
     }
 
     public List<MetricNameTemplate> getAllTemplates() {
@@ -171,7 +179,10 @@ public class FetcherMetricsRegistry {
             partitionRecordsLagMax,
             partitionRecordsLead,
             partitionRecordsLeadMin,
-            partitionRecordsLeadAvg
+            partitionRecordsLeadAvg,
+            partitionPreferredReadReplica,
+            metadataRequestRate,
+            metadataRequestTotal
         );
     }
 

@@ -639,6 +639,8 @@ public class NetworkClientTest {
             LeastLoadedNodeAlgorithm.VANILLA, new ArrayList<>());
         nc.ready(node, time.milliseconds());
         assertFalse(client.isReady(node, time.milliseconds()));
+        assertThrows(ConfigException.class, () -> nc.leastLoadedNode(time.milliseconds()));
+
         assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
     }
 

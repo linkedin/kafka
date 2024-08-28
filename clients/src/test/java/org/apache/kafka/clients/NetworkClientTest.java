@@ -632,6 +632,12 @@ public class NetworkClientTest {
     }
 
     @Test
+    public void noLeastLoadedNode() {
+        clusterClient.ready(null, time.milliseconds());
+        assertNotEquals(null, clusterClient.leastLoadedNode(time.milliseconds()));
+    }
+
+    @Test
     public void testLeastLoadedNode() {
         client.ready(node, time.milliseconds());
         assertFalse(client.isReady(node, time.milliseconds()));

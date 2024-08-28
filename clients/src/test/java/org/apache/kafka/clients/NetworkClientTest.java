@@ -18,6 +18,7 @@ package org.apache.kafka.clients;
 
 import java.util.PriorityQueue;
 import org.apache.kafka.common.Cluster;
+import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.errors.AuthenticationException;

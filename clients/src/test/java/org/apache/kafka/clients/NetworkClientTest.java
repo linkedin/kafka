@@ -626,6 +626,19 @@ public class NetworkClientTest {
         assertEquals(0, client.throttleDelayMs(node, time.milliseconds()));
     }
 
+    @Test
+    public void noLeastLoadedNode() {
+        NetworkClient nc = new NetworkClient(selector, clusterMetadataUpdater, "mock-cluster-md", Integer.MAX_VALUE,
+            0, 0, 64 * 1024, 64 * 1024,
+            defaultRequestTimeoutMs, connectionSetupTimeoutMsTest, connectionSetupTimeoutMaxMsTest, time, true, new ApiVersions(), new LogContext(),
+            LeastLoadedNodeAlgorithm.VANILLA, new ArrayList<>());
+        nc.ready(node, time.milliseconds());
+        assertFalse(client.isReady(node, time.milliseconds()));
+        assertThrows(ConfigException.class, () -> nc.leastLoadedNode(time.milliseconds()));
+
+        assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
+    }
+    
     private int sendEmptyProduceRequest() {
         return sendEmptyProduceRequest(node.idString());
     }

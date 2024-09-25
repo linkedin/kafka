@@ -35,6 +35,7 @@ import org.apache.kafka.common.protocol.types.Struct;
 import org.apache.kafka.common.record.MemoryRecords;
 import org.apache.kafka.common.requests.ApiVersionsResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
+import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.requests.MetadataResponse;
 import org.apache.kafka.common.requests.ProduceRequest;
 import org.apache.kafka.common.requests.RequestHeader;
@@ -638,7 +639,7 @@ public class NetworkClientTest {
 
         assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
     }
-    
+
     private int sendEmptyProduceRequest() {
         return sendEmptyProduceRequest(node.idString());
     }

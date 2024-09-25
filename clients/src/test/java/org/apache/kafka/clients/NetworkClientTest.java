@@ -633,7 +633,7 @@ public class NetworkClientTest {
     @Test
     public void noLeastLoadedNode() {
         NetworkClient nc = new NetworkClient(selector, metadataUpdater, "mock", Integer.MAX_VALUE,
-                reconnectBackoffMsTest, reconnectBackoffMaxMs, 64 * 1024, 64 * 1024,
+                reconnectBackoffMsTest, 10 * 10000, 64 * 1024, 64 * 1024,
                 defaultRequestTimeoutMs, ClientDnsLookup.DEFAULT, time, true, new ApiVersions(), new LogContext());
 
         nc.ready(node, time.milliseconds());

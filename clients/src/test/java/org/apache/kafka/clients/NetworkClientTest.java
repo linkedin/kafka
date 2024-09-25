@@ -632,10 +632,9 @@ public class NetworkClientTest {
 
     @Test
     public void noLeastLoadedNode() {
-        NetworkClient nc = new NetworkClient(selector, clusterMetadataUpdater, "mock-cluster-md", Integer.MAX_VALUE,
-            0, 0, 64 * 1024, 64 * 1024,
-            defaultRequestTimeoutMs, connectionSetupTimeoutMsTest, time, true, new ApiVersions(), new LogContext(),
-            LeastLoadedNodeAlgorithm.VANILLA, new ArrayList<>());
+        NetworkClient nc = new NetworkClient(selector, metadataUpdater, "mock", Integer.MAX_VALUE,
+                reconnectBackoffMsTest, reconnectBackoffMaxMs, 64 * 1024, 64 * 1024,
+                defaultRequestTimeoutMs, ClientDnsLookup.DEFAULT, time, true, new ApiVersions(), new LogContext());
 
         nc.ready(node, time.milliseconds());
         assertFalse(client.isReady(node, time.milliseconds()));

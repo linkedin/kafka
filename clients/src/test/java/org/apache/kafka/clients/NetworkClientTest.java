@@ -68,6 +68,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class NetworkClientTest {
 
@@ -77,6 +78,8 @@ public class NetworkClientTest {
     protected final Node node = TestUtils.singletonCluster().nodes().iterator().next();
     protected final long reconnectBackoffMsTest = 10 * 1000;
     protected final long reconnectBackoffMaxMsTest = 10 * 10000;
+    protected final long connectionSetupTimeoutMsTest = 5 * 1000;
+    protected final long connectionSetupTimeoutMaxMsTest = 127 * 1000;
 
     private final TestMetadataUpdater metadataUpdater = new TestMetadataUpdater(Collections.singletonList(node));
     private final TestClusterMetadataUpdater clusterMetadataUpdater = new TestClusterMetadataUpdater(Collections.singletonList(node));

@@ -909,7 +909,7 @@ public class NetworkClient implements KafkaClient {
             }
 
             if (newNodes.size() == 0) {
-                return null;
+                // return null;
             }
 
             int offset = this.randOffset.nextInt(newNodes.size());

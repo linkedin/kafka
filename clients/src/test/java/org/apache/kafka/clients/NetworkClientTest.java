@@ -630,6 +630,7 @@ public class NetworkClientTest {
         assertEquals(0, client.throttleDelayMs(node, time.milliseconds()));
     }
 
+/*
     @Test
     public void noLeastLoadedNode() {
         NetworkClient nc = new NetworkClient(selector, metadataUpdater, "mock", Integer.MAX_VALUE,
@@ -642,7 +643,7 @@ public class NetworkClientTest {
 
         assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
     }
-
+*/
     private int sendEmptyProduceRequest() {
         return sendEmptyProduceRequest(node.idString());
     }

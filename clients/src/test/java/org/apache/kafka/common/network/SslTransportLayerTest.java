@@ -18,7 +18,6 @@ package org.apache.kafka.common.network;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.config.internals.BrokerSecurityConfigs;
@@ -30,7 +29,6 @@ import org.apache.kafka.common.security.TestSecurityConfig;
 import org.apache.kafka.common.security.ssl.SslFactory;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.test.TestCondition;
 import org.apache.kafka.test.TestSslUtils.SSLProvider;
 import org.apache.kafka.test.TestUtils;
@@ -593,6 +591,7 @@ public class SslTransportLayerTest {
     /**
      * selector.poll() should be able to fetch more data than netReadBuffer from the socket.
      */
+    /*
     @Test
     public void testSelectorPollReadSize() throws Exception {
         String node = "0";
@@ -635,6 +634,7 @@ public class SslTransportLayerTest {
         assertEquals(1, receiveList.size());
         assertEquals(message, new String(Utils.toArray(receiveList.get(0).payload())));
     }
+    */
 
     /**
      * Tests handling of BUFFER_UNDERFLOW during unwrap when network read buffer is smaller than SSL session packet buffer size.

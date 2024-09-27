@@ -908,11 +908,9 @@ public class NetworkClient implements KafkaClient {
                 log.debug("created Node with IP address: {}", address.getAddress().getHostAddress());
             }
 
-            /*
             if (newNodes.size() == 0) {
                 return null;
             }
-            */
 
             int offset = this.randOffset.nextInt(newNodes.size());
             Node node = newNodes.get(offset);

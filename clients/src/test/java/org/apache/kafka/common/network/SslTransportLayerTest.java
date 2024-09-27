@@ -590,6 +590,8 @@ public class SslTransportLayerTest {
 
     /**
      * selector.poll() should be able to fetch more data than netReadBuffer from the socket.
+     * TODO: Commenting out this test because it fails in git (even on an empty branch) but runs successfully locally. 
+     * Because it fails in git it blocks other checkins from going in so it needs to either be debugged to be fixed or removed entirely
      */
     /*
     @Test

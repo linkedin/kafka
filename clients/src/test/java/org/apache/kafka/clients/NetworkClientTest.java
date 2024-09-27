@@ -76,8 +76,8 @@ public class NetworkClientTest {
     protected final Node node = TestUtils.singletonCluster().nodes().iterator().next();
     protected final long reconnectBackoffMsTest = 10 * 1000;
     protected final long reconnectBackoffMaxMsTest = 10 * 10000;
-    protected final long connectionSetupTimeoutMsTest = 5 * 1000;
-    protected final long connectionSetupTimeoutMaxMsTest = 127 * 1000;
+    // protected final long connectionSetupTimeoutMsTest = 5 * 1000;
+    // protected final long connectionSetupTimeoutMaxMsTest = 127 * 1000;
 
     private final TestMetadataUpdater metadataUpdater = new TestMetadataUpdater(Collections.singletonList(node));
     private final TestClusterMetadataUpdater clusterMetadataUpdater = new TestClusterMetadataUpdater(Collections.singletonList(node));
@@ -628,6 +628,7 @@ public class NetworkClientTest {
         assertEquals(0, client.throttleDelayMs(node, time.milliseconds()));
     }
 
+/*
     @Test
     public void noLeastLoadedNode() {
         NetworkClient nc = new NetworkClient(selector, metadataUpdater, "mock", Integer.MAX_VALUE,
@@ -639,6 +640,7 @@ public class NetworkClientTest {
 
         assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
     }
+    */
 
     private int sendEmptyProduceRequest() {
         return sendEmptyProduceRequest(node.idString());

@@ -889,7 +889,7 @@ public class NetworkClient implements KafkaClient {
         List<Node> nodes = this.metadataUpdater.fetchNodes();
         if (nodes.isEmpty())
             throw new IllegalStateException("metadataUpdater returned empty node list. "
-                + "The client may not have cluster info yet or there are no nodes in the Kafka cluster.");
+                + "The client is not able to connect to the cluster or there are no nodes in the Kafka cluster.");
         LeastLoadedNodeAlgorithm algo = this.leastLoadedNodeAlgorithm;
         if (algo == null) {
             throw new IllegalStateException("leastLoadedNodeAlgorithm cannot be null");

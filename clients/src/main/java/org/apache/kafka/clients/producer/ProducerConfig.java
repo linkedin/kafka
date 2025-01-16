@@ -16,6 +16,11 @@
  */
 package org.apache.kafka.clients.producer;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.LeastLoadedNodeAlgorithm;
@@ -29,12 +34,6 @@ import org.apache.kafka.common.config.EnumValueValidator;
 import org.apache.kafka.common.config.SecurityConfig;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.serialization.Serializer;
-
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
 
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 import static org.apache.kafka.common.config.ConfigDef.Range.between;
@@ -277,6 +276,10 @@ public class ProducerConfig extends AbstractConfig {
 
     public static final String LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG = CommonClientConfigs.LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG;
 
+    public static final String IO_THREAD_EXCEPTION_LOG_FREQUENCY_CONFIG = "io.thread.exception.log.frequency";
+    public static final String IO_THREAD_EXCEPTION_LOG_FREQUENCY_DOC = "The frequency of logging uncaught exceptions from the producer I/O thread. The value is in hertz (hz). If the value is less than or equal to 0, all exceptions will be logged.";
+    public static final double DEFAULT_IO_THREAD_EXCEPTION_LOG_FREQUENCY = 0;
+
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG, Type.LIST, Collections.emptyList(), new ConfigDef.NonNullValidator(), Importance.HIGH, CommonClientConfigs.BOOTSTRAP_SERVERS_DOC)
                                 .define(CLIENT_DNS_LOOKUP_CONFIG,
@@ -433,7 +436,12 @@ public class ProducerConfig extends AbstractConfig {
                                         DEFAULT_LEAST_LOADED_NODE_ALGORITHM,
                                         new EnumValueValidator<>(LeastLoadedNodeAlgorithm.class),
                                         Importance.MEDIUM,
-                                        LEAST_LOADED_NODE_ALGORITHM_DOC);
+                                        LEAST_LOADED_NODE_ALGORITHM_DOC)
+                                .define(IO_THREAD_EXCEPTION_LOG_FREQUENCY_CONFIG,
+                                        Type.DOUBLE,
+                                        DEFAULT_IO_THREAD_EXCEPTION_LOG_FREQUENCY,
+                                        Importance.LOW,
+                                        IO_THREAD_EXCEPTION_LOG_FREQUENCY_DOC);
     }
 
     @Override

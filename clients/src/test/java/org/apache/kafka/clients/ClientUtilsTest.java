@@ -16,25 +16,27 @@
  */
 package org.apache.kafka.clients;
 
+import org.apache.kafka.common.config.ConfigException;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
+
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
-import org.apache.kafka.common.config.ConfigException;
-import org.junit.jupiter.api.Test;
 
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.when;
 
 public class ClientUtilsTest {
-
-    private final HostResolver hostResolver = new DefaultHostResolver();
 
     @Test
     public void testParseAndValidateAddresses() {
@@ -57,27 +59,16 @@ public class ClientUtilsTest {
         checkWithoutLookup("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1234", "localhost:10000");
 
         // With lookup of example.com, either one or two addresses are expected depending on
-        // whether ipv4 and ipv6 are enabled
+        // whether ipv4 and ipv6 are enabled. Note: we don't check specific hostnames since
+        // DNS resolution results can change based on CDN provider and geographic location.
         List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("example.com:10000"));
-        assertTrue(validatedAddresses.size() >= 1, "Unexpected addresses " + validatedAddresses);
-        List<String> validatedHostNames = validatedAddresses.stream().map(InetSocketAddress::getHostName)
-                .collect(Collectors.toList());
-        List<String> expectedHostNames = Arrays.asList(
-            "a23-215-0-136.deploy.static.akamaitechnologies.com",
-            "a23-192-228-84.deploy.static.akamaitechnologies.com",
-            "a23-215-0-138.deploy.static.akamaitechnologies.com",
-            "a96-7-128-175.deploy.static.akamaitechnologies.com",
-            "a23-192-228-80.deploy.static.akamaitechnologies.com",
-            "a96-7-128-198.deploy.static.akamaitechnologies.com",
-            "2600:1406:3a00:21:0:0:173e:2e66",
-            "2600:1408:ec00:36:0:0:1736:7f31",
-            "2600:1406:3a00:21:0:0:173e:2e65",
-            "2600:1408:ec00:36:0:0:1736:7f24",
-            "2600:1406:bc00:53:0:0:b81e:94ce",
-            "2600:1406:bc00:53:0:0:b81e:94c8"
-        );
-        assertTrue(expectedHostNames.containsAll(validatedHostNames), "Unexpected addresses " + validatedHostNames);
-        validatedAddresses.forEach(address -> assertEquals(10000, address.getPort()));
+        assertTrue(validatedAddresses.size() >= 1, "Expected at least one address, got: " + validatedAddresses);
+        validatedAddresses.forEach(address -> {
+            assertEquals(10000, address.getPort());
+            // Verify that the address has a valid hostname (reverse lookup was performed)
+            assertNotNull(address.getHostName());
+            assertFalse(address.getHostName().isEmpty());
+        });
     }
 
     @Test
@@ -93,7 +84,21 @@ public class ClientUtilsTest {
 
     @Test
     public void testOnlyBadHostname() {
-        assertThrows(ConfigException.class, () -> checkWithoutLookup("some.invalid.hostname.foo.bar.local:9999"));
+        try (MockedConstruction<InetSocketAddress> inetSocketAddress =
+                 mockConstruction(
+                     InetSocketAddress.class,
+                     (mock, context) -> when(mock.isUnresolved()).thenReturn(true)
+                 )
+        ) {
+            Exception exception = assertThrows(
+                ConfigException.class,
+                () -> checkWithoutLookup("some.invalid.hostname.foo.bar.local:9999")
+            );
+            assertEquals(
+                "No resolvable bootstrap urls given in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
+                exception.getMessage()
+            );
+        }
     }
 
     @Test
@@ -116,8 +121,13 @@ public class ClientUtilsTest {
 
     @Test
     public void testResolveUnknownHostException() {
-        assertThrows(UnknownHostException.class,
-            () -> ClientUtils.resolve("some.invalid.hostname.foo.bar.local", hostResolver));
+        HostResolver throwingHostResolver = host -> {
+            throw new UnknownHostException();
+        };
+        assertThrows(
+            UnknownHostException.class,
+            () -> ClientUtils.resolve("some.invalid.hostname.foo.bar.local", throwingHostResolver)
+        );
     }
 
     @Test
@@ -155,5 +165,4 @@ public class ClientUtilsTest {
     private List<InetSocketAddress> checkWithLookup(List<String> url) {
         return ClientUtils.parseAndValidateAddresses(url, ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY);
     }
-
 }

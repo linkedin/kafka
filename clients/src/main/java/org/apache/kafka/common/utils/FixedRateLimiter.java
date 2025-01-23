@@ -21,42 +21,36 @@ public class FixedRateLimiter implements RateLimiter {
     private final Time time;
 
     // How frequently the rate limiter will allow a permit to be acquired.
-    private final double permitsPerSecond;
+    private final long intervalMs;
 
     // The last time a permit was acquired.
     // Initialized to "negative infinity" so that the first call to tryAcquire() will always return true.
-    private long lastPermitTimeNs = Long.MIN_VALUE;
+    private long lastPermitTimeMs = Long.MIN_VALUE;
 
     /**
      * Create a new rate limiter.
      *
      * @param time             The timekeeper to use for getting the current time.
-     * @param permitsPerSecond How frequently the rate limiter will allow a permit to be acquired. If this is less than or
-     *                         equal to 0, the rate limiter will always allow permits to be acquired.
+     * @param intervalMs       The minimum time between successful calls to {@link #tryAcquire()}.
      */
-    public FixedRateLimiter(Time time, double permitsPerSecond) {
+    public FixedRateLimiter(Time time, long intervalMs) {
         this.time = time;
-        this.permitsPerSecond = permitsPerSecond;
+        this.intervalMs = intervalMs;
     }
 
     @Override
     public boolean tryAcquire() {
-        if (permitsPerSecond <= 0) {
+        if (intervalMs <= 0) {
             return true;
         }
 
-        long now = time.nanoseconds();
-        long waitTimeNs = delayBetweenPermitsNs();
-        long targetTimeNs = lastPermitTimeNs + waitTimeNs;
+        long now = time.milliseconds();
+        long targetTimeNs = lastPermitTimeMs + intervalMs;
         if (now >= targetTimeNs) {
-            lastPermitTimeNs = now;
+            lastPermitTimeMs = now;
             return true;
         }
 
         return false;
-    }
-
-    private long delayBetweenPermitsNs() {
-        return (long) (1_000_000_000 / permitsPerSecond);
     }
 }

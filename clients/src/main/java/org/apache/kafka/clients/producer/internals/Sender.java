@@ -126,7 +126,7 @@ public class Sender implements Runnable {
     private final Map<TopicPartition, List<ProducerBatch>> inFlightBatches;
 
     /* Limits how frequently we see logged exceptions in the main loop. This prevents log spam. */
-    private final double exceptionLogPermitsPerSecond;
+    private final long exceptionLogIntervalMs;
     private final ExceptionMap<RateLimiter> exceptionLogRateLimiter;
 
     public Sender(LogContext logContext,
@@ -142,8 +142,7 @@ public class Sender implements Runnable {
                   int requestTimeoutMs,
                   long retryBackoffMs,
                   TransactionManager transactionManager,
-                  ApiVersions apiVersions,
-                  double exceptionLogPermitsPerSecond) {
+                  ApiVersions apiVersions, long exceptionLogIntervalMs) {
         this.log = logContext.logger(Sender.class);
         this.client = client;
         this.accumulator = accumulator;
@@ -160,7 +159,7 @@ public class Sender implements Runnable {
         this.apiVersions = apiVersions;
         this.transactionManager = transactionManager;
         this.inFlightBatches = new HashMap<>();
-        this.exceptionLogPermitsPerSecond = exceptionLogPermitsPerSecond;
+        this.exceptionLogIntervalMs = exceptionLogIntervalMs;
         this.exceptionLogRateLimiter = shouldRateLimitExceptionLogs() ? new ExceptionMap<>() : null;
     }
 
@@ -851,7 +850,7 @@ public class Sender implements Runnable {
     }
 
     private boolean shouldRateLimitExceptionLogs() {
-        return exceptionLogPermitsPerSecond > 0;
+        return exceptionLogIntervalMs > 0;
     }
 
     private boolean shouldErrorLogException(Exception e) {
@@ -861,7 +860,7 @@ public class Sender implements Runnable {
 
         // Check if we can acquire a permit to log this exception.
         RateLimiter rateLimiter =
-            exceptionLogRateLimiter.computeIfAbsent(e, k -> new FixedRateLimiter(time, exceptionLogPermitsPerSecond));
+            exceptionLogRateLimiter.computeIfAbsent(e, k -> new FixedRateLimiter(time, exceptionLogIntervalMs));
         return rateLimiter.tryAcquire();
     }
 

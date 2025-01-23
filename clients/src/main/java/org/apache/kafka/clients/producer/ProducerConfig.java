@@ -276,9 +276,9 @@ public class ProducerConfig extends AbstractConfig {
 
     public static final String LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG = CommonClientConfigs.LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG;
 
-    public static final String IO_THREAD_EXCEPTION_LOG_FREQUENCY_CONFIG = "io.thread.exception.log.frequency";
-    public static final String IO_THREAD_EXCEPTION_LOG_FREQUENCY_DOC = "The frequency of logging uncaught exceptions from the producer I/O thread. The value is in hertz (hz). If the value is less than or equal to 0, all exceptions will be logged.";
-    public static final double DEFAULT_IO_THREAD_EXCEPTION_LOG_FREQUENCY = 0;
+    public static final String IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_CONFIG = "io.thread.exception.log.interval.ms";
+    public static final String IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_DOC = "The minimum time is milliseconds between logging identical uncaught exceptions from the producer I/O thread. If the value is less than or equal to 0, all exceptions will be logged.";
+    public static final long DEFAULT_IO_THREAD_EXCEPTION_LOG_INTERVAL_MS = 0;
 
     static {
         CONFIG = new ConfigDef().define(BOOTSTRAP_SERVERS_CONFIG, Type.LIST, Collections.emptyList(), new ConfigDef.NonNullValidator(), Importance.HIGH, CommonClientConfigs.BOOTSTRAP_SERVERS_DOC)
@@ -437,11 +437,9 @@ public class ProducerConfig extends AbstractConfig {
                                         new EnumValueValidator<>(LeastLoadedNodeAlgorithm.class),
                                         Importance.MEDIUM,
                                         LEAST_LOADED_NODE_ALGORITHM_DOC)
-                                .define(IO_THREAD_EXCEPTION_LOG_FREQUENCY_CONFIG,
-                                        Type.DOUBLE,
-                                        DEFAULT_IO_THREAD_EXCEPTION_LOG_FREQUENCY,
-                                        Importance.LOW,
-                                        IO_THREAD_EXCEPTION_LOG_FREQUENCY_DOC);
+                                .define(IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_CONFIG,
+                                        Type.LONG, DEFAULT_IO_THREAD_EXCEPTION_LOG_INTERVAL_MS,
+                                        Importance.LOW, IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_DOC);
     }
 
     @Override

@@ -25,7 +25,7 @@ public class FixedRateLimiterTest {
     @Test
     public void testImmediatelyAvailable() {
         Time time = new MockTime();
-        FixedRateLimiter limiter = new FixedRateLimiter(time, 1.0);
+        FixedRateLimiter limiter = new FixedRateLimiter(time, 100);
         assertTrue(limiter.tryAcquire());
     }
 
@@ -37,24 +37,26 @@ public class FixedRateLimiterTest {
     }
 
     @Test
-    public void testNegativeRate() {
+    public void testNegativeInterval() {
         Time time = new MockTime();
-        FixedRateLimiter limiter = new FixedRateLimiter(time, -1.0);
+        FixedRateLimiter limiter = new FixedRateLimiter(time, -100);
         assertAlwaysAllows(time, limiter);
     }
 
     @Test
-    public void testZeroRate() {
+    public void testZeroInterval() {
         Time time = new MockTime();
-        FixedRateLimiter limiter = new FixedRateLimiter(time, 0.0);
+        FixedRateLimiter limiter = new FixedRateLimiter(time, 0);
         assertAlwaysAllows(time, limiter);
     }
 
     @Test
-    public void testRateLessThanOne() {
+    public void testHighInterval() {
         Time time = new MockTime();
         // Allow 1 permit every 2 seconds.
-        FixedRateLimiter limiter = new FixedRateLimiter(time, 0.5);
+        FixedRateLimiter limiter = new FixedRateLimiter(time, 2000);
+
+        // Try to acquire a permit every second.
         assertTrue(limiter.tryAcquire());
         time.sleep(1000);
         assertFalse(limiter.tryAcquire());
@@ -67,11 +69,12 @@ public class FixedRateLimiterTest {
     }
 
     @Test
-    public void testRateLessGreaterThanOne() {
+    public void testLowInterval() {
         Time time = new MockTime();
         // Allow 1 permit every 0.25 seconds.
-        FixedRateLimiter limiter = new FixedRateLimiter(time, 4);
+        FixedRateLimiter limiter = new FixedRateLimiter(time, 250);
 
+        // Try to acquire a permit every 0.1 seconds.
         assertTrue(limiter.tryAcquire());
         time.sleep(100);
         assertFalse(limiter.tryAcquire());

@@ -277,7 +277,7 @@ public class ProducerConfig extends AbstractConfig {
     public static final String LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG = CommonClientConfigs.LI_UPDATE_METADATA_LAST_REFRESH_TIME_UPON_NODE_DISCONNECT_CONFIG;
 
     public static final String IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_CONFIG = "io.thread.exception.log.interval.ms";
-    public static final String IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_DOC = "The minimum time is milliseconds between logging identical uncaught exceptions from the producer I/O thread. If the value is less than or equal to 0, all exceptions will be logged.";
+    public static final String IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_DOC = "The minimum time in milliseconds between logging identical uncaught exceptions from the producer I/O thread. If the value is less than or equal to 0, all exceptions will be logged.";
     public static final long DEFAULT_IO_THREAD_EXCEPTION_LOG_INTERVAL_MS = 0;
 
     static {

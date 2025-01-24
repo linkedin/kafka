@@ -514,7 +514,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 requestTimeoutMs,
                 producerConfig.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG),
                 this.transactionManager,
-                apiVersions);
+                apiVersions,
+                producerConfig.getLong(ProducerConfig.IO_THREAD_EXCEPTION_LOG_INTERVAL_MS_CONFIG));
     }
 
     private static int lingerMs(ProducerConfig config) {

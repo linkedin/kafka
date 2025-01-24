@@ -16,6 +16,14 @@
  */
 package org.apache.kafka.clients.producer.internals;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
@@ -52,18 +60,12 @@ import org.apache.kafka.common.requests.InitProducerIdResponse;
 import org.apache.kafka.common.requests.ProduceRequest;
 import org.apache.kafka.common.requests.ProduceResponse;
 import org.apache.kafka.common.requests.RequestHeader;
+import org.apache.kafka.common.utils.ExceptionMap;
+import org.apache.kafka.common.utils.FixedRateLimiter;
 import org.apache.kafka.common.utils.LogContext;
+import org.apache.kafka.common.utils.RateLimiter;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 
@@ -123,6 +125,10 @@ public class Sender implements Runnable {
     // A per-partition queue of batches ordered by creation time for tracking the in-flight batches
     private final Map<TopicPartition, List<ProducerBatch>> inFlightBatches;
 
+    /* Limits how frequently we see logged exceptions in the main loop. This prevents log spam. */
+    private final long exceptionLogIntervalMs;
+    private final ExceptionMap<RateLimiter> exceptionLogRateLimiter;
+
     public Sender(LogContext logContext,
                   KafkaClient client,
                   ProducerMetadata metadata,
@@ -136,7 +142,7 @@ public class Sender implements Runnable {
                   int requestTimeoutMs,
                   long retryBackoffMs,
                   TransactionManager transactionManager,
-                  ApiVersions apiVersions) {
+                  ApiVersions apiVersions, long exceptionLogIntervalMs) {
         this.log = logContext.logger(Sender.class);
         this.client = client;
         this.accumulator = accumulator;
@@ -153,6 +159,8 @@ public class Sender implements Runnable {
         this.apiVersions = apiVersions;
         this.transactionManager = transactionManager;
         this.inFlightBatches = new HashMap<>();
+        this.exceptionLogIntervalMs = exceptionLogIntervalMs;
+        this.exceptionLogRateLimiter = shouldRateLimitExceptionLogs() ? new ExceptionMap<>() : null;
     }
 
     public List<ProducerBatch> inFlightBatches(TopicPartition tp) {
@@ -240,11 +248,7 @@ public class Sender implements Runnable {
 
         // main loop, runs until close is called
         while (running) {
-            try {
-                runOnce();
-            } catch (Exception e) {
-                log.error("Uncaught error in kafka producer I/O thread: ", e);
-            }
+            runOnceCatchingExceptions();
         }
 
         log.debug("Beginning shutdown of Kafka producer I/O thread, sending remaining records.");
@@ -253,11 +257,7 @@ public class Sender implements Runnable {
         // requests in the transaction manager, accumulator or waiting for acknowledgment,
         // wait until these are completed.
         while (!forceClose && ((this.accumulator.hasUndrained() || this.client.inFlightRequestCount() > 0) || hasPendingTransactionalRequests())) {
-            try {
-                runOnce();
-            } catch (Exception e) {
-                log.error("Uncaught error in kafka producer I/O thread: ", e);
-            }
+            runOnceCatchingExceptions();
         }
 
         // Abort the transaction if any commit or abort didn't go through the transaction manager's queue
@@ -266,11 +266,7 @@ public class Sender implements Runnable {
                 log.info("Aborting incomplete transaction due to shutdown");
                 transactionManager.beginAbort();
             }
-            try {
-                runOnce();
-            } catch (Exception e) {
-                log.error("Uncaught error in kafka producer I/O thread: ", e);
-            }
+            runOnceCatchingExceptions();
         }
 
         if (forceClose) {
@@ -290,6 +286,16 @@ public class Sender implements Runnable {
         }
 
         log.debug("Shutdown of Kafka producer I/O thread has completed.");
+    }
+
+    private void runOnceCatchingExceptions() {
+        try {
+            runOnce();
+        } catch (Exception e) {
+            if (shouldErrorLogException(e)) {
+                log.error("Uncaught error in kafka producer I/O thread: ", e);
+            }
+        }
     }
 
     /**
@@ -841,6 +847,21 @@ public class Sender implements Runnable {
         produceThrottleTimeSensor.add(metrics.produceThrottleTimeAvg, new Avg());
         produceThrottleTimeSensor.add(metrics.produceThrottleTimeMax, new Max());
         return produceThrottleTimeSensor;
+    }
+
+    private boolean shouldRateLimitExceptionLogs() {
+        return exceptionLogIntervalMs > 0;
+    }
+
+    private boolean shouldErrorLogException(Exception e) {
+        if (!shouldRateLimitExceptionLogs()) {
+            return true;
+        }
+
+        // Check if we can acquire a permit to log this exception.
+        RateLimiter rateLimiter =
+            exceptionLogRateLimiter.computeIfAbsent(e, k -> new FixedRateLimiter(time, exceptionLogIntervalMs));
+        return rateLimiter.tryAcquire();
     }
 
     /**

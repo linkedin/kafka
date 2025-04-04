@@ -130,9 +130,10 @@ public class ClientUtilsTest {
 
     @Test
     public void testParseAndValidateAddressesDedupesErrors() {
-        int expectedNumberOfErrors = 1;
+        // when resolved addresses is null, should throw each ConfigException
+        int expectedNumberOfErrors = 10;
         int actualNumberOfErrors = 0;
-        String expectedErrorMessage = "No resolvable bootstrap server in provided urls: ";
+        String expectedErrorMessage = "Invalid value true for configuration No resolvable bootstrap server in provided urls: ";
 
         for (int i = 0; i < 10; i++) {
             try {

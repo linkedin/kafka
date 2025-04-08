@@ -51,6 +51,7 @@ import org.apache.kafka.common.acl.AclBindingFilter;
 import org.apache.kafka.common.acl.AclOperation;
 import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.config.ConfigResource;
+import org.apache.kafka.common.config.DNSRetriableException;
 import org.apache.kafka.common.errors.ApiException;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.DisconnectException;
@@ -433,7 +434,8 @@ public class KafkaAdminClient extends AdminClient {
                 config.getLong(AdminClientConfig.METADATA_MAX_AGE_CONFIG));
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
                     config.getList(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    config.getString(AdminClientConfig.CLIENT_DNS_LOOKUP_CONFIG));
+                    config.getString(AdminClientConfig.CLIENT_DNS_LOOKUP_CONFIG),
+                    true);
             metadataManager.update(Cluster.bootstrap(addresses), time.milliseconds());
             List<MetricsReporter> reporters = config.getConfiguredInstances(AdminClientConfig.METRIC_REPORTER_CLASSES_CONFIG,
                 MetricsReporter.class,
@@ -474,6 +476,10 @@ public class KafkaAdminClient extends AdminClient {
             closeQuietly(networkClient, "NetworkClient");
             closeQuietly(selector, "Selector");
             closeQuietly(channelBuilder, "ChannelBuilder");
+            // throw RetriableException if due to DNS retriable issue
+            if (exc instanceof RetriableException) {
+                throw new DNSRetriableException("Failed to construct kafka producer due to retriable DNS issue", exc);
+            }
             throw new KafkaException("Failed to create new KafkaAdminClient", exc);
         }
     }

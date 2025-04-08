@@ -29,6 +29,7 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
@@ -152,10 +153,10 @@ public class KafkaProducerTest {
         final int oldCloseCount = MockMetricsReporter.CLOSE_COUNT.get();
         try (KafkaProducer<byte[], byte[]> ignored = new KafkaProducer<>(props, new ByteArraySerializer(), new ByteArraySerializer())) {
             fail("should have caught an exception and returned");
-        } catch (KafkaException e) {
+        } catch (RetriableException e) {
             assertEquals(oldInitCount + 1, MockMetricsReporter.INIT_COUNT.get());
             assertEquals(oldCloseCount + 1, MockMetricsReporter.CLOSE_COUNT.get());
-            assertEquals("Failed to construct kafka producer", e.getMessage());
+            assertEquals("Failed to construct kafka producer due to retriable DNS issue", e.getMessage());
         }
     }
 

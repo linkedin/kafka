@@ -28,6 +28,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.apache.kafka.common.config.DNSRetriableException;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -137,8 +138,9 @@ public class ClientUtilsTest {
 
         for (int i = 0; i < 10; i++) {
             try {
-                ClientUtils.parseAndValidateAddresses(Collections.emptyList());
-            } catch (ConfigException e) {
+                ClientUtils.parseAndValidateAddresses(Collections.emptyList(), ClientDnsLookup.DEFAULT.toString(),
+                    true);
+            } catch (DNSRetriableException e) {
                 assertEquals(expectedErrorMessage, e.getMessage());
                 actualNumberOfErrors++;
             }

@@ -923,7 +923,6 @@ class KafkaServer(
 
         _brokerState = BrokerState.NOT_RUNNING
 
-
         startupComplete.set(false)
         isShuttingDown.set(false)
         CoreUtils.swallow(AppInfoParser.unregisterAppInfo(Server.MetricsPrefix, config.brokerId.toString, metrics), this)

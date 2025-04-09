@@ -920,6 +920,7 @@ class KafkaServer(
         config.dynamicConfig.clear()
 
         _brokerState = BrokerState.NOT_RUNNING
+        kafkaYammerMetrics.shutdownJmxReporter();
 
         startupComplete.set(false)
         isShuttingDown.set(false)

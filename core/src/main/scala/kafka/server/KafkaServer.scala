@@ -913,6 +913,8 @@ class KafkaServer(
           CoreUtils.swallow(socketServer.shutdown(), this)
         if (metrics != null)
           CoreUtils.swallow(metrics.close(), this)
+        if (kafkaYammerMetrics != null)
+          CoreUtils.swallow(kafkaYammerMetrics.shutdownJmxReporter(), this)
         if (brokerTopicStats != null)
           CoreUtils.swallow(brokerTopicStats.close(), this)
 
@@ -920,7 +922,7 @@ class KafkaServer(
         config.dynamicConfig.clear()
 
         _brokerState = BrokerState.NOT_RUNNING
-        kafkaYammerMetrics.shutdownJmxReporter();
+
 
         startupComplete.set(false)
         isShuttingDown.set(false)

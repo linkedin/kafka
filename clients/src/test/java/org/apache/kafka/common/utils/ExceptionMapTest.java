@@ -102,4 +102,32 @@ public class ExceptionMapTest {
         assertEquals(a, 1);
         assertEquals(b, 2);
     }
+
+    @Test
+    public void testExceptionWithNoMessage() {
+        Exception e = new RuntimeException();
+        ExceptionMap<Integer> exceptionMap = new ExceptionMap<>();
+        int a = exceptionMap.computeIfAbsent(e, ex -> 1);
+        assertEquals(a, 1);
+    }
+
+    @Test
+    public void testExceptionWithEmptyMessage() {
+        Exception e = new RuntimeException("");
+        ExceptionMap<Integer> exceptionMap = new ExceptionMap<>();
+        int a = exceptionMap.computeIfAbsent(e, ex -> 1);
+        assertEquals(a, 1);
+    }
+
+    @Test
+    public void testExceptionMapWithNullThrowable() {
+        ExceptionMap<Integer> exceptionMap = new ExceptionMap<>();
+        exceptionMap.computeIfAbsent(null, e -> 1);
+    }
+
+    @Test
+    public void testExceptionFingerprintWithNullException() {
+        ExceptionMap.ExceptionFingerprint exceptionFingerprint = new ExceptionMap.ExceptionFingerprint(null);
+        assertEquals(1, exceptionFingerprint.hashCode());
+    }
 }

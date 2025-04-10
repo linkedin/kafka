@@ -40,15 +40,14 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
-import org.apache.kafka.common.config.DNSRetriableException;
 import org.apache.kafka.common.errors.ApiException;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.RecordTooLargeException;
-import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
@@ -429,8 +428,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time, PRODUCER_METRIC_GROUP_NAME));
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
                     config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    config.getString(ProducerConfig.CLIENT_DNS_LOOKUP_CONFIG),
-                    true);
+                    config.getString(ProducerConfig.CLIENT_DNS_LOOKUP_CONFIG));
             if (metadata != null) {
                 this.metadata = metadata;
             } else {
@@ -457,8 +455,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             // call close methods if internal objects are already constructed this is to prevent resource leak. see KAFKA-2121
             close(Duration.ofMillis(0), true);
             // throw RetriableException if due to DNS retriable issue
-            if (t instanceof RetriableException) {
-                throw new DNSRetriableException("Failed to construct kafka producer due to retriable DNS issue", t);
+            if (t instanceof ConfigException && t.getMessage() != null
+                && t.getMessage().startsWith("No resolvable bootstrap server in provided urls")) {
+                throw new NetworkException("Failed to construct kafka producer due to retriable DNS issue");
             }
             // now propagate the exception
             throw new KafkaException("Failed to construct kafka producer", t);

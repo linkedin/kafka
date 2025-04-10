@@ -48,6 +48,7 @@ import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.LeaderNotAvailableException;
 import org.apache.kafka.common.errors.NotLeaderForPartitionException;
 import org.apache.kafka.common.errors.OffsetOutOfRangeException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.SaslAuthenticationException;
 import org.apache.kafka.common.errors.SecurityDisabledException;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -2369,6 +2370,19 @@ public class KafkaAdminClientTest {
             result.values().get(goodEntity);
             TestUtils.assertFutureError(result.values().get(unauthorizedEntity), ClusterAuthorizationException.class);
             TestUtils.assertFutureError(result.values().get(invalidEntity), InvalidRequestException.class);
+        }
+    }
+
+    @Test
+    public void testConstructorRetriableException() {
+
+        Map<String, Object> props = new HashMap<>();
+        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "fakehost:9999");
+
+        try {
+            Admin.create(props);
+        } catch (RetriableException e) {
+            assertEquals("Failed to construct kafka admin client due to retriable DNS issue", e.getMessage());
         }
     }
 

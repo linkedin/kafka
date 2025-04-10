@@ -19,6 +19,7 @@ package org.apache.kafka.common.errors;
 /**
  * A misc. network-related IOException occurred when making a request. This could be because the client's metadata is
  * out of date and it is making a request to a node that is now dead.
+ * This is also used in KafkaConsumer, KafkaProducer, KafkaAdminClient constructor when resolved addresses is empty
  */
 public class NetworkException extends InvalidMetadataException {
 

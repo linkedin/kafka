@@ -41,11 +41,11 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.config.DNSRetriableException;
+import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidConfigurationException;
 import org.apache.kafka.common.errors.InvalidGroupIdException;
-import org.apache.kafka.common.errors.RetriableException;
+import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
 import org.apache.kafka.common.memory.MemoryPool;
@@ -740,9 +740,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     subscriptions, logContext, clusterResourceListeners, metrics,
                     config.getLong(ConsumerConfig.LI_CLIENT_CLUSTER_METADATA_EXPIRE_TIME_MS_CONFIG));
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
-                    config.getList(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    config.getString(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG),
-                    true);
+                    config.getList(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG), config.getString(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG));
             this.metadata.bootstrap(addresses);
             String metricGrpPrefix = "consumer";
 
@@ -844,8 +842,9 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             // call close methods if internal objects are already constructed; this is to prevent resource leak. see KAFKA-2121
             close(0, true);
             // throw RetriableException if due to DNS retriable issue
-            if (t instanceof RetriableException) {
-                throw new DNSRetriableException("Failed to construct kafka consumer due to retriable DNS issue", t);
+            if (t instanceof ConfigException && t.getMessage() != null
+                && t.getMessage().startsWith("No resolvable bootstrap server in provided urls")) {
+                throw new NetworkException("Failed to construct kafka consumer due to retriable DNS issue");
             }
             // now propagate the exception
             throw new KafkaException("Failed to construct kafka consumer", t);

@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
-import org.apache.kafka.common.config.DNSRetriableException;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.ChannelBuilders;
@@ -48,13 +47,8 @@ public final class ClientUtils {
     private ClientUtils() {
     }
 
-    public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, String clientDnsLookupConfig,
-        Boolean retryableDNSException) {
-        return parseAndValidateAddresses(urls, ClientDnsLookup.forConfig(clientDnsLookupConfig), retryableDNSException);
-    }
-
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, String clientDnsLookupConfig) {
-        return parseAndValidateAddresses(urls, ClientDnsLookup.forConfig(clientDnsLookupConfig), false);
+        return parseAndValidateAddresses(urls, ClientDnsLookup.forConfig(clientDnsLookupConfig));
     }
 
     /**
@@ -62,15 +56,10 @@ public final class ClientUtils {
      * some third-party applications still rely on this API to parse and validate addresses.
      */
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls) {
-        return parseAndValidateAddresses(urls, ClientDnsLookup.USE_ALL_DNS_IPS, false);
+        return parseAndValidateAddresses(urls, ClientDnsLookup.USE_ALL_DNS_IPS);
     }
 
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, ClientDnsLookup clientDnsLookup) {
-        return parseAndValidateAddresses(urls, clientDnsLookup, false);
-    }
-
-    public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, ClientDnsLookup clientDnsLookup,
-        Boolean retryableDNSException) {
         List<InetSocketAddress> addresses = new ArrayList<>();
         for (String url : urls) {
             if (url != null && !url.isEmpty()) {
@@ -110,14 +99,8 @@ public final class ClientUtils {
                 }
             }
         }
-        if (addresses.isEmpty()) {
-            if (Boolean.TRUE.equals(retryableDNSException)) {
-                throw new DNSRetriableException("No resolvable bootstrap server in provided urls: " + String.join(",", urls));
-            } else {
-                throw new ConfigException("No resolvable bootstrap server in provided urls: " +
-                    String.join(",", urls));
-            }
-        }
+        if (addresses.isEmpty())
+            throw new ConfigException("No resolvable bootstrap server in provided urls: " + String.join(",", urls));
         return addresses;
     }
 

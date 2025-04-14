@@ -278,7 +278,7 @@ class ReplicaManager(val config: KafkaConfig,
       } catch {
         case e: Throwable =>
           numLogDirFailureHandlerExceptions += 1
-          warn(s"Error handling failures for log dir $newOfflineLogDir: ${e.getMessage}", e)
+          error(s"Error handling failures for log dir $newOfflineLogDir: ${e.getMessage}", e)
       }
     }
   }

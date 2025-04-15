@@ -208,7 +208,8 @@ public class KafkaConsumerTest {
         } catch (RetriableException e) {
             assertEquals(oldInitCount + 1, MockMetricsReporter.INIT_COUNT.get());
             assertEquals(oldCloseCount + 1, MockMetricsReporter.CLOSE_COUNT.get());
-            assertEquals("Failed to construct kafka consumer due to retriable DNS issue", e.getMessage());
+            assertEquals("Failed to construct kafka consumer due to no resolvable bootstrap server. "
+                + "This could be caused by DNS transient issue or the provided url is invalid", e.getMessage());
         }
     }
 

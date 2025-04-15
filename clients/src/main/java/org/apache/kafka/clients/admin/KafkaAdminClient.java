@@ -476,10 +476,10 @@ public class KafkaAdminClient extends AdminClient {
             closeQuietly(networkClient, "NetworkClient");
             closeQuietly(selector, "Selector");
             closeQuietly(channelBuilder, "ChannelBuilder");
-            // throw RetriableException if due to DNS retriable issue
-            if (exc instanceof ConfigException && exc.getMessage() != null
-                && exc.getMessage().startsWith("No resolvable bootstrap server in provided urls")) {
-                throw new NetworkException("Failed to construct kafka admin client due to retriable DNS issue");
+            // throw RetriableException if due to no resolvable bootstrap server
+            if (exc instanceof ConfigException && exc.getCause() instanceof RetriableException) {
+                throw new NetworkException("Failed to construct kafka admin client due to no resolvable bootstrap server. "
+                    + "This could be caused by DNS transient issue or the provided url is invalid", exc);
             }
             throw new KafkaException("Failed to create new KafkaAdminClient", exc);
         }

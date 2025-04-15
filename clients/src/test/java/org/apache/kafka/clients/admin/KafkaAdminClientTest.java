@@ -2373,17 +2373,13 @@ public class KafkaAdminClientTest {
         }
     }
 
-    @Test
+    @Test(expected = RetriableException.class)
     public void testConstructorRetriableException() {
 
         Map<String, Object> props = new HashMap<>();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "fakehost:9999");
 
-        try {
-            Admin.create(props);
-        } catch (RetriableException e) {
-            assertEquals("Failed to construct kafka admin client due to retriable DNS issue", e.getMessage());
-        }
+        Admin.create(props);
     }
 
     private static MemberDescription convertToMemberDescriptions(DescribedGroupMember member,

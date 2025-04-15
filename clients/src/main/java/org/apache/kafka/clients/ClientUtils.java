@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.ChannelBuilders;
 import org.apache.kafka.common.security.JaasContext;
@@ -99,8 +100,10 @@ public final class ClientUtils {
                 }
             }
         }
-        if (addresses.isEmpty())
-            throw new ConfigException("No resolvable bootstrap server in provided urls: " + String.join(",", urls));
+        if (addresses.isEmpty()) {
+            String message = "No resolvable bootstrap server in provided urls: " + String.join(",", urls);
+            throw new ConfigException(message, new NetworkException(message));
+        }
         return addresses;
     }
 

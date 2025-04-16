@@ -14,38 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.kafka.common.config;
-
-import org.apache.kafka.common.KafkaException;
+package org.apache.kafka.common.errors;
 
 /**
- * Thrown if the user supplies an invalid configuration
+ * Retriable Exception in Kafka client construction. Currently used in Kafka producer, consumer, admin client when
+ * no valid addresses is resolved. It could be caused by DNS transient issue and could retry creation.
  */
-public class ConfigException extends KafkaException {
-
+public class RetriableKafkaClientConstructionException extends RetriableException {
     private static final long serialVersionUID = 1L;
 
-    public ConfigException(String message) {
-        super(message);
-    }
-
-    public ConfigException(Throwable cause) {
-        super(cause);
-    }
-
-    public ConfigException() {
-    }
-
-    public ConfigException(String name, Object value) {
-        this(name, value, null);
-    }
-
-    public ConfigException(String message, Throwable cause) {
+    public RetriableKafkaClientConstructionException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public ConfigException(String name, Object value, String message) {
-        super("Invalid value " + value + " for configuration " + name + (message == null ? "" : ": " + message));
+    public RetriableKafkaClientConstructionException(String message) {
+        super(message);
     }
 
+    public RetriableKafkaClientConstructionException(Throwable cause) {
+        super(cause);
+    }
+
+    public RetriableKafkaClientConstructionException() {
+    }
 }

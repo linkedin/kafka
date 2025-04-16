@@ -179,17 +179,12 @@ public class KafkaConsumerTest {
         Properties props = new Properties();
         props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "testConstructorClose");
         props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "invalid-23-8409-adsfsdj");
-        props.setProperty(ConsumerConfig.METRIC_REPORTER_CLASSES_CONFIG, MockMetricsReporter.class.getName());
 
-        final int oldInitCount = MockMetricsReporter.INIT_COUNT.get();
-        final int oldCloseCount = MockMetricsReporter.CLOSE_COUNT.get();
         try {
             new KafkaConsumer<>(props, new ByteArrayDeserializer(), new ByteArrayDeserializer());
             Assert.fail("should have caught an exception and returned");
         } catch (KafkaException e) {
-            assertEquals(oldInitCount + 1, MockMetricsReporter.INIT_COUNT.get());
-            assertEquals(oldCloseCount + 1, MockMetricsReporter.CLOSE_COUNT.get());
-            assertEquals("Failed to construct kafka consumer", e.getMessage());
+            assertEquals("Failed to construct Kafka Consumer", e.getMessage());
         }
     }
 
@@ -198,17 +193,11 @@ public class KafkaConsumerTest {
         Properties props = new Properties();
         props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "testConstructorRetriableException");
         props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "some.invalid.hostname.foo.bar.local:9999");
-        props.setProperty(ConsumerConfig.METRIC_REPORTER_CLASSES_CONFIG, MockMetricsReporter.class.getName());
-
-        final int oldInitCount = MockMetricsReporter.INIT_COUNT.get();
-        final int oldCloseCount = MockMetricsReporter.CLOSE_COUNT.get();
         try {
             new KafkaConsumer<>(props, new ByteArrayDeserializer(), new ByteArrayDeserializer());
             Assert.fail("should have caught an exception and returned");
         } catch (RetriableException e) {
-            assertEquals(oldInitCount + 1, MockMetricsReporter.INIT_COUNT.get());
-            assertEquals(oldCloseCount + 1, MockMetricsReporter.CLOSE_COUNT.get());
-            assertEquals("Failed to construct kafka consumer due to no resolvable bootstrap server. "
+            assertEquals("Failed to construct Kafka Consumer due to no resolvable bootstrap server. "
                 + "This could be caused by DNS transient issue or the provided url is invalid", e.getMessage());
         }
     }

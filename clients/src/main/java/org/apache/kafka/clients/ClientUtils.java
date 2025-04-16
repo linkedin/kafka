@@ -18,10 +18,13 @@ package org.apache.kafka.clients;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.errors.NetworkException;
+import org.apache.kafka.common.errors.RetriableException;
+import org.apache.kafka.common.errors.RetriableKafkaClientConstructionException;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.ChannelBuilders;
 import org.apache.kafka.common.security.JaasContext;
@@ -96,7 +99,8 @@ public final class ClientUtils {
                 } catch (IllegalArgumentException e) {
                     throw new ConfigException("Invalid port in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + ": " + url);
                 } catch (UnknownHostException e) {
-                    throw new ConfigException("Unknown host in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + ": " + url);
+                    String message = "Unknown host in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + "+ " + url;
+                    throw new ConfigException(message, new NetworkException(message));
                 }
             }
         }
@@ -156,5 +160,19 @@ public final class ClientUtils {
             }
         }
         return preferredAddresses;
+    }
+
+    public static List<InetSocketAddress> parseAddressesOrThrowRetriableException(List<String> urls,
+        String clientDnsLookupConfig, String clientName) {
+        try {
+            return ClientUtils.parseAndValidateAddresses(urls, clientDnsLookupConfig);
+        } catch (ConfigException e) {
+            if (e.getCause() instanceof RetriableException) {
+                String message = "Failed to construct Kafka " + clientName + " due to no resolvable bootstrap server. "
+                    + "This could be caused by DNS transient issue or the provided url is invalid";
+                throw new RetriableKafkaClientConstructionException(message, e.getCause());
+            }
+            throw new KafkaException("Failed to construct Kafka " + clientName, e);
+        }
     }
 }

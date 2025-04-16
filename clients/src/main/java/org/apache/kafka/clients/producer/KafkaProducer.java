@@ -331,6 +331,11 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                   Time time) {
         ProducerConfig config = new ProducerConfig(ProducerConfig.addSerializerToConfig(configs, keySerializer,
                 valueSerializer));
+        // move parse bootstrap addresses ahead to fail fast and throw retry-able exception
+        List<InetSocketAddress> addresses = ClientUtils.parseAddressesOrThrowRetriableException(
+            config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG),
+            config.getString(ProducerConfig.CLIENT_DNS_LOOKUP_CONFIG),
+            "Producer");
         try {
             Map<String, Object> userProvidedConfigs = config.originals();
             this.time = time;
@@ -427,9 +432,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     apiVersions,
                     transactionManager,
                     new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time, PRODUCER_METRIC_GROUP_NAME));
-            List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
-                    config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    config.getString(ProducerConfig.CLIENT_DNS_LOOKUP_CONFIG));
             if (metadata != null) {
                 this.metadata = metadata;
             } else {

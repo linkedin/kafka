@@ -129,8 +129,9 @@ public class ClientUtilsTest {
     }
 
     @Test
-    public void testParseAndValidateAddressesDedupesErrors() {
-        int expectedNumberOfErrors = 1;
+    public void testParseAndValidateAddressesConfigException() {
+        // when resolved addresses is null, should throw each ConfigException
+        int expectedNumberOfErrors = 10;
         int actualNumberOfErrors = 0;
         String expectedErrorMessage = "No resolvable bootstrap server in provided urls: ";
 

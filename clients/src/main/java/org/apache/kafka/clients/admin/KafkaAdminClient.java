@@ -425,15 +425,17 @@ public class KafkaAdminClient extends AdminClient {
             config.getString(AdminClientConfig.LEAST_LOADED_NODE_ALGORITHM_CONFIG)
         );
 
+        // move parse bootstrap addresses ahead to fail fast and throw retry-able exception
+        List<InetSocketAddress> addresses = ClientUtils.parseAddressesOrThrowRetriableException(
+            config.getList(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG),
+            config.getString(AdminClientConfig.CLIENT_DNS_LOOKUP_CONFIG),
+            "Admin");
         try {
             // Since we only request node information, it's safe to pass true for allowAutoTopicCreation (and it
             // simplifies communication with older brokers)
             AdminMetadataManager metadataManager = new AdminMetadataManager(logContext,
                 config.getLong(AdminClientConfig.RETRY_BACKOFF_MS_CONFIG),
                 config.getLong(AdminClientConfig.METADATA_MAX_AGE_CONFIG));
-            List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
-                    config.getList(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    config.getString(AdminClientConfig.CLIENT_DNS_LOOKUP_CONFIG));
             metadataManager.update(Cluster.bootstrap(addresses), time.milliseconds());
             List<MetricsReporter> reporters = config.getConfiguredInstances(AdminClientConfig.METRIC_REPORTER_CLASSES_CONFIG,
                 MetricsReporter.class,

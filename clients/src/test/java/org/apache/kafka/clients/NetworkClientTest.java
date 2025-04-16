@@ -641,7 +641,6 @@ public class NetworkClientTest {
         assertFalse(client.isReady(node, time.milliseconds()));
 
         assertThrows(ConfigException.class, () -> nc.leastLoadedNode(time.milliseconds()));
-        assertEquals(null, nc.leastLoadedNode(time.milliseconds()));
     }
 
     private int sendEmptyProduceRequest() {

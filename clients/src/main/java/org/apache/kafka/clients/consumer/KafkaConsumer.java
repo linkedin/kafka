@@ -672,6 +672,11 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
     @SuppressWarnings("unchecked")
     private KafkaConsumer(ConsumerConfig config, Deserializer<K> keyDeserializer, Deserializer<V> valueDeserializer) {
+        // move parse bootstrap addresses ahead to fail fast and throw retry-able exception
+        List<InetSocketAddress> addresses = ClientUtils.parseAddressesOrThrowRetriableException(
+            config.getList(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG),
+            config.getString(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG),
+            "Consumer");
         try {
             GroupRebalanceConfig groupRebalanceConfig = new GroupRebalanceConfig(config,
                     GroupRebalanceConfig.ProtocolType.CONSUMER);
@@ -737,8 +742,6 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     config.getBoolean(ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG),
                     subscriptions, logContext, clusterResourceListeners, metrics,
                     config.getLong(ConsumerConfig.LI_CLIENT_CLUSTER_METADATA_EXPIRE_TIME_MS_CONFIG));
-            List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
-                    config.getList(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG), config.getString(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG));
             this.metadata.bootstrap(addresses);
             String metricGrpPrefix = "consumer";
 

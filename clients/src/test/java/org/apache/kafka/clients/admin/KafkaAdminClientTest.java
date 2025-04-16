@@ -48,6 +48,7 @@ import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.LeaderNotAvailableException;
 import org.apache.kafka.common.errors.NotLeaderForPartitionException;
 import org.apache.kafka.common.errors.OffsetOutOfRangeException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.SaslAuthenticationException;
 import org.apache.kafka.common.errors.SecurityDisabledException;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -2370,6 +2371,15 @@ public class KafkaAdminClientTest {
             TestUtils.assertFutureError(result.values().get(unauthorizedEntity), ClusterAuthorizationException.class);
             TestUtils.assertFutureError(result.values().get(invalidEntity), InvalidRequestException.class);
         }
+    }
+
+    @Test(expected = RetriableException.class)
+    public void testConstructorRetriableException() {
+
+        Map<String, Object> props = new HashMap<>();
+        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "fakehost:9999");
+
+        Admin.create(props);
     }
 
     private static MemberDescription convertToMemberDescriptions(DescribedGroupMember member,

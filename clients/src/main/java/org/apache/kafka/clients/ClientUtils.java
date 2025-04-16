@@ -99,6 +99,7 @@ public final class ClientUtils {
                 } catch (IllegalArgumentException e) {
                     throw new ConfigException("Invalid port in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + ": " + url);
                 } catch (UnknownHostException e) {
+                    // UnknownHostException can be caused by DNS transient issue. Throw ConfigException with a Retriable cause
                     String message = "Unknown host in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + "+ " + url;
                     throw new ConfigException(message, new NetworkException(message));
                 }

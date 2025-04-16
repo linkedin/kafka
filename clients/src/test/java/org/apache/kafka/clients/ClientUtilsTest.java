@@ -129,7 +129,7 @@ public class ClientUtilsTest {
     }
 
     @Test
-    public void testParseAndValidateAddressesDedupesErrors() {
+    public void testParseAndValidateAddressesConfigException() {
         // when resolved addresses is null, should throw each ConfigException
         int expectedNumberOfErrors = 10;
         int actualNumberOfErrors = 0;

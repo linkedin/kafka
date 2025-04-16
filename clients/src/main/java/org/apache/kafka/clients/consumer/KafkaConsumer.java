@@ -41,12 +41,9 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidConfigurationException;
 import org.apache.kafka.common.errors.InvalidGroupIdException;
-import org.apache.kafka.common.errors.NetworkException;
-import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
 import org.apache.kafka.common.memory.MemoryPool;
@@ -845,11 +842,6 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         } catch (Throwable t) {
             // call close methods if internal objects are already constructed; this is to prevent resource leak. see KAFKA-2121
             close(0, true);
-            // throw RetriableException if due to no resolvable bootstrap server
-            if (t instanceof ConfigException && t.getCause() instanceof RetriableException) {
-                throw new NetworkException("Failed to construct kafka consumer due to no resolvable bootstrap server. "
-                    + "This could be caused by DNS transient issue or the provided url is invalid", t);
-            }
             // now propagate the exception
             throw new KafkaException("Failed to construct kafka consumer", t);
         }

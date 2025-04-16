@@ -45,10 +45,8 @@ import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidTopicException;
-import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.RecordTooLargeException;
-import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
@@ -457,11 +455,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         } catch (Throwable t) {
             // call close methods if internal objects are already constructed this is to prevent resource leak. see KAFKA-2121
             close(Duration.ofMillis(0), true);
-            // throw RetriableException if due to no resolvable bootstrap server
-            if (t instanceof ConfigException && t.getCause() instanceof RetriableException) {
-                throw new NetworkException("Failed to construct Kafka producer due to no resolvable bootstrap server. "
-                    + "This could be caused by DNS transient issue or the provided url is invalid", t);
-            }
             // now propagate the exception
             throw new KafkaException("Failed to construct kafka producer", t);
         }

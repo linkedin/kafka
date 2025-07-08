@@ -175,7 +175,7 @@ class ZkAdminManager(val config: KafkaConfig,
         var resolvedReplicationFactor = if (topic.replicationFactor == NO_REPLICATION_FACTOR)
           defaultReplicationFactor else topic.replicationFactor
 
-        var minRF = Int.MaxValue
+        var minRF = defaultReplicationFactor
         if (config.controlledShutdownSafetyCheckEnable) {
           val minIsrConfig = topic.configs().find(KafkaConfig.MinInSyncReplicasProp);
           val minIsr = if (minIsrConfig != null) {
@@ -188,7 +188,7 @@ class ZkAdminManager(val config: KafkaConfig,
           // The replication factor must be at least the sum of
           // (config.controlledShutdownSafetyCheckRedundancyFactor + minIsr + 1) to be able to safely shut down the broker.
           // The assumption is that these configs are rarely changed, so the calculated minRF at topic creation time
-          // is good for the lifetime of the topic.
+          // is good for the lifetime of the topic. If not, there should be other workarounds to fix the RF.
           if (resolvedReplicationFactor < minRF) {
             resolvedReplicationFactor = minRF.toShort
           }

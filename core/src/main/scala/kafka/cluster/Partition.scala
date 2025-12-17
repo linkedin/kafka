@@ -982,6 +982,16 @@ class Partition(val topicPartition: TopicPartition,
    */
   private def tryCompleteDelayedRequests(): Unit = delayedOperations.checkAndCompleteAll()
 
+  private def logLeaderTruncation(op: String, targetOffset: Long, fromLeo: Long, toLeo: Long, bytes: Long): Unit = {
+    // Only log if this broker is leader and truncation actually removed messages
+    if (isLeader && toLeo < fromLeo) {
+      val msgs = fromLeo - toLeo
+      val hw = try localLogOrException.highWatermark catch { case _: Throwable => -1L }
+      warn(s"[LeaderTruncation] brokerId=$localBrokerId tp=$topicPartition leaderEpoch=$leaderEpoch " +
+        s"op=$op fromLEO=$fromLeo to=$toLeo target=$targetOffset msgs=$msgs hw=$hw bytes=$bytes")
+    }
+  }
+
   def maybeShrinkIsr(): Unit = {
     val needsIsrUpdate = !isrState.isInflight && inReadLock(leaderIsrUpdateLock) {
       needsShrinkIsr()
@@ -1376,10 +1386,31 @@ class Partition(val topicPartition: TopicPartition,
     * @param isFuture True iff the truncation should be performed on the future log of this partition
     */
   def truncateTo(offset: Long, isFuture: Boolean): Unit = {
-    // The read lock is needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
+    // The read locks are needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
     // is executing maybeReplaceCurrentWithFutureReplica() to replace follower replica with the future replica.
-    inReadLock(leaderIsrUpdateLock) {
-      logManager.truncateTo(Map(topicPartition -> offset), isFuture = isFuture)
+
+    if (isFuture) {
+     inReadLock(leaderIsrUpdateLock) {
+        logManager.truncateTo(Map(topicPartition -> offset), isFuture = true)
+      }
+    } else {
+      // Attach observer for current log to capture messages/bytes from Log.scala and emit a leader-only line.
+      val observer = new TruncationObserver {
+        override def onTruncated(tp: org.apache.kafka.common.TopicPartition,
+                                 op: String,
+                                 target: Long,
+                                 fromLeo: Long,
+                                 toLeo: Long,
+                                 messagesTruncated: Long,
+                                 bytesTruncated: Long): Unit = {
+          logLeaderTruncation(op = op, targetOffset = target, fromLeo = fromLeo, toLeo = toLeo, bytes = bytesTruncated)
+        }
+      }
+      inReadLock(leaderIsrUpdateLock) {
+        TruncationCallbacks.withObserver(observer) {
+          logManager.truncateTo(Map(topicPartition -> offset), isFuture = false)
+        }
+      }
     }
   }
 
@@ -1390,10 +1421,30 @@ class Partition(val topicPartition: TopicPartition,
     * @param isFuture True iff the truncation should be performed on the future log of this partition
     */
   def truncateFullyAndStartAt(newOffset: Long, isFuture: Boolean): Unit = {
-    // The read lock is needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
+    // The read locks are needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
     // is executing maybeReplaceCurrentWithFutureReplica() to replace follower replica with the future replica.
-    inReadLock(leaderIsrUpdateLock) {
-      logManager.truncateFullyAndStartAt(topicPartition, newOffset, isFuture = isFuture)
+
+    if (isFuture) {
+      inReadLock(leaderIsrUpdateLock) {
+        logManager.truncateFullyAndStartAt(topicPartition, newOffset, isFuture = true)
+      }
+    } else {
+      val observer = new TruncationObserver {
+        override def onTruncated(tp: org.apache.kafka.common.TopicPartition,
+                                 op: String,
+                                 target: Long,
+                                 fromLeo: Long,
+                                 toLeo: Long,
+                                 messagesTruncated: Long,
+                                 bytesTruncated: Long): Unit = {
+          logLeaderTruncation(op = op, targetOffset = target, fromLeo = fromLeo, toLeo = toLeo, bytes = bytesTruncated)
+        }
+      }
+      inReadLock(leaderIsrUpdateLock) {
+        TruncationCallbacks.withObserver(observer) {
+          logManager.truncateFullyAndStartAt(topicPartition, newOffset, isFuture = false)
+        }
+      }
     }
   }
 

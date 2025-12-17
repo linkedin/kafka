@@ -28,7 +28,6 @@ import kafka.api.{ApiVersion, KAFKA_0_10_0_IV0}
 import kafka.common.{LongRef, OffsetsOutOfOrderException, UnexpectedAppendOffsetException}
 import kafka.log.AppendOrigin.RaftLeader
 import kafka.log.remote.RemoteLogManager
-import kafka.log.TruncationCallbacks
 import kafka.message.{BrokerCompressionCodec, CompressionCodec, NoCompressionCodec}
 import kafka.metrics.KafkaMetricsGroup
 import kafka.server.checkpoints.LeaderEpochCheckpointFile

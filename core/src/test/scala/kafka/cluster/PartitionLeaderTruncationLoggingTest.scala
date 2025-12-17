@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -172,14 +172,14 @@ final class PartitionLeaderTruncationLoggingTest {
   }
 
   /**
-   * Find the first [LeaderTruncation] line.
+   * Find the first Leader Truncation line.
    */
   private def findLeaderTruncationLine(): Option[String] = {
     val it = appender.getMessages.iterator
     while (it.hasNext) {
       val ev = it.next().asInstanceOf[LoggingEvent]
       val msg = ev.getRenderedMessage
-      if (msg != null && msg.contains("[LeaderTruncation]")) return Some(msg)
+      if (msg != null && msg.contains("Partition leader brokerId=")) return Some(msg)
     }
     None
   }
@@ -203,20 +203,20 @@ final class PartitionLeaderTruncationLoggingTest {
         val ev = it.next().asInstanceOf[LoggingEvent]
         sb.append(String.valueOf(ev.getRenderedMessage)).append('\n')
       }
-      fail("Expected [LeaderTruncation] line\n" + sb.toString)
+      fail("Expected leader truncation line\n" + sb.toString)
     })
 
-    // Verify content and consistency
-    assertTrue(line.contains("op=truncateTo"))
-    assertTrue(line.contains("tp=lt-topic-0"))
+    // Verify
+    assertTrue(line.contains("operation=truncateTo"))
+    assertTrue(line.contains("topicPartition=lt-topic-0"))
     assertTrue(line.contains(s"brokerId=$localBrokerId"))
-    assertTrue(line.contains("bytes="))
+    assertTrue(line.contains("bytesRemoved="))
 
-    val fromLeo = """fromLEO=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val toLeo = """\sto=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val msgs = """\smsgs=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val msgs = """messagesRemoved=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
 
-    assertEquals(fromLeo - toLeo, msgs, "msgs must equal fromLEO - toLEO")
+    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previous LEO minus new LEO")
   }
 
   @Test
@@ -231,7 +231,7 @@ final class PartitionLeaderTruncationLoggingTest {
 
     partition.truncateTo(2L, isFuture = true)
 
-    assertTrue(findLeaderTruncationLine().isEmpty, "No [LeaderTruncation] should be logged for future log truncation")
+    assertTrue(findLeaderTruncationLine().isEmpty, "No leader truncation line should be logged for future log truncation")
   }
 
   @Test
@@ -248,7 +248,7 @@ final class PartitionLeaderTruncationLoggingTest {
 
     partition.truncateTo(2L, isFuture = false)
 
-    assertTrue(findLeaderTruncationLine().isEmpty, "No [LeaderTruncation] should be logged when broker is a follower")
+    assertTrue(findLeaderTruncationLine().isEmpty, "No leader truncation line should be logged when broker is a follower")
   }
 
   @Test
@@ -270,16 +270,16 @@ final class PartitionLeaderTruncationLoggingTest {
         val ev = it.next().asInstanceOf[LoggingEvent]
         sb.append(String.valueOf(ev.getRenderedMessage)).append('\n')
       }
-      fail("Expected [LeaderTruncation] line\n" + sb.toString)
+      fail("Expected leader truncation line\n" + sb.toString)
     })
 
-    assertTrue(line.contains("op=truncateFullyAndStartAt"))
-    assertTrue(line.contains("bytes="))
+    assertTrue(line.contains("operation=truncateFullyAndStartAt"))
+    assertTrue(line.contains("bytesRemoved="))
 
-    val fromLeo = """fromLEO=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val toLeo = """\sto=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val msgs = """\smsgs=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val msgs = """messagesRemoved=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
 
-    assertEquals(fromLeo - toLeo, msgs, "msgs must equal fromLEO - toLEO")
+    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previous LEO minus new LEO")
   }
 }

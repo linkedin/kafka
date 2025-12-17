@@ -985,10 +985,15 @@ class Partition(val topicPartition: TopicPartition,
   private def logLeaderTruncation(op: String, targetOffset: Long, fromLeo: Long, toLeo: Long, bytes: Long): Unit = {
     // Only log if this broker is leader and truncation actually removed messages
     if (isLeader && toLeo < fromLeo) {
-      val msgs = fromLeo - toLeo
-      val hw = try localLogOrException.highWatermark catch { case _: Throwable => -1L }
-      warn(s"[LeaderTruncation] brokerId=$localBrokerId tp=$topicPartition leaderEpoch=$leaderEpoch " +
-        s"op=$op fromLEO=$fromLeo to=$toLeo target=$targetOffset msgs=$msgs hw=$hw bytes=$bytes")
+      val messagesRemoved = fromLeo - toLeo
+      val highWatermark = try localLogOrException.highWatermark catch { case _: Throwable => -1L }
+
+      warn(
+        s"Partition leader brokerId=$localBrokerId performed a truncation on topicPartition=$topicPartition during leaderEpoch=$leaderEpoch " +
+          s"with operation=$op and targetOffset=$targetOffset. " +
+          s"The previousLogEndOffset=$fromLeo and the newLogEndOffset=$toLeo, resulting in messagesRemoved=$messagesRemoved and bytesRemoved=$bytes. " +
+          s"After truncation, highWatermark=$highWatermark."
+      )
     }
   }
 

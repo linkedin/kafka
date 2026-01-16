@@ -293,21 +293,24 @@ class LogCleanerManagerTest extends Logging {
     val logs = new Pool[TopicPartition, Log]()
     val log0 = createLogInDir(logDir, 2048, LogConfig.Compact, tp0)
     val log1 = createLogInDir(logDir2, 2048, LogConfig.Compact, tp1)
+    val log0_2 = createLogInDir(logDir, 2048, LogConfig.Compact, tp2)
+    assertEquals(log0.parentDir, log0_2.parentDir,
+      "Both logs for tp0 and tp2 should be in the same directory to test independent tracking")
     val logDir3 = TestUtils.randomPartitionLogDir(tmpDir)
-    val log2 = createLogInDir(logDir3, 2048, LogConfig.Compact, tp1)
+    val log2 = createLogInDir(logDir3, 2048, LogConfig.Compact, tp3)
     logs.put(tp0, log0)
     logs.put(tp1, log1)
-    logs.put(tp2, log0)
+    logs.put(tp2, log0_2)
     logs.put(tp3, log2)
 
-    val cleanerManager = new LogCleanerManager(Seq(logDir, logDir2), logs, null, 0L, true)
+    val cleanerManager = new LogCleanerManager(Seq(logDir, logDir2, logDir3), logs, null, 0L, true)
 
     // tp0 in log0: 3 failures (uncleanable)
     (1 to 3).foreach(_ => cleanerManager.updatePartitionCleaningFailureState(log0.parentDir, tp0, succeeded = false))
     // tp1 in log1: 2 failures (not uncleanable)
     (1 to 2).foreach(_ => cleanerManager.updatePartitionCleaningFailureState(log1.parentDir, tp1, succeeded = false))
     // tp2 in log0: 1 failure (not uncleanable)
-    cleanerManager.updatePartitionCleaningFailureState(log0.parentDir, tp2, succeeded = false)
+    cleanerManager.updatePartitionCleaningFailureState(log0_2.parentDir, tp2, succeeded = false)
 
     // Verify each partition is tracked in its own directory
     var uncleanable = cleanerManager.uncleanablePartitions(log0)
@@ -333,7 +336,7 @@ class LogCleanerManagerTest extends Logging {
     assertEquals(3, uncleanable(tp0))
 
     // Reset tp2 and some random tp - no change/no break
-    cleanerManager.updatePartitionCleaningFailureState(log0.parentDir, tp2, succeeded = true)
+    cleanerManager.updatePartitionCleaningFailureState(log0_2.parentDir, tp2, succeeded = true)
     cleanerManager.updatePartitionCleaningFailureState(log2.parentDir, tp3, succeeded = true)
     cleanerManager.updatePartitionCleaningFailureState(log2.parentDir, tp2, succeeded = true)
     uncleanable = cleanerManager.uncleanablePartitions(log0)

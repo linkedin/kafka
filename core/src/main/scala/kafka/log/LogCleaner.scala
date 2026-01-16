@@ -370,8 +370,8 @@ class LogCleaner(initialConfig: CleanerConfig,
           } catch {
             case e @ (_: ThreadShutdownException | _: ControlThrowable) => throw e
             // log the error and the thread can retry deleting this log in the next call.
-            case e: Exception => error(s"Unexpected error occurred when deleting old segment '${log.name}' for topic '${log.topicPartition.topic()}" +
-              s"partition '${log.topicPartition.partition()}'", e)
+            case e: Exception => error(s"Unexpected error occurred when deleting old segment '${log.name}' for topic '${log.topicPartition.topic()}'" +
+              s" partition '${log.topicPartition.partition()}'", e)
           }
         }
       } finally  {

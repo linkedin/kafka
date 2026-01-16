@@ -99,7 +99,10 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
     newGauge("uncleanable-partitions-count",
       () => inLock(lock) {
         partitionCleaningFailureCounts.get(dir.getAbsolutePath)
-          .map(_.count(_._2 >= maxConsecutiveCleaningFailures))
+          .map(partitionMap => partitionMap.count {
+            case (_, failureCount) =>
+              failureCount >= maxConsecutiveCleaningFailures
+          })
           .getOrElse(0)
       },
       Map("logDirectory" -> dir.getAbsolutePath)
@@ -114,13 +117,16 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
           case Some(partitionCounts) =>
             val lastClean = allCleanerCheckpoints
             val now = Time.SYSTEM.milliseconds
-            partitionCounts.filter(_._2 >= maxConsecutiveCleaningFailures).keys.map { tp =>
-              val log = logs.get(tp)
-              val lastCleanOffset = lastClean.get(tp)
-              val offsetsToClean = cleanableOffsets(log, lastCleanOffset, now)
-              val (_, uncleanableBytes) = calculateCleanableBytes(log, offsetsToClean.firstDirtyOffset, offsetsToClean.firstUncleanableDirtyOffset)
-              uncleanableBytes
-            }.sum
+            partitionCounts.iterator
+              .collect { case (tp, failureCount) if failureCount >= maxConsecutiveCleaningFailures => tp }
+              .map { tp =>
+                val log = logs.get(tp)
+                val lastCleanOffset = lastClean.get(tp)
+                val offsetsToClean = cleanableOffsets(log, lastCleanOffset, now)
+                val (_, uncleanableBytes) = calculateCleanableBytes(log, offsetsToClean.firstDirtyOffset, offsetsToClean.firstUncleanableDirtyOffset)
+                uncleanableBytes
+              }
+              .sum
           case None => 0
         }
       },

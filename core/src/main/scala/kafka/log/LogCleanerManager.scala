@@ -117,16 +117,13 @@ private[log] class LogCleanerManager(val logDirs: Seq[File],
           case Some(partitionCounts) =>
             val lastClean = allCleanerCheckpoints
             val now = Time.SYSTEM.milliseconds
-            partitionCounts.iterator
-              .collect { case (tp, failureCount) if failureCount >= maxConsecutiveCleaningFailures => tp }
-              .map { tp =>
-                val log = logs.get(tp)
-                val lastCleanOffset = lastClean.get(tp)
-                val offsetsToClean = cleanableOffsets(log, lastCleanOffset, now)
-                val (_, uncleanableBytes) = calculateCleanableBytes(log, offsetsToClean.firstDirtyOffset, offsetsToClean.firstUncleanableDirtyOffset)
-                uncleanableBytes
-              }
-              .sum
+            partitionCounts.filter(_._2 >= maxConsecutiveCleaningFailures).keys.map { tp =>
+              val log = logs.get(tp)
+              val lastCleanOffset = lastClean.get(tp)
+              val offsetsToClean = cleanableOffsets(log, lastCleanOffset, now)
+              val (_, uncleanableBytes) = calculateCleanableBytes(log, offsetsToClean.firstDirtyOffset, offsetsToClean.firstUncleanableDirtyOffset)
+              uncleanableBytes
+            }.sum
           case None => 0
         }
       },

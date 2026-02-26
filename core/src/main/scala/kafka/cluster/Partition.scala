@@ -982,16 +982,17 @@ class Partition(val topicPartition: TopicPartition,
    */
   private def tryCompleteDelayedRequests(): Unit = delayedOperations.checkAndCompleteAll()
 
-  private def logLeaderTruncation(op: String, targetOffset: Long, fromLeo: Long, toLeo: Long): Unit = {
-    // Only log if this broker is leader and truncation actually removed messages
-    if (isLeader && toLeo < fromLeo) {
-      val messagesRemoved = fromLeo - toLeo
-      val highWatermark = try localLogOrException.highWatermark catch { case _: Throwable => -1L }
+  private def logEndOffsetOrDefault: Long =
+    try localLogOrException.logEndOffset catch { case _: Throwable => -1L }
 
+  private def logLeaderTruncation(op: String, targetOffset: Long, fromLeo: Long, toLeo: Long): Unit = {
+    // Only log if truncation actually removed messages
+    if (toLeo < fromLeo) {
+      val highWatermark = try localLogOrException.highWatermark catch { case _: Throwable => -1L }
       warn(
         s"Partition leader brokerId=$localBrokerId performed a truncation on topicPartition=$topicPartition during leaderEpoch=$leaderEpoch " +
           s"with operation=$op and targetOffset=$targetOffset. " +
-          s"The previousLogEndOffset=$fromLeo and the newLogEndOffset=$toLeo, resulting in messagesRemoved=$messagesRemoved. " +
+          s"The previousLogEndOffset=$fromLeo and the newLogEndOffset=$toLeo, resulting in messagesRemoved=${fromLeo - toLeo}. " +
           s"After truncation, highWatermark=$highWatermark."
       )
     }
@@ -1394,11 +1395,10 @@ class Partition(val topicPartition: TopicPartition,
     // The read lock is needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
     // is executing maybeReplaceCurrentWithFutureReplica() to replace follower replica with the future replica.
     inReadLock(leaderIsrUpdateLock) {
-      val leoBeforeTruncation = if (!isFuture) try localLogOrException.logEndOffset catch { case _: Throwable => -1L } else -1L
+      val leaderLeo = if (!isFuture && isLeader) logEndOffsetOrDefault else -1L
       logManager.truncateTo(Map(topicPartition -> offset), isFuture = isFuture)
-      if (!isFuture && leoBeforeTruncation >= 0) {
-        val leoAfterTruncation = try localLogOrException.logEndOffset catch { case _: Throwable => -1L }
-        logLeaderTruncation(op = "truncateTo", targetOffset = offset, fromLeo = leoBeforeTruncation, toLeo = leoAfterTruncation)
+      if (leaderLeo >= 0) {
+        logLeaderTruncation(op = "truncateTo", targetOffset = offset, fromLeo = leaderLeo, toLeo = logEndOffsetOrDefault)
       }
     }
   }
@@ -1413,11 +1413,10 @@ class Partition(val topicPartition: TopicPartition,
     // The read lock is needed to prevent the follower replica from being truncated while ReplicaAlterDirThread
     // is executing maybeReplaceCurrentWithFutureReplica() to replace follower replica with the future replica.
     inReadLock(leaderIsrUpdateLock) {
-      val leoBeforeTruncation = if (!isFuture) try localLogOrException.logEndOffset catch { case _: Throwable => -1L } else -1L
+      val leaderLeo = if (!isFuture && isLeader) logEndOffsetOrDefault else -1L
       logManager.truncateFullyAndStartAt(topicPartition, newOffset, isFuture = isFuture)
-      if (!isFuture && leoBeforeTruncation >= 0) {
-        val leoAfterTruncation = try localLogOrException.logEndOffset catch { case _: Throwable => -1L }
-        logLeaderTruncation(op = "truncateFullyAndStartAt", targetOffset = newOffset, fromLeo = leoBeforeTruncation, toLeo = leoAfterTruncation)
+      if (leaderLeo >= 0) {
+        logLeaderTruncation(op = "truncateFullyAndStartAt", targetOffset = newOffset, fromLeo = leaderLeo, toLeo = logEndOffsetOrDefault)
       }
     }
   }

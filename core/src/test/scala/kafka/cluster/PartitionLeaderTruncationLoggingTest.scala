@@ -35,35 +35,44 @@ import org.mockito.{ArgumentMatchers, Mockito}
 import scala.collection.Map
 
 /**
- * Partition leader-only truncation logging tests.
+ * Verifies that Partition emits a structured warn log line when a leader truncates,
+ * and stays silent for follower / future-log truncations.
  */
 final class PartitionLeaderTruncationLoggingTest {
 
   private val time = new MockTime()
   private val localBrokerId = 1
+  private var appender: LogCaptureAppender = _
 
-  /**
-   * LogManager mock that forwards truncate calls to our real Log.
-   */
+  @BeforeEach
+  def setUp(): Unit = {
+    appender = LogCaptureAppender.createAndRegister()
+  }
+
+  @AfterEach
+  def tearDown(): Unit = {
+    LogCaptureAppender.unregister(appender)
+  }
+
+  // --------------- helpers ---------------
+
   private def newLogManagerFor(logs: Map[TopicPartition, Log]): LogManager = {
     val lm = Mockito.mock(classOf[LogManager])
 
-    // Delegate truncateTo(Map[TopicPartition, Long], isFuture)
     Mockito
-      .doAnswer { invocation =>
-        val partOffsets = invocation.getArgument(0).asInstanceOf[Map[TopicPartition, Long]]
-        partOffsets.foreach { case (tp, off) => logs(tp).truncateTo(off) }
+      .doAnswer { inv =>
+        inv.getArgument(0).asInstanceOf[Map[TopicPartition, Long]]
+          .foreach { case (tp, off) => logs(tp).truncateTo(off) }
         null
       }
       .when(lm)
       .truncateTo(ArgumentMatchers.any(), ArgumentMatchers.anyBoolean())
 
-    // Delegate truncateFullyAndStartAt(tp, newOffset, isFuture)
     Mockito
-      .doAnswer { invocation =>
-        val tp = invocation.getArgument(0, classOf[TopicPartition])
-        val newOffset = invocation.getArgument(1, classOf[java.lang.Long]).longValue()
-        logs(tp).truncateFullyAndStartAt(newOffset)
+      .doAnswer { inv =>
+        val tp = inv.getArgument(0, classOf[TopicPartition])
+        val off = inv.getArgument(1, classOf[java.lang.Long]).longValue()
+        logs(tp).truncateFullyAndStartAt(off)
         null
       }
       .when(lm)
@@ -76,65 +85,43 @@ final class PartitionLeaderTruncationLoggingTest {
     lm
   }
 
-  /**
-   * Create a real Log for testing.
-   */
   private def newTestLog(tp: TopicPartition, baseDir: File, time: Time): Log = {
-    val props = new Properties()
-    val logConfig = LogConfig(props) // default config
-    val scheduler = new MockScheduler(time)
-    val brokerTopicStats = new BrokerTopicStats
-    val logDirFailureChannel = new LogDirFailureChannel(10)
-
     val partDir = new File(baseDir, Log.logDirName(tp))
     Files.createDirectories(partDir.toPath)
-
     Log.apply(
       dir = partDir,
-      config = logConfig,
+      config = LogConfig(new Properties()),
       logStartOffset = 0L,
       recoveryPoint = 0L,
-      scheduler = scheduler,
-      brokerTopicStats = brokerTopicStats,
+      scheduler = new MockScheduler(time),
+      brokerTopicStats = new BrokerTopicStats,
       time = time,
       maxProducerIdExpirationMs = 24 * 60 * 60 * 1000,
       producerIdExpirationCheckIntervalMs = 60 * 1000,
-      logDirFailureChannel = logDirFailureChannel,
+      logDirFailureChannel = new LogDirFailureChannel(10),
       topicId = None,
       keepPartitionMetadataFile = false)
   }
 
-  /**
-   * Append single records as leader to advance LEO.
-   */
   private def appendN(log: Log, n: Int): Unit = {
     (0 until n).foreach { i =>
-      val rec = new SimpleRecord(time.milliseconds(), s"k-$i".getBytes(), s"v-$i".getBytes())
-      val batch = MemoryRecords.withRecords(CompressionType.NONE, rec)
-      log.appendAsLeader(batch, leaderEpoch = 0, origin = kafka.log.AppendOrigin.Client, interBrokerProtocolVersion = ApiVersion.latestVersion)
+      val batch = MemoryRecords.withRecords(CompressionType.NONE,
+        new SimpleRecord(time.milliseconds(), s"k-$i".getBytes, s"v-$i".getBytes))
+      log.appendAsLeader(batch, leaderEpoch = 0,
+        origin = kafka.log.AppendOrigin.Client, interBrokerProtocolVersion = ApiVersion.latestVersion)
     }
   }
 
-  /**
-   * Create a partition.
-   */
-  private def newPartition(tp: TopicPartition, log: Log): Partition = {
-    val producePurg: DelayedOperationPurgatory[DelayedProduce] = null
-    val fetchPurg: DelayedOperationPurgatory[DelayedFetch] = null
-    val deletePurg: DelayedOperationPurgatory[DelayedDeleteRecords] = null
-    val delayedOps = new DelayedOperations(tp, producePurg, fetchPurg, deletePurg)
+  /** Create a partition wired to a real Log, marked as leader. */
+  private def newLeaderPartition(topic: String, numRecords: Int): Partition = {
+    val tp = new TopicPartition(topic, 0)
+    val log = newTestLog(tp, TestUtils.tempDir(), time)
+    appendN(log, numRecords)
 
-    val metadataCache = Mockito.mock(classOf[MetadataCache])
-    val alterIsrManager = Mockito.mock(classOf[AlterIsrManager])
-    val transferLeaderManager = Mockito.mock(classOf[TransferLeaderManager])
-    val logMgr = newLogManagerFor(Map(tp -> log))
-
-    // ISR change listener used by Partition (no-op for this test)
+    val delayedOps = new DelayedOperations(tp, null, null, null)
     val isrChangeListener = new IsrChangeListener {
       override def markExpand(): Unit = ()
-
       override def markShrink(): Unit = ()
-
       override def markFailed(): Unit = ()
     }
 
@@ -146,138 +133,85 @@ final class PartitionLeaderTruncationLoggingTest {
       time = time,
       isrChangeListener = isrChangeListener,
       delayedOperations = delayedOps,
-      metadataCache = metadataCache,
-      logManager = logMgr,
-      alterIsrManager = alterIsrManager,
-      transferLeaderManager = transferLeaderManager
+      metadataCache = Mockito.mock(classOf[MetadataCache]),
+      logManager = newLogManagerFor(Map(tp -> log)),
+      alterIsrManager = Mockito.mock(classOf[AlterIsrManager]),
+      transferLeaderManager = Mockito.mock(classOf[TransferLeaderManager])
     )
 
-    // Attach our log and mark this broker as leader
     partition.setLog(log, isFutureLog = false)
     partition.leaderReplicaIdOpt = Some(localBrokerId)
     partition
   }
 
-  // Capture appender lifecycle around each test
-  private var appender: LogCaptureAppender = _
-
-  @BeforeEach
-  def setupAppender(): Unit = {
-    appender = LogCaptureAppender.createAndRegister()
-  }
-
-  @AfterEach
-  def teardownAppender(): Unit = {
-    LogCaptureAppender.unregister(appender)
-  }
-
-  /**
-   * Find the first Leader Truncation line.
-   */
   private def findLeaderTruncationLine(): Option[String] = {
     val it = appender.getMessages.iterator
     while (it.hasNext) {
-      val ev = it.next().asInstanceOf[LoggingEvent]
-      val msg = ev.getRenderedMessage
+      val msg = it.next().asInstanceOf[LoggingEvent].getRenderedMessage
       if (msg != null && msg.contains("Partition leader brokerId=")) return Some(msg)
     }
     None
   }
 
-  @Test
-  def leader_truncateTo_logs_single_structured_line(): Unit = {
-    val tp = new TopicPartition("lt-topic", 0)
-    val baseDir = TestUtils.tempDir()
-    val log = newTestLog(tp, baseDir, time)
-    appendN(log, 5)
-
-    val partition = newPartition(tp, log)
-    assertTrue(partition.isLeader, "Partition should be leader in this scenario")
-
-    partition.truncateTo(3L, isFuture = false)
-
-    val line = findLeaderTruncationLine().getOrElse({
+  private def findLeaderTruncationLineOrFail(): String = {
+    findLeaderTruncationLine().getOrElse {
+      val captured = new StringBuilder("Captured logs:\n")
       val it = appender.getMessages.iterator
-      val sb = new StringBuilder("Captured logs:\n")
-      while (it.hasNext) {
-        val ev = it.next().asInstanceOf[LoggingEvent]
-        sb.append(String.valueOf(ev.getRenderedMessage)).append('\n')
-      }
-      fail("Expected leader truncation line\n" + sb.toString)
-    })
+      while (it.hasNext)
+        captured.append(String.valueOf(it.next().asInstanceOf[LoggingEvent].getRenderedMessage)).append('\n')
+      fail("Expected leader truncation line\n" + captured.toString)
+    }
+  }
 
-    // Verify
-    assertTrue(line.contains("operation=truncateTo"))
-    assertTrue(line.contains("topicPartition=lt-topic-0"))
+  private def assertValidTruncationLine(line: String, expectedOp: String): Unit = {
+    assertTrue(line.contains(s"operation=$expectedOp"))
     assertTrue(line.contains(s"brokerId=$localBrokerId"))
 
-    val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val msgs = """messagesRemoved=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val fromLeo = """previousLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val toLeo = """newLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val msgs = """messagesRemoved=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
 
-    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previous LEO minus new LEO")
+    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previousLogEndOffset - newLogEndOffset")
+  }
+
+  // --------------- tests ---------------
+
+  @Test
+  def leader_truncateTo_logs_structured_line(): Unit = {
+    val partition = newLeaderPartition("lt-topic", numRecords = 5)
+    partition.truncateTo(3L, isFuture = false)
+
+    val line = findLeaderTruncationLineOrFail()
+    assertTrue(line.contains("topicPartition=lt-topic-0"))
+    assertValidTruncationLine(line, expectedOp = "truncateTo")
+  }
+
+  @Test
+  def leader_truncateFullyAndStartAt_logs_structured_line(): Unit = {
+    val partition = newLeaderPartition("lt-topic-full", numRecords = 4)
+    partition.truncateFullyAndStartAt(2L, isFuture = false)
+
+    assertValidTruncationLine(findLeaderTruncationLineOrFail(), expectedOp = "truncateFullyAndStartAt")
   }
 
   @Test
   def future_log_truncation_is_not_logged(): Unit = {
-    val tp = new TopicPartition("lt-topic-future", 0)
-    val baseDir = TestUtils.tempDir()
-    val log = newTestLog(tp, baseDir, time)
-    appendN(log, 3)
-
-    val partition = newPartition(tp, log)
-    assertTrue(partition.isLeader)
-
+    val partition = newLeaderPartition("lt-topic-future", numRecords = 3)
     partition.truncateTo(2L, isFuture = true)
 
-    assertTrue(findLeaderTruncationLine().isEmpty, "No leader truncation line should be logged for future log truncation")
+    assertTrue(findLeaderTruncationLine().isEmpty,
+      "No leader truncation line should be logged for future log truncation")
   }
 
   @Test
   def follower_truncation_is_not_logged(): Unit = {
-    val tp = new TopicPartition("lt-topic-follower", 0)
-    val baseDir = TestUtils.tempDir()
-    val log = newTestLog(tp, baseDir, time)
-    appendN(log, 4)
-
-    val partition = newPartition(tp, log)
-    // Make this broker a follower
-    partition.leaderReplicaIdOpt = Some(localBrokerId + 1)
+    val partition = newLeaderPartition("lt-topic-follower", numRecords = 4)
+    partition.leaderReplicaIdOpt = Some(localBrokerId + 1) // demote to follower
     assertFalse(partition.isLeader)
 
     partition.truncateTo(2L, isFuture = false)
 
-    assertTrue(findLeaderTruncationLine().isEmpty, "No leader truncation line should be logged when broker is a follower")
-  }
-
-  @Test
-  def leader_truncateFullyAndStartAt_logs_single_structured_line(): Unit = {
-    val tp = new TopicPartition("lt-topic-full", 0)
-    val baseDir = TestUtils.tempDir()
-    val log = newTestLog(tp, baseDir, time)
-    appendN(log, 4)
-
-    val partition = newPartition(tp, log)
-    assertTrue(partition.isLeader)
-
-    partition.truncateFullyAndStartAt(2L, isFuture = false)
-
-    val line = findLeaderTruncationLine().getOrElse({
-      val it = appender.getMessages.iterator
-      val sb = new StringBuilder("Captured logs:\n")
-      while (it.hasNext) {
-        val ev = it.next().asInstanceOf[LoggingEvent]
-        sb.append(String.valueOf(ev.getRenderedMessage)).append('\n')
-      }
-      fail("Expected leader truncation line\n" + sb.toString)
-    })
-
-    assertTrue(line.contains("operation=truncateFullyAndStartAt"))
-
-    val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val msgs = """messagesRemoved=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-
-    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previous LEO minus new LEO")
+    assertTrue(findLeaderTruncationLine().isEmpty,
+      "No leader truncation line should be logged when broker is a follower")
   }
 }

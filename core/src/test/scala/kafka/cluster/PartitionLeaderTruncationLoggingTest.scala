@@ -163,15 +163,15 @@ final class PartitionLeaderTruncationLoggingTest {
     }
   }
 
-  private def assertValidTruncationLine(line: String, expectedOp: String): Unit = {
-    assertTrue(line.contains(s"operation=$expectedOp"))
+  private def assertValidTruncationLine(line: String, expectedOperation: String): Unit = {
+    assertTrue(line.contains(s"operation=$expectedOperation"))
     assertTrue(line.contains(s"brokerId=$localBrokerId"))
 
-    val fromLeo = """previousLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val toLeo = """newLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
-    val msgs = """messagesRemoved=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val fromLogEndOffset = """previousLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val toLogEndOffset = """newLogEndOffset=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
+    val messagesRemoved = """messagesRemoved=(\d+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
 
-    assertEquals(fromLeo - toLeo, msgs, "messagesRemoved must equal previousLogEndOffset - newLogEndOffset")
+    assertEquals(fromLogEndOffset - toLogEndOffset, messagesRemoved, "messagesRemoved must equal previousLogEndOffset - newLogEndOffset")
   }
 
   // --------------- tests ---------------
@@ -183,7 +183,7 @@ final class PartitionLeaderTruncationLoggingTest {
 
     val line = findLeaderTruncationLineOrFail()
     assertTrue(line.contains("topicPartition=lt-topic-0"))
-    assertValidTruncationLine(line, expectedOp = "truncateTo")
+    assertValidTruncationLine(line, expectedOperation = "truncateTo")
   }
 
   @Test
@@ -191,7 +191,7 @@ final class PartitionLeaderTruncationLoggingTest {
     val partition = newLeaderPartition("lt-topic-full", numRecords = 4)
     partition.truncateFullyAndStartAt(2L, isFuture = false)
 
-    assertValidTruncationLine(findLeaderTruncationLineOrFail(), expectedOp = "truncateFullyAndStartAt")
+    assertValidTruncationLine(findLeaderTruncationLineOrFail(), expectedOperation = "truncateFullyAndStartAt")
   }
 
   @Test

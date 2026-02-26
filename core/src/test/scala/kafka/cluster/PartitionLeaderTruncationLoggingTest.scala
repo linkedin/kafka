@@ -185,7 +185,7 @@ final class PartitionLeaderTruncationLoggingTest {
   }
 
   @Test
-  def leader_truncateTo_logs_single_structured_line_with_bytes(): Unit = {
+  def leader_truncateTo_logs_single_structured_line(): Unit = {
     val tp = new TopicPartition("lt-topic", 0)
     val baseDir = TestUtils.tempDir()
     val log = newTestLog(tp, baseDir, time)
@@ -210,7 +210,6 @@ final class PartitionLeaderTruncationLoggingTest {
     assertTrue(line.contains("operation=truncateTo"))
     assertTrue(line.contains("topicPartition=lt-topic-0"))
     assertTrue(line.contains(s"brokerId=$localBrokerId"))
-    assertTrue(line.contains("bytesRemoved="))
 
     val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
     val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
@@ -252,7 +251,7 @@ final class PartitionLeaderTruncationLoggingTest {
   }
 
   @Test
-  def leader_truncateFullyAndStartAt_logs_single_structured_line_with_bytes(): Unit = {
+  def leader_truncateFullyAndStartAt_logs_single_structured_line(): Unit = {
     val tp = new TopicPartition("lt-topic-full", 0)
     val baseDir = TestUtils.tempDir()
     val log = newTestLog(tp, baseDir, time)
@@ -274,7 +273,6 @@ final class PartitionLeaderTruncationLoggingTest {
     })
 
     assertTrue(line.contains("operation=truncateFullyAndStartAt"))
-    assertTrue(line.contains("bytesRemoved="))
 
     val fromLeo = """previousLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get
     val toLeo = """newLogEndOffset=([0-9]+)""".r.findFirstMatchIn(line).map(_.group(1).toLong).get

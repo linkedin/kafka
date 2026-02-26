@@ -2054,17 +2054,6 @@ class Log(@volatile private var _dir: File,
             )
           }
 
-          // Notify log truncation listeners
-          TruncationCallbacks.notify(
-            topicPartition,
-            op      = "truncateTo",
-            target  = targetOffset,
-            fromLeo = originalLogEndOffset,
-            toLeo   = offsetTruncatedTo,
-            msgs    = messagesTruncated,
-            bytes   = bytesTruncated
-          )
-
           // FIXME: this code path involves not only data plane segments but also KRaft metadata logs.  Should find a way to distinguish after moving to KRaft.
           // XXX: An internal dashboard depends on parsing this warn log line. Get SRE reviews before changing the format.
           warn(s"Attempted truncating to offset $targetOffset. Resulted in truncated to $offsetTruncatedTo from the original log end offset $originalLogEndOffset, " +
@@ -2088,9 +2077,7 @@ class Log(@volatile private var _dir: File,
       lock synchronized {
         checkIfMemoryMappedBufferClosed()
 
-        val originalLogEndOffset = logEndOffset
-        val bytesTruncated = removeAndDeleteSegments(logSegments, asyncDelete = true, LogTruncation)
-
+        removeAndDeleteSegments(logSegments, asyncDelete = true, LogTruncation)
         addSegment(LogSegment.open(dir,
           baseOffset = newOffset,
           config = config,
@@ -2104,18 +2091,6 @@ class Log(@volatile private var _dir: File,
           startOffset = newOffset,
           localLogStartOffset = newOffset,
           endOffset = newOffset
-        )
-
-        // Notify log truncation listeners
-        val messagesTruncated = math.max(0L, originalLogEndOffset - newOffset)
-        TruncationCallbacks.notify(
-          topicPartition,
-          op      = "truncateFullyAndStartAt",
-          target  = newOffset,
-          fromLeo = originalLogEndOffset,
-          toLeo   = newOffset,
-          msgs    = messagesTruncated,
-          bytes   = bytesTruncated
         )
       }
     }

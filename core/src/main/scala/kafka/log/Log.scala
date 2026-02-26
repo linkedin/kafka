@@ -2021,6 +2021,7 @@ class Log(@volatile private var _dir: File,
         lock synchronized {
           leaderEpochCache.foreach(_.truncateFromEnd(logEndOffset))
         }
+
         false
       } else {
         var bytesTruncated = 0L
@@ -2053,7 +2054,6 @@ class Log(@volatile private var _dir: File,
               endOffset = targetOffset
             )
           }
-
           // FIXME: this code path involves not only data plane segments but also KRaft metadata logs.  Should find a way to distinguish after moving to KRaft.
           // XXX: An internal dashboard depends on parsing this warn log line. Get SRE reviews before changing the format.
           warn(s"Attempted truncating to offset $targetOffset. Resulted in truncated to $offsetTruncatedTo from the original log end offset $originalLogEndOffset, " +
@@ -2076,7 +2076,6 @@ class Log(@volatile private var _dir: File,
       debug(s"Truncate and start at offset $newOffset")
       lock synchronized {
         checkIfMemoryMappedBufferClosed()
-
         removeAndDeleteSegments(logSegments, asyncDelete = true, LogTruncation)
         addSegment(LogSegment.open(dir,
           baseOffset = newOffset,

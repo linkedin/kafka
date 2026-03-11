@@ -132,7 +132,7 @@ class DefaultAutoTopicCreationManager(
           if (successfulCreations.nonEmpty)
             info(s"[AutoTopicCreation] Topics successfully created: $successfulCreations")
           if (topicAlreadyExists.nonEmpty)
-            debug(s"[AutoTopicCreation] Topics already exist: $topicAlreadyExists")
+            info(s"[AutoTopicCreation] Topics already exist: $topicAlreadyExists")
           if (otherErrors.nonEmpty)
             warn(s"[AutoTopicCreation] Topics failed to create: $otherErrors")
 
@@ -202,7 +202,7 @@ class DefaultAutoTopicCreationManager(
           if (successfulCreations.nonEmpty)
             info(s"[AutoTopicCreation] Topics successfully created: ${successfulCreations.map(_.name()).mkString(", ")}")
           if (topicAlreadyExists.nonEmpty)
-            debug(s"[AutoTopicCreation] Topics already exist: ${topicAlreadyExists.map(_.name()).mkString(", ")}")
+            info(s"[AutoTopicCreation] Topics already exist: ${topicAlreadyExists.map(_.name()).mkString(", ")}")
           if (otherErrors.nonEmpty)
             warn(s"[AutoTopicCreation] Topics failed to create: ${otherErrors.map(t => s"${t.name()}:${Errors.forCode(t.errorCode)}").mkString(", ")}")
 

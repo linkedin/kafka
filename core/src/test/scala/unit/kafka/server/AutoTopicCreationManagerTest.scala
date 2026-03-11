@@ -30,8 +30,9 @@ import org.apache.kafka.clients.{ClientResponse, NodeApiVersions, RequestComplet
 import org.apache.kafka.common.Node
 import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.internals.Topic.{GROUP_METADATA_TOPIC_NAME, TRANSACTION_STATE_TOPIC_NAME}
-import org.apache.kafka.common.message.{ApiVersionsResponseData, CreateTopicsRequestData}
+import org.apache.kafka.common.message.{ApiVersionsResponseData, CreateTopicsRequestData, CreateTopicsResponseData}
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopic
+import org.apache.kafka.common.message.CreateTopicsResponseData.CreatableTopicResult
 import org.apache.kafka.common.message.MetadataResponseData.MetadataResponseTopic
 import org.apache.kafka.common.network.{ClientInformation, ListenerName}
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
@@ -391,6 +392,97 @@ class AutoTopicCreationManagerTest {
       .setName(topicName))
 
     assertEquals(expectedResponses, topicResponses)
+  }
+
+  // ---- Tests for onComplete logging in sendCreateTopicRequest ----
+
+  @Test
+  def testOnCompleteWithNoneLogsAsSuccessfulCreation(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.NONE))
+    verifyInflightCleared(topicName)
+  }
+
+  @Test
+  def testOnCompleteWithRequestTimedOutLogsAsSuccessfulCreation(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    // REQUEST_TIMED_OUT means the topic was written to ZooKeeper but leader election
+    // did not complete within the timeout — treated as a successful creation.
+    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.REQUEST_TIMED_OUT))
+    verifyInflightCleared(topicName)
+  }
+
+  @Test
+  def testOnCompleteWithTopicAlreadyExistsLogsAsAlreadyExist(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.TOPIC_ALREADY_EXISTS))
+    verifyInflightCleared(topicName)
+  }
+
+  @Test
+  def testOnCompleteWithOtherErrorLogsAsFailure(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.INVALID_TOPIC_EXCEPTION))
+    verifyInflightCleared(topicName)
+  }
+
+  @Test
+  def testOnCompleteWithNullResponseBodyLogsWarning(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    val header = new RequestHeader(ApiKeys.CREATE_TOPICS, ApiKeys.CREATE_TOPICS.latestVersion, "client", 1)
+    val clientResponse = new ClientResponse(header, null, null, 0, 0, false, null, null, null)
+    handler.onComplete(clientResponse)
+    verifyInflightCleared(topicName)
+  }
+
+  @Test
+  def testOnCompleteWithUnexpectedResponseTypeLogsWarning(): Unit = {
+    val topicName = "topic"
+    val handler = setupAndCaptureCompletionHandler(topicName)
+    val header = new RequestHeader(ApiKeys.CREATE_TOPICS, ApiKeys.CREATE_TOPICS.latestVersion, "client", 1)
+    // EnvelopeResponse is not a CreateTopicsResponse — exercises the unexpected-type branch
+    val unexpectedResponse = new EnvelopeResponse(ByteBuffer.allocate(0), Errors.NONE)
+    val clientResponse = new ClientResponse(header, null, null, 0, 0, false, null, null, unexpectedResponse)
+    handler.onComplete(clientResponse)
+    verifyInflightCleared(topicName)
+  }
+
+  private def setupAndCaptureCompletionHandler(topicName: String): RequestCompletionHandler = {
+    autoTopicCreationManager = new DefaultAutoTopicCreationManager(
+      config,
+      Some(brokerToController),
+      Some(adminManager),
+      Some(controller),
+      groupCoordinator,
+      transactionCoordinator)
+    Mockito.when(controller.isActive).thenReturn(false)
+    Mockito.when(brokerToController.controllerApiVersions()).thenReturn(None)
+    autoTopicCreationManager.createTopics(Set(topicName), UnboundedControllerMutationQuota, None)
+
+    val captor = ArgumentCaptor.forClass(classOf[ControllerRequestCompletionHandler])
+    Mockito.verify(brokerToController).sendRequest(any(), captor.capture())
+    captor.getValue.asInstanceOf[RequestCompletionHandler]
+  }
+
+  private def verifyInflightCleared(topicName: String): Unit = {
+    // After onComplete, inflight topics must be cleared so a subsequent createTopics
+    // call for the same topic triggers a new sendRequest rather than being suppressed.
+    Mockito.reset(brokerToController)
+    Mockito.when(brokerToController.controllerApiVersions()).thenReturn(None)
+    autoTopicCreationManager.createTopics(Set(topicName), UnboundedControllerMutationQuota, None)
+    Mockito.verify(brokerToController).sendRequest(any(), any())
+  }
+
+  private def buildCreateTopicsClientResponse(topicName: String, error: Errors): ClientResponse = {
+    val responseData = new CreateTopicsResponseData()
+    responseData.topics().add(new CreatableTopicResult().setName(topicName).setErrorCode(error.code))
+    val header = new RequestHeader(ApiKeys.CREATE_TOPICS, ApiKeys.CREATE_TOPICS.latestVersion, "client", 1)
+    new ClientResponse(header, null, null, 0, 0, false, null, null, new CreateTopicsResponse(responseData))
   }
 
   private def getNewTopic(topicName: String, numPartitions: Int = 1, replicationFactor: Short = 1): CreatableTopic = {

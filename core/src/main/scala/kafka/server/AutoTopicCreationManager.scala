@@ -187,18 +187,19 @@ class DefaultAutoTopicCreationManager(
         } else if (response.versionMismatch() != null) {
           warn(s"Auto topic creation failed for ${creatableTopics.keys} with invalid version exception")
         } else {
-          // response.responseBody() may be null in unexpected edge cases (e.g., internal errors
-          // before the response is fully constructed), so guard against NPE here.
-          val responseBody = response.responseBody()
-          if (responseBody == null) {
-            warn(s"[AutoTopicCreation] Received null response body for topics: ${creatableTopics.keys}")
-          } else {
-            // Log outcomes to track true new creations vs topics that already existed,
-            // helping distinguish real auto-creations from pod startup races where the
-            // broker's metadata cache hasn't fully loaded yet.
-            val createTopicsResponse = responseBody.asInstanceOf[CreateTopicsResponse]
-            logAutoTopicCreationResults(createTopicsResponse.data.topics.asScala
-              .map(t => t.name() -> Errors.forCode(t.errorCode)).toMap)
+          // Use pattern matching instead of asInstanceOf to safely handle both a null
+          // response body and an unexpected response type without throwing NPE or ClassCastException.
+          response.responseBody() match {
+            case createTopicsResponse: CreateTopicsResponse =>
+              // Log outcomes to track true new creations vs topics that already existed,
+              // helping distinguish real auto-creations from pod startup races where the
+              // broker's metadata cache hasn't fully loaded yet.
+              logAutoTopicCreationResults(createTopicsResponse.data.topics.asScala
+                .map(t => t.name() -> Errors.forCode(t.errorCode)).toMap)
+            case null =>
+              warn(s"[AutoTopicCreation] Received null response body for topics: ${creatableTopics.keys}")
+            case unexpected =>
+              warn(s"[AutoTopicCreation] Unexpected response type ${unexpected.getClass.getName} for topics: ${creatableTopics.keys}")
           }
           debug(s"Auto topic creation completed for ${creatableTopics.keys} with response ${response.responseBody}.")
         }

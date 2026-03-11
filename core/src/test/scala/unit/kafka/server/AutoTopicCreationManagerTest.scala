@@ -397,6 +397,51 @@ class AutoTopicCreationManagerTest {
     assertEquals(expectedResponses, topicResponses)
   }
 
+  // ---- Tests for createTopicsInZk logging ----
+
+  @Test
+  def testCreateTopicsInZkWithNoneLogsAsSuccessfulCreation(): Unit = {
+    val topicName = "topic"
+    val messages = executeWithLogCapture {
+      testErrorWithCreationInZk(Errors.NONE, topicName, isInternal = false)
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created")))
+  }
+
+  @Test
+  def testCreateTopicsInZkWithRequestTimedOutLogsAsSuccessfulCreation(): Unit = {
+    val topicName = "topic"
+    val messages = executeWithLogCapture {
+      testErrorWithCreationInZk(Errors.REQUEST_TIMED_OUT, topicName, isInternal = false,
+        expectedError = Some(Errors.LEADER_NOT_AVAILABLE))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created")))
+  }
+
+  @Test
+  def testCreateTopicsInZkWithTopicAlreadyExistsLogsAsAlreadyExist(): Unit = {
+    val topicName = "topic"
+    val messages = executeWithLogCapture {
+      testErrorWithCreationInZk(Errors.TOPIC_ALREADY_EXISTS, topicName, isInternal = false,
+        expectedError = Some(Errors.LEADER_NOT_AVAILABLE))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist")))
+  }
+
+  @Test
+  def testCreateTopicsInZkWithOtherErrorLogsAsFailure(): Unit = {
+    val topicName = "topic"
+    val messages = executeWithLogCapture {
+      testErrorWithCreationInZk(Errors.INVALID_REPLICATION_FACTOR, topicName, isInternal = false)
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Topics failed to create") &&
+        e.getMessage.toString.contains(s"$topicName:${Errors.INVALID_REPLICATION_FACTOR}")))
+  }
+
   // ---- Tests for onComplete logging in sendCreateTopicRequest ----
 
   @Test

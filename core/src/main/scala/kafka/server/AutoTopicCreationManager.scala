@@ -247,16 +247,10 @@ class DefaultAutoTopicCreationManager(
    * because its metadata cache hasn't fully loaded yet (e.g., at pod startup), but the topic already
    * exists in the cluster. This inflates observed counts and makes it impossible to identify real usage.
    *
-   * This method logs the actual outcome of each auto-creation attempt, categorized into three groups,
-   * all prefixed with "AutoTopicCreation:" for easy inLog querying:
-   *   - Successfully created: topic was genuinely new and written to the cluster.
-   *   - Already exist: topic was already present (TOPIC_ALREADY_EXISTS), common at pod startup.
-   *   - Failed: creation failed for other reasons (e.g., quota exceeded, invalid topic name).
    */
   private def logAutoTopicCreationResults(topicErrors: Map[String, Errors]): Unit = {
     // REQUEST_TIMED_OUT is treated as success: it means the topic metadata was written to ZooKeeper
-    // but leader election did not complete within the timeout. The topic will become fully available
-    // once a leader is elected, so this is a successful creation from the auto-topic perspective.
+    // but leader election did not complete within the timeout.
     val successfulCreations = topicErrors.collect { case (topic, error) if error == Errors.NONE || error == Errors.REQUEST_TIMED_OUT => topic }
     val topicAlreadyExists = topicErrors.collect { case (topic, error) if error == Errors.TOPIC_ALREADY_EXISTS => topic }
     val otherErrors = topicErrors.collect { case (topic, error) if error != Errors.NONE && error != Errors.REQUEST_TIMED_OUT && error != Errors.TOPIC_ALREADY_EXISTS => topic -> error }

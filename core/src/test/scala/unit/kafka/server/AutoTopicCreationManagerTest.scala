@@ -45,6 +45,9 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.{ArgumentCaptor, ArgumentMatchers, Mockito}
 
+import kafka.utils.LogCaptureAppender
+import org.apache.log4j.Level
+
 import scala.collection.{Map, Seq}
 
 class AutoTopicCreationManagerTest {
@@ -400,7 +403,11 @@ class AutoTopicCreationManagerTest {
   def testOnCompleteWithNoneLogsAsSuccessfulCreation(): Unit = {
     val topicName = "topic"
     val handler = setupAndCaptureCompletionHandler(topicName)
-    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.NONE))
+    val messages = executeWithLogCapture {
+      handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.NONE))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created")))
     verifyInflightCleared(topicName)
   }
 
@@ -410,7 +417,11 @@ class AutoTopicCreationManagerTest {
     val handler = setupAndCaptureCompletionHandler(topicName)
     // REQUEST_TIMED_OUT means the topic was written to ZooKeeper but leader election
     // did not complete within the timeout — treated as a successful creation.
-    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.REQUEST_TIMED_OUT))
+    val messages = executeWithLogCapture {
+      handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.REQUEST_TIMED_OUT))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created")))
     verifyInflightCleared(topicName)
   }
 
@@ -418,7 +429,11 @@ class AutoTopicCreationManagerTest {
   def testOnCompleteWithTopicAlreadyExistsLogsAsAlreadyExist(): Unit = {
     val topicName = "topic"
     val handler = setupAndCaptureCompletionHandler(topicName)
-    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.TOPIC_ALREADY_EXISTS))
+    val messages = executeWithLogCapture {
+      handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.TOPIC_ALREADY_EXISTS))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist")))
     verifyInflightCleared(topicName)
   }
 
@@ -426,7 +441,12 @@ class AutoTopicCreationManagerTest {
   def testOnCompleteWithOtherErrorLogsAsFailure(): Unit = {
     val topicName = "topic"
     val handler = setupAndCaptureCompletionHandler(topicName)
-    handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.INVALID_TOPIC_EXCEPTION))
+    val messages = executeWithLogCapture {
+      handler.onComplete(buildCreateTopicsClientResponse(topicName, Errors.INVALID_TOPIC_EXCEPTION))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Topics failed to create") &&
+        e.getMessage.toString.contains(s"$topicName:${Errors.INVALID_TOPIC_EXCEPTION}")))
     verifyInflightCleared(topicName)
   }
 
@@ -436,7 +456,11 @@ class AutoTopicCreationManagerTest {
     val handler = setupAndCaptureCompletionHandler(topicName)
     val header = new RequestHeader(ApiKeys.CREATE_TOPICS, ApiKeys.CREATE_TOPICS.latestVersion, "client", 1)
     val clientResponse = new ClientResponse(header, null, null, 0, 0, false, null, null, null)
-    handler.onComplete(clientResponse)
+    val messages = executeWithLogCapture {
+      handler.onComplete(clientResponse)
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Received null response body")))
     verifyInflightCleared(topicName)
   }
 
@@ -448,8 +472,24 @@ class AutoTopicCreationManagerTest {
     // EnvelopeResponse is not a CreateTopicsResponse — exercises the unexpected-type branch
     val unexpectedResponse = new EnvelopeResponse(ByteBuffer.allocate(0), Errors.NONE)
     val clientResponse = new ClientResponse(header, null, null, 0, 0, false, null, null, unexpectedResponse)
-    handler.onComplete(clientResponse)
+    val messages = executeWithLogCapture {
+      handler.onComplete(clientResponse)
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Unexpected response type")))
     verifyInflightCleared(topicName)
+  }
+
+  private def executeWithLogCapture(body: => Unit) = {
+    val appender = LogCaptureAppender.createAndRegister()
+    val previousLevel = LogCaptureAppender.setClassLoggerLevel(classOf[DefaultAutoTopicCreationManager], Level.INFO)
+    try {
+      body
+      appender.getMessages
+    } finally {
+      LogCaptureAppender.setClassLoggerLevel(classOf[DefaultAutoTopicCreationManager], previousLevel)
+      LogCaptureAppender.unregister(appender)
+    }
   }
 
   private def setupAndCaptureCompletionHandler(topicName: String): RequestCompletionHandler = {

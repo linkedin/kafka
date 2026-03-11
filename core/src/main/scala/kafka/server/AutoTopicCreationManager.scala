@@ -125,16 +125,10 @@ class DefaultAutoTopicCreationManager(
 
       val creatableTopicResponses = Option(topicErrors.get) match {
         case Some(errors) =>
-          val topicAlreadyExists = errors.collect { case (topic, apiError) if apiError.error == Errors.TOPIC_ALREADY_EXISTS => topic }
-          val successfulCreations = errors.collect { case (topic, apiError) if apiError.error == Errors.NONE || apiError.error == Errors.REQUEST_TIMED_OUT => topic }
-          val otherErrors = errors.collect { case (topic, apiError) if apiError.error != Errors.TOPIC_ALREADY_EXISTS && apiError.error != Errors.NONE && apiError.error != Errors.REQUEST_TIMED_OUT => topic -> apiError.error }
-
-          if (successfulCreations.nonEmpty)
-            info(s"[AutoTopicCreation] Topics successfully created: $successfulCreations")
-          if (topicAlreadyExists.nonEmpty)
-            info(s"[AutoTopicCreation] Topics already exist: $topicAlreadyExists")
-          if (otherErrors.nonEmpty)
-            warn(s"[AutoTopicCreation] Topics failed to create: $otherErrors")
+          // Log outcomes to track true new creations vs topics that already existed,
+          // helping distinguish real auto-creations from pod startup races where the
+          // broker's metadata cache hasn't fully loaded yet.
+          logAutoTopicCreationResults(errors.map { case (topic, apiError) => topic -> apiError.error })
 
           errors.toSeq.map { case (topic, apiError) =>
             val error = apiError.error match {
@@ -193,19 +187,19 @@ class DefaultAutoTopicCreationManager(
         } else if (response.versionMismatch() != null) {
           warn(s"Auto topic creation failed for ${creatableTopics.keys} with invalid version exception")
         } else {
-          val createTopicsResponse = response.responseBody.asInstanceOf[CreateTopicsResponse]
-          val topics = createTopicsResponse.data.topics.asScala
-          val successfulCreations = topics.filter(t => Errors.forCode(t.errorCode) == Errors.NONE || Errors.forCode(t.errorCode) == Errors.LEADER_NOT_AVAILABLE)
-          val topicAlreadyExists = topics.filter(t => Errors.forCode(t.errorCode) == Errors.TOPIC_ALREADY_EXISTS)
-          val otherErrors = topics.filter(t => Errors.forCode(t.errorCode) != Errors.NONE && Errors.forCode(t.errorCode) != Errors.LEADER_NOT_AVAILABLE && Errors.forCode(t.errorCode) != Errors.TOPIC_ALREADY_EXISTS)
-
-          if (successfulCreations.nonEmpty)
-            info(s"[AutoTopicCreation] Topics successfully created: ${successfulCreations.map(_.name()).mkString(", ")}")
-          if (topicAlreadyExists.nonEmpty)
-            info(s"[AutoTopicCreation] Topics already exist: ${topicAlreadyExists.map(_.name()).mkString(", ")}")
-          if (otherErrors.nonEmpty)
-            warn(s"[AutoTopicCreation] Topics failed to create: ${otherErrors.map(t => s"${t.name()}:${Errors.forCode(t.errorCode)}").mkString(", ")}")
-
+          // response.responseBody() may be null in unexpected edge cases (e.g., internal errors
+          // before the response is fully constructed), so guard against NPE here.
+          val responseBody = response.responseBody()
+          if (responseBody == null) {
+            warn(s"[AutoTopicCreation] Received null response body for topics: ${creatableTopics.keys}")
+          } else {
+            // Log outcomes to track true new creations vs topics that already existed,
+            // helping distinguish real auto-creations from pod startup races where the
+            // broker's metadata cache hasn't fully loaded yet.
+            val createTopicsResponse = responseBody.asInstanceOf[CreateTopicsResponse]
+            logAutoTopicCreationResults(createTopicsResponse.data.topics.asScala
+              .map(t => t.name() -> Errors.forCode(t.errorCode)).toMap)
+          }
           debug(s"Auto topic creation completed for ${creatableTopics.keys} with response ${response.responseBody}.")
         }
       }
@@ -247,6 +241,30 @@ class DefaultAutoTopicCreationManager(
 
     info(s"Sent auto-creation request for ${creatableTopics.keys} to the active controller.")
     creatableTopicResponses
+  }
+
+  /**
+   * Classifies and logs auto topic creation results using a consistent [AutoTopicCreation] prefix
+   * for easy inLog searching. Three outcome categories are tracked:
+   *   - Successfully created: topics newly written to ZooKeeper.
+   *     REQUEST_TIMED_OUT is treated as success because it means the topic metadata was
+   *     written successfully but leader election did not complete within the timeout.
+   *   - Already exist: topics attempted but already present (TOPIC_ALREADY_EXISTS).
+   *     These are common at broker startup when the metadata cache hasn't fully loaded,
+   *     causing the broker to attempt auto-creation of topics that are already there.
+   *   - Failed: topics that failed for other reasons (e.g., quota exceeded, invalid config).
+   */
+  private def logAutoTopicCreationResults(topicErrors: Map[String, Errors]): Unit = {
+    val successfulCreations = topicErrors.collect { case (topic, error) if error == Errors.NONE || error == Errors.REQUEST_TIMED_OUT => topic }
+    val topicAlreadyExists = topicErrors.collect { case (topic, error) if error == Errors.TOPIC_ALREADY_EXISTS => topic }
+    val otherErrors = topicErrors.collect { case (topic, error) if error != Errors.NONE && error != Errors.REQUEST_TIMED_OUT && error != Errors.TOPIC_ALREADY_EXISTS => topic -> error }
+
+    if (successfulCreations.nonEmpty)
+      info(s"[AutoTopicCreation] Topics successfully created: $successfulCreations")
+    if (topicAlreadyExists.nonEmpty)
+      info(s"[AutoTopicCreation] Topics already exist: $topicAlreadyExists")
+    if (otherErrors.nonEmpty)
+      warn(s"[AutoTopicCreation] Topics failed to create: ${otherErrors.map { case (t, e) => s"$t:$e" }.mkString(", ")}")
   }
 
   private def clearInflightRequests(creatableTopics: Map[String, CreatableTopic]): Unit = {

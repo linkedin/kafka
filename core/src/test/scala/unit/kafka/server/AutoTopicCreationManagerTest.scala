@@ -442,6 +442,36 @@ class AutoTopicCreationManagerTest {
         e.getMessage.toString.contains(s"$topicName:${Errors.INVALID_REPLICATION_FACTOR}")))
   }
 
+  @Test
+  def testCreateTopicsInZkWithMultipleTopicsLogsSeparateCategories(): Unit = {
+    autoTopicCreationManager = new DefaultAutoTopicCreationManager(
+      config, None, Some(adminManager), Some(controller), groupCoordinator, transactionCoordinator)
+    Mockito.when(controller.isActive).thenReturn(false)
+
+    val topicErrors = Map("topic1" -> new ApiError(Errors.NONE), "topic2" -> new ApiError(Errors.TOPIC_ALREADY_EXISTS))
+    Mockito.when(adminManager.createTopics(
+      ArgumentMatchers.eq(0),
+      ArgumentMatchers.eq(false),
+      any(),
+      ArgumentMatchers.eq(Map.empty),
+      any(classOf[ControllerMutationQuota]),
+      any(classOf[Map[String, ApiError] => Unit])
+    )).thenAnswer((invocation: InvocationOnMock) => {
+      invocation.getArgument(5).asInstanceOf[Map[String, ApiError] => Unit].apply(topicErrors)
+    })
+
+    val messages = executeWithLogCapture {
+      autoTopicCreationManager.createTopics(Set("topic1", "topic2"), UnboundedControllerMutationQuota, None)
+    }
+
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created") &&
+        e.getMessage.toString.contains("topic1")))
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist") &&
+        e.getMessage.toString.contains("topic2")))
+  }
+
   // ---- Tests for onComplete logging in sendCreateTopicRequest ----
 
   @Test
@@ -496,6 +526,27 @@ class AutoTopicCreationManagerTest {
   }
 
   @Test
+  def testOnCompleteWithMultipleTopicsLogsSeparateCategories(): Unit = {
+    val topicNames = Set("topic1", "topic2")
+    val handler = setupAndCaptureCompletionHandler(topicNames)
+    val messages = executeWithLogCapture {
+      handler.onComplete(buildCreateTopicsClientResponse(
+        Map("topic1" -> Errors.NONE, "topic2" -> Errors.TOPIC_ALREADY_EXISTS)))
+    }
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created") &&
+        e.getMessage.toString.contains("topic1")))
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist") &&
+        e.getMessage.toString.contains("topic2")))
+    // Verify both topics are cleared from inflight
+    Mockito.reset(brokerToController)
+    Mockito.when(brokerToController.controllerApiVersions()).thenReturn(None)
+    autoTopicCreationManager.createTopics(topicNames, UnboundedControllerMutationQuota, None)
+    Mockito.verify(brokerToController).sendRequest(any(), any())
+  }
+
+  @Test
   def testOnCompleteWithNullResponseBodyLogsWarning(): Unit = {
     val topicName = "topic"
     val handler = setupAndCaptureCompletionHandler(topicName)
@@ -537,7 +588,10 @@ class AutoTopicCreationManagerTest {
     }
   }
 
-  private def setupAndCaptureCompletionHandler(topicName: String): RequestCompletionHandler = {
+  private def setupAndCaptureCompletionHandler(topicName: String): RequestCompletionHandler =
+    setupAndCaptureCompletionHandler(Set(topicName))
+
+  private def setupAndCaptureCompletionHandler(topicNames: Set[String]): RequestCompletionHandler = {
     autoTopicCreationManager = new DefaultAutoTopicCreationManager(
       config,
       Some(brokerToController),
@@ -547,7 +601,7 @@ class AutoTopicCreationManagerTest {
       transactionCoordinator)
     Mockito.when(controller.isActive).thenReturn(false)
     Mockito.when(brokerToController.controllerApiVersions()).thenReturn(None)
-    autoTopicCreationManager.createTopics(Set(topicName), UnboundedControllerMutationQuota, None)
+    autoTopicCreationManager.createTopics(topicNames, UnboundedControllerMutationQuota, None)
 
     val captor = ArgumentCaptor.forClass(classOf[ControllerRequestCompletionHandler])
     Mockito.verify(brokerToController).sendRequest(any(), captor.capture())
@@ -563,9 +617,12 @@ class AutoTopicCreationManagerTest {
     Mockito.verify(brokerToController).sendRequest(any(), any())
   }
 
-  private def buildCreateTopicsClientResponse(topicName: String, error: Errors): ClientResponse = {
+  private def buildCreateTopicsClientResponse(topicName: String, error: Errors): ClientResponse =
+    buildCreateTopicsClientResponse(Map(topicName -> error))
+
+  private def buildCreateTopicsClientResponse(topicsWithErrors: Map[String, Errors]): ClientResponse = {
     val responseData = new CreateTopicsResponseData()
-    responseData.topics().add(new CreatableTopicResult().setName(topicName).setErrorCode(error.code))
+    topicsWithErrors.foreach(e => responseData.topics().add(new CreatableTopicResult().setName(e._1).setErrorCode(e._2.code)))
     val header = new RequestHeader(ApiKeys.CREATE_TOPICS, ApiKeys.CREATE_TOPICS.latestVersion, "client", 1)
     new ClientResponse(header, null, null, 0, 0, false, null, null, new CreateTopicsResponse(responseData))
   }

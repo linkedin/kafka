@@ -448,7 +448,14 @@ class AutoTopicCreationManagerTest {
       config, None, Some(adminManager), Some(controller), groupCoordinator, transactionCoordinator)
     Mockito.when(controller.isActive).thenReturn(false)
 
-    val topicErrors = Map("topic1" -> new ApiError(Errors.NONE), "topic2" -> new ApiError(Errors.TOPIC_ALREADY_EXISTS))
+    val topicErrors = Map(
+      "topic1" -> new ApiError(Errors.NONE),
+      "topic2" -> new ApiError(Errors.NONE),
+      "topic3" -> new ApiError(Errors.TOPIC_ALREADY_EXISTS),
+      "topic4" -> new ApiError(Errors.TOPIC_ALREADY_EXISTS),
+      "topic5" -> new ApiError(Errors.INVALID_REPLICATION_FACTOR),
+      "topic6" -> new ApiError(Errors.INVALID_TOPIC_EXCEPTION)
+    )
     Mockito.when(adminManager.createTopics(
       ArgumentMatchers.eq(0),
       ArgumentMatchers.eq(false),
@@ -461,15 +468,20 @@ class AutoTopicCreationManagerTest {
     })
 
     val messages = executeWithLogCapture {
-      autoTopicCreationManager.createTopics(Set("topic1", "topic2"), UnboundedControllerMutationQuota, None)
+      autoTopicCreationManager.createTopics(
+        Set("topic1", "topic2", "topic3", "topic4", "topic5", "topic6"), UnboundedControllerMutationQuota, None)
     }
 
     assertTrue(messages.exists(e =>
       e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created") &&
-        e.getMessage.toString.contains("topic1")))
+        e.getMessage.toString.contains("topic1") && e.getMessage.toString.contains("topic2")))
     assertTrue(messages.exists(e =>
       e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist") &&
-        e.getMessage.toString.contains("topic2")))
+        e.getMessage.toString.contains("topic3") && e.getMessage.toString.contains("topic4")))
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Topics failed to create") &&
+        e.getMessage.toString.contains(s"topic5:${Errors.INVALID_REPLICATION_FACTOR}") &&
+        e.getMessage.toString.contains(s"topic6:${Errors.INVALID_TOPIC_EXCEPTION}")))
   }
 
   // ---- Tests for onComplete logging in sendCreateTopicRequest ----
@@ -527,19 +539,29 @@ class AutoTopicCreationManagerTest {
 
   @Test
   def testOnCompleteWithMultipleTopicsLogsSeparateCategories(): Unit = {
-    val topicNames = Set("topic1", "topic2")
+    val topicNames = Set("topic1", "topic2", "topic3", "topic4", "topic5", "topic6")
     val handler = setupAndCaptureCompletionHandler(topicNames)
     val messages = executeWithLogCapture {
-      handler.onComplete(buildCreateTopicsClientResponse(
-        Map("topic1" -> Errors.NONE, "topic2" -> Errors.TOPIC_ALREADY_EXISTS)))
+      handler.onComplete(buildCreateTopicsClientResponse(Map(
+        "topic1" -> Errors.NONE,
+        "topic2" -> Errors.NONE,
+        "topic3" -> Errors.TOPIC_ALREADY_EXISTS,
+        "topic4" -> Errors.TOPIC_ALREADY_EXISTS,
+        "topic5" -> Errors.INVALID_REPLICATION_FACTOR,
+        "topic6" -> Errors.INVALID_TOPIC_EXCEPTION
+      )))
     }
     assertTrue(messages.exists(e =>
       e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics successfully created") &&
-        e.getMessage.toString.contains("topic1")))
+        e.getMessage.toString.contains("topic1") && e.getMessage.toString.contains("topic2")))
     assertTrue(messages.exists(e =>
       e.getLevel == Level.INFO && e.getMessage.toString.contains("AutoTopicCreation: Topics already exist") &&
-        e.getMessage.toString.contains("topic2")))
-    // Verify both topics are cleared from inflight
+        e.getMessage.toString.contains("topic3") && e.getMessage.toString.contains("topic4")))
+    assertTrue(messages.exists(e =>
+      e.getLevel == Level.WARN && e.getMessage.toString.contains("AutoTopicCreation: Topics failed to create") &&
+        e.getMessage.toString.contains(s"topic5:${Errors.INVALID_REPLICATION_FACTOR}") &&
+        e.getMessage.toString.contains(s"topic6:${Errors.INVALID_TOPIC_EXCEPTION}")))
+    // Verify all topics are cleared from inflight
     Mockito.reset(brokerToController)
     Mockito.when(brokerToController.controllerApiVersions()).thenReturn(None)
     autoTopicCreationManager.createTopics(topicNames, UnboundedControllerMutationQuota, None)

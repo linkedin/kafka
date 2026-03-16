@@ -251,16 +251,24 @@ class DefaultAutoTopicCreationManager(
   private def logAutoTopicCreationResults(topicErrors: Map[String, Errors]): Unit = {
     // REQUEST_TIMED_OUT is treated as success: it means the topic metadata was written to ZooKeeper
     // but leader election did not complete within the timeout.
-    val successfulCreations = topicErrors.filter(e => e._2 == Errors.NONE || e._2 == Errors.REQUEST_TIMED_OUT).keys
-    val topicAlreadyExists = topicErrors.filter(e => e._2 == Errors.TOPIC_ALREADY_EXISTS).keys
-    val otherErrors = topicErrors.filter(e => e._2 != Errors.NONE && e._2 != Errors.REQUEST_TIMED_OUT && e._2 != Errors.TOPIC_ALREADY_EXISTS)
+    val successfulCreations = mutable.Buffer.empty[String]
+    val topicAlreadyExists = mutable.Buffer.empty[String]
+    val otherErrors = mutable.Buffer.empty[String]
+
+    topicErrors.foreach { case (topic, error) =>
+      error match {
+        case Errors.NONE | Errors.REQUEST_TIMED_OUT => successfulCreations += topic
+        case Errors.TOPIC_ALREADY_EXISTS => topicAlreadyExists += topic
+        case _ => otherErrors += s"$topic:$error"
+      }
+    }
 
     if (successfulCreations.nonEmpty)
-      info(s"AutoTopicCreation: Topics successfully created: $successfulCreations")
+      info(s"AutoTopicCreation: Topics successfully created: ${successfulCreations.mkString(", ")}")
     if (topicAlreadyExists.nonEmpty)
-      info(s"AutoTopicCreation: Topics already exist: $topicAlreadyExists")
+      info(s"AutoTopicCreation: Topics already exist: ${topicAlreadyExists.mkString(", ")}")
     if (otherErrors.nonEmpty)
-      warn(s"AutoTopicCreation: Topics failed to create: ${otherErrors.map(e => s"${e._1}:${e._2}").mkString(", ")}")
+      warn(s"AutoTopicCreation: Topics failed to create: ${otherErrors.mkString(", ")}")
   }
 
   private def clearInflightRequests(creatableTopics: Map[String, CreatableTopic]): Unit = {

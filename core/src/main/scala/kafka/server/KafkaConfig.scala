@@ -1640,8 +1640,6 @@ object KafkaConfig {
       .define(ControlledShutdownSafetyCheckEnableProp, BOOLEAN, Defaults.ControlledShutdownSafetyCheckEnable, MEDIUM, "Enable controlled shutdown safety check")
       .define(ControlledShutdownSafetyCheckRedundancyFactorProp, INT, Defaults.ControlledShutdownSafetyCheckRedundancyFactor, MEDIUM, "Controlled shutdown safety check redundancy factor")
       .define(ControlledShutdownPartitionBatchSizeProp, INT, Defaults.ControlledShutdownPartitionBatchSize, MEDIUM, "Controlled shutdown partition batch size")
-      .define(ProducerQuotaBytesPerSecondDefaultProp, LONG, Defaults.ProducerQuotaBytesPerSecondDefault, atLeast(1), HIGH, "Default producer quota in bytes per second")
-      .define(ConsumerQuotaBytesPerSecondDefaultProp, LONG, Defaults.ConsumerQuotaBytesPerSecondDefault, atLeast(1), HIGH, "Default consumer quota in bytes per second")
       .define(InactiveSensorExpirationTimeSecondsProp, INT, Defaults.InactiveSensorExpirationTimeSeconds, LOW, "Inactive sensor expiration time in seconds")
 
       /** Internal Configurations **/

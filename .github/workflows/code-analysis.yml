@@ -24,6 +24,8 @@ on:
     branches:
       - 3.0-li
       - 3.0-li-**
+      - 3.6-li
+      - ehuskey/**
 
 jobs:
   all:
@@ -39,9 +41,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           # bring in all history because the gradle versions plugin needs to "walk back" to the closest ancestor tag
           fetch-depth: 0
-      - name: Set up JDK 11
-        uses: actions/setup-java@v1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          java-version: '11'
+          java-version: '17'
+          distribution: 'temurin'
       - name: Run code analysis tasks
         run: ./gradlew rat checkstyleMain checkstyleTest spotbugsMain spotbugsTest --no-daemon -PxmlSpotBugsReport=true -PtestLoggingEvents=started,passed,skipped,failed

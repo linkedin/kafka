@@ -24,6 +24,8 @@ on:
     branches:
       - 3.0-li
       - 3.0-li-**
+      - 3.6-li
+      - ehuskey/**
 
 jobs:
   non-core:
@@ -35,7 +37,7 @@ jobs:
       fail-fast: false  # We still want to see all jobs' build result to the end
       matrix:
         scalaVersion:
-          - 2.12
+          - 2.13
         module: # Maintain lexicographical order
           - clients
           - generator
@@ -53,10 +55,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           # bring in all history because the gradle versions plugin needs to "walk back" to the closest ancestor tag
           fetch-depth: 0
-      - name: Set up JDK 11
-        uses: actions/setup-java@v1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          java-version: '11'
+          java-version: '17'
+          distribution: 'temurin'
       - name: Run tests
         env:
           SCALA_VERSION: ${{ matrix.scalaVersion }}
@@ -71,7 +74,7 @@ jobs:
       fail-fast: false  # We still want to see all jobs' build result to the end
       matrix:
         scalaVersion:
-          - 2.12
+          - 2.13
         prefixes:
           - A B C
           - D E F
@@ -88,10 +91,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           # bring in all history because the gradle versions plugin needs to "walk back" to the closest ancestor tag
           fetch-depth: 0
-      - name: Set up JDK 11
-        uses: actions/setup-java@v1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          java-version: '11'
+          java-version: '17'
+          distribution: 'temurin'
       - name: Run tests
         env:
           SCALA_VERSION: ${{ matrix.scalaVersion }}

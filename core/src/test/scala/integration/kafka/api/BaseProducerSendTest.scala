@@ -34,7 +34,7 @@ import org.apache.kafka.common.record.TimestampType
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{AfterEach, BeforeEach, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Test, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
@@ -490,6 +490,37 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       }
     } finally {
       producer.close()
+    }
+  }
+
+  /**
+   * Test that flush return with TimeoutException when producer is unable to finish sending buffered records in time.
+   */
+  @Test
+  def testBoundedFlush(): Unit = {
+    val producer = createProducer()
+    createTopic(topic, 2, 2)
+    try {
+      producer.send(new ProducerRecord(topic, null, "value1".getBytes())).get()
+      try {
+        killBroker(0)
+      } catch {
+        case _: Throwable =>
+      }
+      try {
+        killBroker(1)
+      } catch {
+        case _: Throwable =>
+      }
+      producer.send(new ProducerRecord(topic, null, "value2".getBytes()))
+      try {
+        producer.flush(1000, TimeUnit.MILLISECONDS)
+        fail("TimeoutException should have thrown")
+      } catch {
+        case _: TimeoutException =>
+      }
+    } finally {
+      producer.close(Duration.ofMillis(1000))
     }
   }
 

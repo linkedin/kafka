@@ -139,11 +139,11 @@ public class AbstractCoordinatorTest {
                                                         retryBackoffMs,
                                                         REQUEST_TIMEOUT_MS,
                                                         HEARTBEAT_INTERVAL_MS);
-        metrics = new Metrics(mockTime);
 
         mockClient.updateMetadata(RequestTestUtils.metadataUpdateWith(1, emptyMap()));
         this.node = metadata.fetch().nodes().get(0);
         this.coordinatorNode = new Node(Integer.MAX_VALUE - node.id(), node.host(), node.port());
+        metrics = new Metrics(mockTime);
 
         GroupRebalanceConfig rebalanceConfig = new GroupRebalanceConfig(SESSION_TIMEOUT_MS,
                                                                         rebalanceTimeoutMs,

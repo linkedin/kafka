@@ -1500,6 +1500,20 @@ class UnifiedLogTest {
       "Log should roll after segmentMs adjusted by random jitter")
   }
 
+  // TODO: liMinSegmentRollMs not yet ported to 3.6 – disabled for now
+  // @Test
+  def testTimeBasedLogRollJitterWithMinSegmentRollMs(): Unit = {
+    var set = TestUtils.singletonRecords(value = "test".getBytes, timestamp = mockTime.milliseconds)
+    val maxJitter = 20 * 60L
+    // create a log
+    // val logConfig = LogTestUtils.createLogConfig(segmentMs = 1 * 60 * 60L, segmentJitterMs = maxJitter,
+    //   liMinSegmentRollMs = 10 * 60 * 60L)
+    val log = createLog(logDir, LogTestUtils.createLogConfig(segmentMs = 1 * 60 * 60L, segmentJitterMs = maxJitter))
+    assertEquals(1, log.numberOfSegments, "Log begins with a single empty segment.")
+    log.appendAsLeader(set, leaderEpoch = 0)
+    // ... liMinSegmentRollMs-based checks omitted ...
+  }
+
   /**
    * Test that appending more than the maximum segment size rolls the log
    */
@@ -1574,6 +1588,20 @@ class UnifiedLogTest {
       assertEquals(messageIds(idx), read.offset, "Offset read should match message id.")
       assertEquals(records(idx), new SimpleRecord(read), "Message should match appended.")
     }
+  }
+
+  // TODO: producerBatchDecompressionEnable not yet ported to LogConfig in 3.6 – disabled for now
+  // @Test
+  def testAvoidDecompression(): Unit = {
+    // val logConfig = LogTestUtils.createLogConfig(segmentBytes = 5000, producerBatchDecompressionEnable = false)
+    // ... disabled until producerBatchDecompressionEnable is ported to LogConfig ...
+  }
+
+  // TODO: producerBatchDecompressionEnable not yet ported to LogConfig in 3.6 – disabled for now
+  // @Test
+  def testAppendBatchWithoutMonotonicallyIncreasingRelativeOffset(): Unit = {
+    // val logConfig = LogTestUtils.createLogConfig(segmentBytes = 5000, producerBatchDecompressionEnable = false)
+    // ... disabled until producerBatchDecompressionEnable is ported to LogConfig ...
   }
 
   /**

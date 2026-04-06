@@ -114,6 +114,8 @@ class MockPartitionStateMachine(
         leaderForPreferredReplica(controllerContext, validLeaderAndIsrs)
       case ControlledShutdownPartitionLeaderElectionStrategy =>
         leaderForControlledShutdown(controllerContext, validLeaderAndIsrs)
+      case RecommendedLeaderElectionStrategy(_) =>
+        leaderForControlledShutdown(controllerContext, validLeaderAndIsrs)
     }
 
     val results: Map[TopicPartition, Either[Exception, LeaderAndIsr]] = electionResults.map { electionResult =>

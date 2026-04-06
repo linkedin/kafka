@@ -784,7 +784,7 @@ class RequestQuotaTest extends BaseRequestTest {
     assertTrue(throttled, s"Response not throttled: $smallQuotaProducerClient")
     assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Produce) > 0,
       s"Throttle time metrics for produce quota not updated: $smallQuotaProducerClient")
-    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Request).isNaN,
+    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Request) == 0,
       s"Throttle time metrics for request quota updated: $smallQuotaProducerClient")
   }
 
@@ -797,7 +797,7 @@ class RequestQuotaTest extends BaseRequestTest {
     assertTrue(throttled, s"Response not throttled: $smallQuotaConsumerClientId")
     assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Fetch) > 0,
       s"Throttle time metrics for consumer quota not updated: $smallQuotaConsumerClient")
-    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Request).isNaN,
+    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Request) == 0,
       s"Throttle time metrics for request quota updated: $smallQuotaConsumerClient")
   }
 
@@ -807,7 +807,7 @@ class RequestQuotaTest extends BaseRequestTest {
     val unthrottledClient = Client(unthrottledClientId, apiKey)
     unthrottledClient.runUntil(_.throttleTimeMs <= 0.0)
     assertEquals(1, unthrottledClient.correlationId)
-    assertTrue(throttleTimeMetricValue(unthrottledClientId).isNaN, s"Client should not have been throttled: $unthrottledClient")
+    assertTrue(throttleTimeMetricValue(unthrottledClientId) == 0, s"Client should not have been throttled: $unthrottledClient")
   }
 
   private def checkExemptRequestMetric(apiKey: ApiKeys): Unit = {

@@ -1165,7 +1165,6 @@ class ReplicaManagerTest {
       val fetch4 = successfulFetch.headOption.filter(_._1 == zeroTidp2).map(_._2)
       assertTrue(fetch4.isDefined)
       assertEquals(Errors.NONE, fetch4.get.error)
-
     } finally {
       replicaManager.shutdown(checkpointHW = false)
     }

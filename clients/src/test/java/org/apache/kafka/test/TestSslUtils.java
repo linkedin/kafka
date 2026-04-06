@@ -21,6 +21,7 @@ import org.apache.kafka.common.config.types.Password;
 import org.apache.kafka.common.network.Mode;
 import org.apache.kafka.common.security.auth.SslEngineFactory;
 import org.apache.kafka.common.security.ssl.DefaultSslEngineFactory;
+import org.apache.kafka.common.security.ssl.SimpleSslContextProvider;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERT61String;
@@ -99,6 +100,9 @@ public class TestSslUtils {
 
     public static final String TRUST_STORE_PASSWORD = "TrustStorePassword";
     public static final String DEFAULT_TLS_PROTOCOL_FOR_TESTS = SslConfigs.DEFAULT_SSL_PROTOCOL;
+    public enum SSLProvider {
+        DEFAULT, OPENSSL
+    }
 
     /**
      * Create a self-signed X.509 Certificate.
@@ -181,7 +185,7 @@ public class TestSslUtils {
         List<String> enabledProtocols  = new ArrayList<>();
         enabledProtocols.add(tlsProtocol);
         sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
-
+        sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, SslConfigs.DEFAULT_SSL_CONTEXT_PROVIDER_CLASS);
         return sslConfigs;
     }
 
@@ -446,6 +450,7 @@ public class TestSslUtils {
         String algorithm;
         CertificateBuilder certBuilder;
         boolean usePem;
+        SSLProvider provider;
 
         public SslConfigsBuilder(Mode mode) {
             this.mode = mode;
@@ -458,6 +463,7 @@ public class TestSslUtils {
             this.certAlias = mode.name().toLowerCase(Locale.ROOT);
             this.algorithm = "RSA";
             this.createTrustStore = true;
+            this.provider = SSLProvider.DEFAULT;
         }
 
         public SslConfigsBuilder tlsProtocol(String tlsProtocol) {
@@ -504,6 +510,11 @@ public class TestSslUtils {
 
         public SslConfigsBuilder usePem(boolean usePem) {
             this.usePem = usePem;
+            return this;
+        }
+
+        public SslConfigsBuilder provider(SSLProvider provider) {
+            this.provider = provider;
             return this;
         }
 
@@ -559,6 +570,11 @@ public class TestSslUtils {
             enabledProtocols.add(tlsProtocol);
             sslConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, enabledProtocols);
 
+            if (provider.equals(SSLProvider.OPENSSL)) {
+                sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, "org.apache.kafka.common.security.ssl.BoringSslContextProvider");
+            } else {
+                sslConfigs.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, SimpleSslContextProvider.class.getName());
+            }
             return sslConfigs;
         }
 

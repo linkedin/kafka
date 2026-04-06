@@ -84,7 +84,7 @@ public class LeaderAndIsrResponseTest {
                 LeaderAndIsrTopicErrorCollection topics = createTopic(id, asList(Errors.NONE, Errors.NOT_LEADER_OR_FOLLOWER));
                 response = new LeaderAndIsrResponse(new LeaderAndIsrResponseData()
                         .setErrorCode(Errors.UNKNOWN_SERVER_ERROR.code())
-                        .setTopics(topics), version); 
+                        .setTopics(topics), version);
             }
             assertEquals(Collections.singletonMap(Errors.UNKNOWN_SERVER_ERROR, 3), response.errorCounts());
         }

@@ -640,5 +640,4 @@ class LeaderEpochFileCacheTest {
     assertEquals(OptionalInt.of(5), cache.epochForOffset(50))
     assertEquals(OptionalInt.empty(), cache.epochForOffset(5))
   }
-
 }

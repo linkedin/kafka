@@ -67,7 +67,6 @@ class AbstractFetcherThreadTest {
     fetcher.mockLeader.setReplicaPartitionStateCallback(fetcher.replicaPartitionState)
 
     fetcher.start()
-
     val brokerTopicStatsMetrics = fetcher.brokerTopicStats.allTopicsStats.metricMap.keySet
     val fetcherMetrics = Set(FetcherMetrics.BytesPerSec, FetcherMetrics.RequestsPerSec, FetcherMetrics.ConsumerLag)
 

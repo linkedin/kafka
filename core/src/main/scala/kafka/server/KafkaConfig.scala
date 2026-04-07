@@ -1637,6 +1637,8 @@ object KafkaConfig {
       .define(SocketRequestCommonBytesProp, INT, Defaults.SocketRequestCommonBytes, MEDIUM, "Common bytes in socket request")
       .define(SocketRequestBufferCacheSizeProp, INT, Defaults.SocketRequestBufferCacheSize, atLeast(0), MEDIUM, "Socket request buffer cache size")
       .define(LiMinOriginalAliveReplicasProp, INT, Defaults.LiMinOriginalAliveReplicas, LOW, "Minimum original alive replicas")
+      .define(LiMinLogRollTimeMillisProp, LONG, -1L, LOW, "Minimum log roll time in milliseconds. -1 means no minimum.")
+      .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, STRING, "", LOW, "Class name for rack ID mapper used in rack-aware replica assignment")
       .define(ControlledShutdownSafetyCheckEnableProp, BOOLEAN, Defaults.ControlledShutdownSafetyCheckEnable, MEDIUM, "Enable controlled shutdown safety check")
       .define(ControlledShutdownSafetyCheckRedundancyFactorProp, INT, Defaults.ControlledShutdownSafetyCheckRedundancyFactor, MEDIUM, "Controlled shutdown safety check redundancy factor")
       .define(ControlledShutdownPartitionBatchSizeProp, INT, Defaults.ControlledShutdownPartitionBatchSize, MEDIUM, "Controlled shutdown partition batch size")

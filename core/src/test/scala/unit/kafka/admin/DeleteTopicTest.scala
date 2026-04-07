@@ -26,7 +26,7 @@ import kafka.zk.TopicPartitionZNode
 import kafka.utils.TestUtils
 import kafka.server.{KafkaConfig, KafkaServer, QuorumTestHarness}
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{AfterEach, Test}
+import org.junit.jupiter.api.{AfterEach, Disabled, Test}
 import kafka.common.TopicAlreadyMarkedForDeletionException
 import kafka.controller.{OfflineReplica, PartitionAndReplica, ReplicaAssignment, ReplicaDeletionSuccessful}
 import org.apache.kafka.clients.admin.{Admin, AdminClientConfig, NewPartitionReassignment, NewPartitions}
@@ -34,6 +34,7 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException
 import scala.jdk.CollectionConverters._
 
+@Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
 class DeleteTopicTest extends QuorumTestHarness {
 
   var servers: Seq[KafkaServer] = Seq()

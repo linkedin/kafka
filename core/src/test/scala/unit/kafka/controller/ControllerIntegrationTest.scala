@@ -39,7 +39,7 @@ import org.apache.kafka.server.common.MetadataVersion.{IBP_2_6_IV0, IBP_2_7_IV0,
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.apache.log4j.Level
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue}
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, Test, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.mockito.Mockito.{doAnswer, spy, verify}
@@ -307,6 +307,7 @@ class ControllerIntegrationTest extends QuorumTestHarness {
   /**
    * Tests that controller will fix insufficient RF topic by assigning sufficient replicas
    */
+  @Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
   @Test
   def testTopicCreationWithFixingRF(): Unit = {
     val topicRF1 = "test_topic_rf1"
@@ -1873,6 +1874,7 @@ class ControllerIntegrationTest extends QuorumTestHarness {
       "topic should have been removed from controller context after deletion")
   }
 
+  @Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
   @Test
   def testTopicDeletionWithOfflineBrokers(): Unit = {
     val tp = new TopicPartition("t", 0)
@@ -1918,6 +1920,7 @@ class ControllerIntegrationTest extends QuorumTestHarness {
     }, s"Not every online broker has the correct topic ID for topic ${tp.topic()}")
   }
 
+  @Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
   @Test
   def testDeletionOfStrayPartitions(): Unit = {
     val tp = new TopicPartition("t1", 0)

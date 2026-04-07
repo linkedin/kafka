@@ -523,6 +523,12 @@ For a detailed description of spotbugs bug categories, see https://spotbugs.read
         <Field name="buf"/>
         <Bug pattern="VO_VOLATILE_REFERENCE_TO_ARRAY"/>
     </Match>
+    <Match>
+        <!-- LI: ControllerRequestMerger uses Scala pattern matching on LeaderAndIsrRequestType
+             which SpotBugs misinterprets as Boolean.equals(LeaderAndIsrRequestType) -->
+        <Class name="kafka.controller.ControllerRequestMerger"/>
+        <Bug pattern="EC_UNRELATED_TYPES"/>
+    </Match>
 
     <Match>
         <Package name="org.apache.kafka.common.security.oauthbearer.secured" />

@@ -462,7 +462,7 @@ For a detailed description of spotbugs bug categories, see https://spotbugs.read
         <Bug pattern="EQ_UNUSUAL"/>
     </Match>
 
--    <Match>
+    <Match>
         <Package name="org.apache.kafka.streams.scala"/>
         <Or>
             <Class name="org.apache.kafka.streams.scala.Serializer" />
@@ -540,6 +540,13 @@ For a detailed description of spotbugs bug categories, see https://spotbugs.read
         <!-- Suppress warning because JMH code is used to instantiate Random() once per Trial. This is done to ensure
              that all benchmarks run with same seed for Random. -->
         <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
+    </Match>
+
+    <Match>
+        <!-- LI: KafkaConfig is too large for SpotBugs analysis due to many LI-specific config
+             definitions. This is an experimental category warning, not a real bug. -->
+        <Class name="kafka.server.KafkaConfig"/>
+        <Bug pattern="SKIPPED_CLASS_TOO_BIG"/>
     </Match>
 
 </FindBugsFilter>

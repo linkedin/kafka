@@ -27,7 +27,8 @@ import com.yammer.metrics.core.Meter
 import org.apache.kafka.common.internals.FatalExitError
 import org.apache.kafka.common.utils.{KafkaThread, Time}
 import org.apache.kafka.server.log.remote.storage.RemoteStorageMetrics
-import kafka.metrics.KafkaMetricsGroup
+import kafka.metrics.{KafkaMetricsGroup => ScalaKafkaMetricsGroup}
+import org.apache.kafka.server.metrics.{KafkaMetricsGroup => JavaKafkaMetricsGroup}
 
 import java.util.Collections
 import scala.collection.mutable
@@ -189,7 +190,7 @@ class KafkaRequestHandlerPool(val brokerId: Int,
                               numThreads: Int,
                               requestHandlerAvgIdleMetricName: String,
                               logAndThreadNamePrefix : String) extends Logging {
-  private val metricsGroup = new Object with kafka.metrics.KafkaMetricsGroup
+  private val metricsGroup = new JavaKafkaMetricsGroup(classOf[KafkaRequestHandlerPool])
 
   private val threadPoolSize: AtomicInteger = new AtomicInteger(numThreads)
   /* a meter to track the average free capacity of the request handlers */
@@ -232,11 +233,11 @@ class KafkaRequestHandlerPool(val brokerId: Int,
 }
 
 class BrokerTopicMetrics(name: Option[String], configOpt: java.util.Optional[KafkaConfig]) {
-  private val metricsGroup = new Object with kafka.metrics.KafkaMetricsGroup
+  private val metricsGroup = new JavaKafkaMetricsGroup(classOf[BrokerTopicMetrics])
 
-  val tags: Map[String, String] = name match {
-    case None => Map.empty
-    case Some(topic) => Map("topic" -> topic)
+  val tags: java.util.Map[String, String] = name match {
+    case None => Collections.emptyMap()
+    case Some(topic) => Map("topic" -> topic).asJava
   }
 
   case class MeterWrapper(metricType: String, eventType: String) {
@@ -488,10 +489,10 @@ class BrokerTopicStats(configOpt: java.util.Optional[KafkaConfig] = java.util.Op
   }
 }
 
-object BrokerMetadataStats extends KafkaMetricsGroup {
+object BrokerMetadataStats extends ScalaKafkaMetricsGroup {
   val outgoingBytesRate: Meter = newMeter("MetadataOutgoingBytesPerSec", "bytes", TimeUnit.SECONDS)
 }
 
-object ConsumerStats extends KafkaMetricsGroup {
+object ConsumerStats extends ScalaKafkaMetricsGroup {
   val consumedDataAgeHist = newHistogram("ConsumedDataAgeMs")
 }

@@ -26,11 +26,12 @@ import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, Produce
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.utils.Time
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.util.Properties
 import scala.collection.Seq
 
+@Disabled("RIOT-766: LI-specific test depends on LI controller features not yet ported to 3.6")
 class CorruptedBrokersTest extends IntegrationTestHarness {
   val brokerCount = 3
   val controllerId = 0

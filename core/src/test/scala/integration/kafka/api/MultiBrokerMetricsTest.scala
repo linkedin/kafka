@@ -21,11 +21,12 @@ import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.util.Properties
 import scala.jdk.CollectionConverters._
 
+@Disabled("RIOT-766: LI-specific test depends on LI metrics features not yet ported to 3.6")
 class MultiBrokerMetricsTest extends IntegrationTestHarness {
   override val brokerCount = 4
 

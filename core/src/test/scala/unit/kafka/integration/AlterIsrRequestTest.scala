@@ -25,12 +25,13 @@ import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.nio.charset.StandardCharsets
 import java.util
 import java.util.{Collections, Properties}
 
+@Disabled("RIOT-766: LI-specific test depends on LI controller features not yet ported to 3.6")
 class AlterIsrRequestTest extends QuorumTestHarness {
   @Test
   def testUnauthorizedAlterISRRequest(): Unit = {

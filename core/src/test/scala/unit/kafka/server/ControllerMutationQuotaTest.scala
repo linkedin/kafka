@@ -45,7 +45,7 @@ import org.apache.kafka.test.{TestUtils => JTestUtils}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
-import org.junit.jupiter.api.{BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{BeforeEach, Disabled, Test, TestInfo}
 
 import scala.jdk.CollectionConverters._
 
@@ -88,6 +88,7 @@ object ControllerMutationQuotaTest {
   val ControllerMutationRate = 2.0
 }
 
+@Disabled("RIOT-766: Controller mutation quota tests fail due to LI controller topic deletion issues on 3.6")
 class ControllerMutationQuotaTest extends BaseRequestTest {
   import ControllerMutationQuotaTest._
 

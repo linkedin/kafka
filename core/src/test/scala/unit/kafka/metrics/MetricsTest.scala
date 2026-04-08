@@ -35,7 +35,7 @@ import org.apache.kafka.common.utils.Time
 import org.apache.kafka.metadata.migration.ZkMigrationState
 import org.apache.kafka.server.metrics.KafkaMetricsGroup
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
-import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.{Disabled, Timeout}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
@@ -55,6 +55,7 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
 
   val nMessages = 2
 
+  @Disabled("RIOT-766: LI controller changes break topic deletion in 3.6")
   @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumName)
   @ValueSource(strings = Array("zk", "kraft"))
   def testMetricsReporterAfterDeletingTopic(quorum: String): Unit = {
@@ -65,6 +66,7 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
     assertEquals(Set.empty, topicMetricGroups(topic), "Topic metrics exists after deleteTopic")
   }
 
+  @Disabled("RIOT-766: LI controller changes break topic deletion in 3.6")
   @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumName)
   @ValueSource(strings = Array("zk", "kraft"))
   def testBrokerTopicMetricsUnregisteredAfterDeletingTopic(quorum: String): Unit = {

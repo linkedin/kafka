@@ -24,6 +24,7 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.test.TestUtils;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.mockito.Mockito.mock;
 
+@Disabled("RIOT-766: LI-added test requires running broker — needs conversion to integration test")
 class ConsumerManagerTest {
 
     @Test

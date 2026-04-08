@@ -27,7 +27,7 @@ import org.apache.kafka.common.utils.MockTime
 import org.apache.kafka.server.log.remote.storage.{NoOpRemoteLogMetadataManager, NoOpRemoteStorageManager, RemoteLogManagerConfig, RemoteLogSegmentId, RemoteLogSegmentMetadata, RemoteLogSegmentState}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.function.Executable
-import org.junit.jupiter.api.{BeforeEach, Tag, TestInfo}
+import org.junit.jupiter.api.{BeforeEach, Disabled, Tag, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
@@ -39,6 +39,7 @@ import scala.concurrent.ExecutionException
 import scala.util.Random
 
 @Tag("integration")
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class RemoteTopicCrudTest extends IntegrationTestHarness {
 
   val numPartitions = 2

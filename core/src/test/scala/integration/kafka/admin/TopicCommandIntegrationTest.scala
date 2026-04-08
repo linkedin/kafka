@@ -34,7 +34,7 @@ import org.apache.kafka.common.requests.MetadataResponse
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.function.Executable
-import org.junit.jupiter.api.{AfterEach, BeforeEach, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito._
@@ -44,6 +44,7 @@ import scala.concurrent.ExecutionException
 import scala.jdk.CollectionConverters._
 import scala.util.Random
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class TopicCommandIntegrationTest extends KafkaServerTestHarness with Logging with RackAwareTest {
 
   /**

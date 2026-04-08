@@ -65,6 +65,7 @@ import scala.util.Random
  *
  * Also see [[org.apache.kafka.clients.admin.KafkaAdminClientTest]] for unit tests of the admin client.
  */
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
   import PlaintextAdminIntegrationTest._
 

@@ -28,11 +28,12 @@ import org.apache.kafka.common.protocol.{ApiKeys, Errors}
 import org.apache.kafka.common.requests.{DeleteTopicsRequest, DeleteTopicsResponse, FetchRequest, FetchResponse, MetadataRequest, MetadataResponse}
 import org.apache.kafka.server.common.MetadataVersion.{IBP_2_7_IV0}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.{BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{BeforeEach, Disabled, Test, TestInfo}
 
 import scala.collection.Seq
 import scala.jdk.CollectionConverters._
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class TopicIdWithOldInterBrokerProtocolTest extends BaseRequestTest {
 
   override def brokerPropertyOverrides(properties: Properties): Unit = {

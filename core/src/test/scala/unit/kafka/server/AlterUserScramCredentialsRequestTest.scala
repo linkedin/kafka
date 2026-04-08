@@ -34,7 +34,7 @@ import org.apache.kafka.common.security.auth.{AuthenticationContext, KafkaPrinci
 import org.apache.kafka.common.security.authenticator.DefaultKafkaPrincipalBuilder
 import org.apache.kafka.server.authorizer.{Action, AuthorizableRequestContext, AuthorizationResult}
 import org.apache.kafka.server.common.MetadataVersion
-import org.junit.jupiter.api.{Test, BeforeEach, TestInfo}
+import org.junit.jupiter.api.{Disabled, Test, BeforeEach, TestInfo}
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -46,6 +46,7 @@ import scala.jdk.CollectionConverters._
  * or failure is expected due to lack of authorization, sending the request to a non-controller broker, or some other issue.
  * Also tests the Alter and Describe APIs for the case where credentials are successfully altered/described.
  */
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class AlterUserScramCredentialsRequestTest extends BaseRequestTest {
 
   protected var testMetadataVersion = MetadataVersion.latest

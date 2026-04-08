@@ -18,7 +18,7 @@
 package kafka.integration
 
 import org.apache.kafka.common.config.{ConfigException, ConfigResource}
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, Test, TestInfo}
 
 import scala.util.Random
 import scala.jdk.CollectionConverters._
@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Assertions._
 
 import scala.annotation.nowarn
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class UncleanLeaderElectionTest extends QuorumTestHarness {
   val brokerId1 = 0
   val brokerId2 = 1

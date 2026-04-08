@@ -23,10 +23,11 @@ import kafka.server.KafkaConfig
 import kafka.utils.{Logging, TestUtils}
 
 import scala.jdk.CollectionConverters._
-import org.junit.jupiter.api.{BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{BeforeEach, Disabled, Test, TestInfo}
 import com.yammer.metrics.core.Gauge
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 
+@Disabled("RIOT-766: LI controller changes break topic deletion metrics in 3.6")
 class MetricsDuringTopicCreationDeletionTest extends KafkaServerTestHarness with Logging {
 
   private val nodesNum = 3

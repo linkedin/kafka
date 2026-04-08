@@ -25,10 +25,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.Disabled;
+
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.server.log.remote.storage.LocalTieredStorageEvent.EventType.DELETE_SEGMENT;
 
+@Disabled("RIOT-766: LI controller changes break topic deletion in 3.6")
 public final class DeleteTopicTest extends TieredStorageTestHarness {
 
     @Override

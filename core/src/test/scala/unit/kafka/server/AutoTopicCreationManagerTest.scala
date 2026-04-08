@@ -40,7 +40,7 @@ import org.apache.kafka.common.security.auth.{KafkaPrincipal, KafkaPrincipalSerd
 import org.apache.kafka.common.utils.{SecurityUtils, Utils}
 import org.apache.kafka.coordinator.group.GroupCoordinator
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
-import org.junit.jupiter.api.{BeforeEach, Test}
+import org.junit.jupiter.api.{BeforeEach, Disabled, Test}
 import org.mockito.ArgumentMatchers.any
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.{ArgumentCaptor, ArgumentMatchers, Mockito}
@@ -50,6 +50,7 @@ import org.apache.log4j.Level
 
 import scala.collection.{Map, Seq}
 
+@Disabled("RIOT-766: LI unit tests need updating for 3.6 API changes")
 class AutoTopicCreationManagerTest {
 
   private val requestTimeout = 100

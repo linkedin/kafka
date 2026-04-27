@@ -54,4 +54,4 @@ jobs:
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         # Maintain lexicographical order for subprojects
         run: |
-          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:publish :core:publish :metadata:publish :raft:publish :server-common:publish :storage:publish :storage:api:publish --no-daemon
+          ./gradlew -Pversion=${{ env.RELEASE_VERSION }} :clients:publish :core:publish :group-coordinator:publish :metadata:publish :raft:publish :server-common:publish :storage:publish :storage:api:publish :tools:tools-api:publish --no-daemon

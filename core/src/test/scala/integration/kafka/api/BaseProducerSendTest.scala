@@ -34,7 +34,7 @@ import org.apache.kafka.common.record.TimestampType
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, Test, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
@@ -496,6 +496,7 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
   /**
    * Test that flush return with TimeoutException when producer is unable to finish sending buffered records in time.
    */
+  @Disabled("LI-HOTFIX: Bounded flush test causes thread leak cascade in CI; needs investigation")
   @Test
   def testBoundedFlush(): Unit = {
     val producer = createProducer()

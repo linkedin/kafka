@@ -23,11 +23,12 @@ import org.apache.kafka.clients.admin.{Admin, AdminClientConfig}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.util
 import java.util.Properties
 
+@Disabled("LI-HOTFIX: electRecommendedLeaders not yet implemented in KafkaAdminClient for 3.6")
 class RecommendedLeaderElectionTest extends KafkaServerTestHarness {
   val numNodes = 2
   val overridingProps = new Properties

@@ -391,7 +391,7 @@ public class ConsumerTaskTest {
         }
 
         @Override
-        public void syncLogMetadataSnapshot(TopicIdPartition topicIdPartition, int metadataPartition, Long metadataPartitionOffset) {
+        public void syncLogMetadataSnapshot(TopicIdPartition topicIdPartition, int metadataPartition, long metadataPartitionOffset) {
         }
 
         @Override

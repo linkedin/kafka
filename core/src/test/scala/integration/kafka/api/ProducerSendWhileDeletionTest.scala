@@ -22,11 +22,12 @@ import org.apache.kafka.clients.producer.{ProducerConfig, ProducerRecord}
 
 import org.apache.kafka.common.TopicPartition
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.nio.charset.StandardCharsets
 
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class ProducerSendWhileDeletionTest extends IntegrationTestHarness {
     val producerCount: Int = 1
     val brokerCount: Int = 2

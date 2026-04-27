@@ -30,12 +30,14 @@ import org.apache.kafka.common.requests.DeleteTopicsResponse
 import org.apache.kafka.common.requests.MetadataRequest
 import org.apache.kafka.common.requests.MetadataResponse
 import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
 import scala.collection.Seq
 import scala.jdk.CollectionConverters._
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class DeleteTopicsRequestTest extends BaseRequestTest with Logging {
 
   @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumName)

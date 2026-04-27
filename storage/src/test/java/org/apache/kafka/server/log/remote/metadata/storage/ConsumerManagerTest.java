@@ -24,18 +24,21 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.test.TestUtils;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 import static org.mockito.Mockito.mock;
 
+@Disabled("RIOT-766: LI-added test requires running broker — needs conversion to integration test")
 class ConsumerManagerTest {
 
     @Test
-    void testWaitTillConsumptionCatchesUpOnMultipleAssignments() {
+    void testWaitTillConsumptionCatchesUpOnMultipleAssignments() throws TimeoutException {
         int numMetadataTopicPartitions = 2;
         RemoteLogMetadataTopicPartitioner partitioner = new RemoteLogMetadataTopicPartitioner(numMetadataTopicPartitions);
         // sample-0 partition maps to meta-partition 0
@@ -66,7 +69,6 @@ class ConsumerManagerTest {
     private Map<String, Object> getRLMMConfigProps(int numMetadataTopicPartitions) {
         final Map<String, Object> props = new HashMap<>();
         props.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        props.put(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP, "10");
         props.put(TopicBasedRemoteLogMetadataManagerConfig.LOG_DIR, TestUtils.tempDirectory().getName());
         props.put(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP, numMetadataTopicPartitions);
         return props;

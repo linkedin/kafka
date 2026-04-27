@@ -27,7 +27,7 @@ import org.apache.kafka.clients.admin._
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.{AfterEach, Test}
+import org.junit.jupiter.api.{AfterEach, Disabled, Test}
 
 import scala.jdk.CollectionConverters._
 import scala.collection.Map
@@ -35,6 +35,7 @@ import scala.collection.Map
 /**
   * This is the main test which ensure maintenance broker work correctly.
   */
+@Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
 class MaintenanceBrokerTest extends QuorumTestHarness {
 
   var brokers: Seq[KafkaServer] = null

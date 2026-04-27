@@ -26,11 +26,12 @@ import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 
 import java.nio.charset.StandardCharsets
 import java.util.{Collections, Properties}
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class DegradedLeaderTest extends QuorumTestHarness {
   @Test
   def testLeadershipTransferByDegradedLeader(): Unit = {

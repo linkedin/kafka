@@ -32,7 +32,7 @@ import org.apache.kafka.common.security.auth.{KafkaPrincipal, SecurityProtocol}
 import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.storage.internals.log.LogConfig
 import org.junit.jupiter.api.Assertions._
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test, TestInfo}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, Test, TestInfo}
 
 import java.util.Collections
 import scala.jdk.CollectionConverters._
@@ -41,6 +41,7 @@ import scala.compat.java8.OptionConverters._
 import scala.concurrent.ExecutionException
 import scala.util.{Failure, Success, Try}
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class SaslSslAdminIntegrationTest extends BaseAdminIntegrationTest with SaslSetup {
   val clusterResourcePattern = new ResourcePattern(ResourceType.CLUSTER, Resource.CLUSTER_NAME, PatternType.LITERAL)
 

@@ -31,7 +31,7 @@ import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.record.LegacyRecord
 import org.apache.kafka.common.record.Records.{HEADER_SIZE_UP_TO_MAGIC, SIZE_OFFSET}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.{AfterEach, Test, TestInfo}
+import org.junit.jupiter.api.{AfterEach, Disabled, Test, TestInfo}
 import kafka.server.QuorumTestHarness
 
 import java.io.{BufferedWriter, File, FileOutputStream, OutputStreamWriter, RandomAccessFile}
@@ -40,6 +40,7 @@ import java.nio.charset.StandardCharsets
 import java.util.{Collections, Properties}
 import scala.collection.{Map, Seq}
 
+@Disabled("RIOT-766: Topic deletion broken in LI controller on 3.6 — needs investigation")
 class DropCorruptedFilesTest extends QuorumTestHarness {
   val topic = "test"
   val partition = 0

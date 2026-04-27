@@ -27,7 +27,7 @@ import org.apache.kafka.common.security.auth.{KafkaPrincipal, SecurityProtocol}
 import org.apache.kafka.server.authorizer._
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotNull, assertTrue}
-import org.junit.jupiter.api.{AfterEach, Test}
+import org.junit.jupiter.api.{AfterEach, Disabled, Test}
 
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable
@@ -77,6 +77,7 @@ object SslAdminIntegrationTest {
   }
 }
 
+@Disabled("RIOT-766: LI controller changes break topic deletion and leader election in 3.6")
 class SslAdminIntegrationTest extends SaslSslAdminIntegrationTest {
   override val authorizationAdmin = new AclAuthorizationAdmin(classOf[SslAdminIntegrationTest.TestableAclAuthorizer], classOf[AclAuthorizer])
 

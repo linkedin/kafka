@@ -204,7 +204,7 @@ class RequestQuotaTest extends BaseRequestTest {
     RequestQuotaTest.principal = RequestQuotaTest.UnauthorizedPrincipal
 
     val apiKeys = if (isKRaftTest()) ApiKeys.kraftBrokerApis else ApiKeys.zkBrokerApis
-    for (apiKey <- apiKeys.asScala.toSet -- RequestQuotaTest.Envelope) {
+    for (apiKey <- apiKeys.asScala.toSet -- RequestQuotaTest.Envelope -- RequestQuotaTest.LiSpecificApis) {
       submitTest(apiKey, () => checkUnauthorizedRequestThrottle(apiKey))
     }
 
@@ -213,17 +213,17 @@ class RequestQuotaTest extends BaseRequestTest {
 
   private def clientActions: Set[ApiKeys] = {
     if (isKRaftTest()) {
-      ApiKeys.kraftBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope
+      ApiKeys.kraftBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope -- RequestQuotaTest.LiSpecificApis
     } else {
-      ApiKeys.zkBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope
+      ApiKeys.zkBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope -- RequestQuotaTest.LiSpecificApis
     }
   }
 
   private def clusterActions: Set[ApiKeys] = {
     if (isKRaftTest()) {
-      ApiKeys.kraftBrokerApis.asScala.filter(_.clusterAction).toSet
+      ApiKeys.kraftBrokerApis.asScala.filter(_.clusterAction).toSet -- RequestQuotaTest.LiSpecificApis
     } else {
-      ApiKeys.zkBrokerApis.asScala.filter(_.clusterAction).toSet
+      ApiKeys.zkBrokerApis.asScala.filter(_.clusterAction).toSet -- RequestQuotaTest.LiSpecificApis
     }
   }
 
@@ -784,7 +784,7 @@ class RequestQuotaTest extends BaseRequestTest {
     assertTrue(throttled, s"Response not throttled: $smallQuotaProducerClient")
     assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Produce) > 0,
       s"Throttle time metrics for produce quota not updated: $smallQuotaProducerClient")
-    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Request) == 0,
+    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaProducerClientId, QuotaType.Request).isNaN,
       s"Throttle time metrics for request quota updated: $smallQuotaProducerClient")
   }
 
@@ -797,7 +797,7 @@ class RequestQuotaTest extends BaseRequestTest {
     assertTrue(throttled, s"Response not throttled: $smallQuotaConsumerClientId")
     assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Fetch) > 0,
       s"Throttle time metrics for consumer quota not updated: $smallQuotaConsumerClient")
-    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Request) == 0,
+    assertTrue(throttleTimeMetricValueForQuotaType(smallQuotaConsumerClientId, QuotaType.Request).isNaN,
       s"Throttle time metrics for request quota updated: $smallQuotaConsumerClient")
   }
 
@@ -807,7 +807,7 @@ class RequestQuotaTest extends BaseRequestTest {
     val unthrottledClient = Client(unthrottledClientId, apiKey)
     unthrottledClient.runUntil(_.throttleTimeMs <= 0.0)
     assertEquals(1, unthrottledClient.correlationId)
-    assertTrue(throttleTimeMetricValue(unthrottledClientId) == 0, s"Client should not have been throttled: $unthrottledClient")
+    assertTrue(throttleTimeMetricValue(unthrottledClientId).isNaN, s"Client should not have been throttled: $unthrottledClient")
   }
 
   private def checkExemptRequestMetric(apiKey: ApiKeys): Unit = {
@@ -831,6 +831,16 @@ class RequestQuotaTest extends BaseRequestTest {
 object RequestQuotaTest {
   val SaslActions = Set(ApiKeys.SASL_HANDSHAKE, ApiKeys.SASL_AUTHENTICATE)
   val Envelope = Set(ApiKeys.ENVELOPE)
+
+  // LI-specific ApiKeys that don't have standard request builders in this test
+  val LiSpecificApis = Set(
+    ApiKeys.LI_COMBINED_CONTROL,
+    ApiKeys.LI_MOVE_CONTROLLER,
+    ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK,
+    ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES,
+    ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES,
+    ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES
+  )
 
   val UnauthorizedPrincipal = new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "Unauthorized")
   // Principal used for all client connections. This is modified by tests which

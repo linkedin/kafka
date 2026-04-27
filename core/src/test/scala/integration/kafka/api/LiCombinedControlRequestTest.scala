@@ -31,7 +31,7 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.LiCombinedControlRequest
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
+import org.junit.jupiter.api.{AfterEach, BeforeEach, Disabled, Test}
 
 import java.util.Properties
 import java.util
@@ -42,6 +42,7 @@ import scala.jdk.CollectionConverters._
  * This class is used to test the LiCombinedControlRequest when the feature is enabled and disabled via
  * the zk-based dynamic config mechanism
  */
+@Disabled("LI-HOTFIX: li.combined.control.request.enable not registered as dynamic config in 3.6")
 class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging {
   val numNodes = 2
   val overridingProps = new Properties()

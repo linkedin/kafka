@@ -227,6 +227,8 @@
               files="group-coordinator[\\/]src[\\/](generated|generated-test)[\\/].+.java$"/>
 
     <suppress checks="ImportControl" files="FetchResponseData.java"/>
+    <suppress checks="ImportControl" files="PoisonPill.java"/>
+    <suppress checks="ImportControl" files="KafkaYammerMetrics.java"/>
     <suppress checks="ImportControl" files="RecordsSerdeTest.java"/>
 
     <!-- Streams tests -->

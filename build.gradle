@@ -84,9 +84,12 @@ ext {
   skipSigning = project.hasProperty('skipSigning') && skipSigning.toBoolean()
   shouldSign = !skipSigning && !version.endsWith("SNAPSHOT")
 
-  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : ''
-  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : ''
-  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : ''
+  jfrogUsername = System.getenv('JFROG_USERNAME')
+  jfrogApiKey = System.getenv('JFROG_API_KEY')
+
+  mavenUrl = project.hasProperty('mavenUrl') ? project.mavenUrl : jfrogRepoUrl
+  mavenUsername = project.hasProperty('mavenUsername') ? project.mavenUsername : jfrogUsername
+  mavenPassword = project.hasProperty('mavenPassword') ? project.mavenPassword : jfrogApiKey
 
   userShowStandardStreams = project.hasProperty("showStandardStreams") ? showStandardStreams : null
 

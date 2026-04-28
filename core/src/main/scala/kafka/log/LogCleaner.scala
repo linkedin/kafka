@@ -22,7 +22,7 @@ import java.nio._
 import java.util.Date
 import java.util.concurrent.TimeUnit
 import kafka.common._
-import kafka.log.LogCleaner.{CleanerRecopyPercentMetricName, DeadThreadCountMetricName, MaxBufferUtilizationPercentMetricName, MaxCleanTimeMetricName, MaxCompactionDelayMetricsName}
+import kafka.log.LogCleaner.{CleanerRecopyPercentMetricName, DeadThreadCountMetricName, LiveCleanerThreadCountMetricName, MaxBufferUtilizationPercentMetricName, MaxCleanTimeMetricName, MaxCompactionDelayMetricsName}
 import kafka.server.{BrokerReconfigurable, KafkaConfig}
 import kafka.utils._
 import org.apache.kafka.common.{KafkaException, TopicPartition}
@@ -146,6 +146,9 @@ class LogCleaner(initialConfig: CleanerConfig,
     () => maxOverCleanerThreads(_.lastPreCleanStats.maxCompactionDelayMs.toDouble) / 1000)
 
   metricsGroup.newGauge(DeadThreadCountMetricName, () => deadThreadCount)
+
+  /* a metric to track the number of cleaner threads alive */
+  metricsGroup.newGauge(LiveCleanerThreadCountMetricName, () => cleaners.count(_.asInstanceOf[Thread].isAlive))
 
   private[log] def deadThreadCount: Int = cleaners.count(_.isThreadFailed)
 
@@ -525,13 +528,15 @@ object LogCleaner {
   private val MaxCleanTimeMetricName = "max-clean-time-secs"
   private val MaxCompactionDelayMetricsName = "max-compaction-delay-secs"
   private val DeadThreadCountMetricName = "DeadThreadCount"
+  private val LiveCleanerThreadCountMetricName = "live-cleaner-thread-count"
   // package private for testing
   private[log] val MetricNames = Set(
     MaxBufferUtilizationPercentMetricName,
     CleanerRecopyPercentMetricName,
     MaxCleanTimeMetricName,
     MaxCompactionDelayMetricsName,
-    DeadThreadCountMetricName)
+    DeadThreadCountMetricName,
+    LiveCleanerThreadCountMetricName)
 }
 
 /**

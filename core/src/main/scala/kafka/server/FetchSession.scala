@@ -611,6 +611,16 @@ class FetchSessionCache(private val maxEntries: Int,
   metricsGroup.removeMetric(FetchSession.INCREMENTAL_FETCH_SESSIONS_EVICTIONS_PER_SEC)
   private[server] val evictionsMeter = metricsGroup.newMeter(FetchSession.INCREMENTAL_FETCH_SESSIONS_EVICTIONS_PER_SEC,
     FetchSession.EVICTIONS, TimeUnit.SECONDS, Collections.emptyMap())
+  metricsGroup.removeMetric(FetchSession.INCREMENTAL_FETCH_SESSION_CACHE_MISSES_PER_SEC)
+  private[server] val cacheMissesMeter = metricsGroup.newMeter(FetchSession.INCREMENTAL_FETCH_SESSION_CACHE_MISSES_PER_SEC,
+    FetchSession.CACHE_MISSES, TimeUnit.SECONDS, Collections.emptyMap())
+
+  /**
+   * Mark a fetch session cache miss (no session for the requested sessionId).
+   */
+  def markCacheMiss(): Unit = synchronized {
+    cacheMissesMeter.mark()
+  }
 
   /**
     * Get a session by session ID.
@@ -820,6 +830,7 @@ class FetchManager(private val time: Time,
         cache.get(reqMetadata.sessionId) match {
           case None => {
             debug(s"Session error for ${reqMetadata.sessionId}: no such session ID found.")
+            cache.markCacheMiss()
             new SessionErrorContext(Errors.FETCH_SESSION_ID_NOT_FOUND, reqMetadata)
           }
           case Some(session) => session.synchronized {

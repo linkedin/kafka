@@ -21,6 +21,7 @@ import java.io.{File, IOException}
 import java.nio.file.{Files, NoSuchFileException}
 import kafka.common.LogSegmentOffsetOverflowException
 import kafka.log.UnifiedLog.{CleanedFileSuffix, SwapFileSuffix, isIndexFile, isLogFile, offsetFromFile}
+import kafka.server.{GlobalConfig, KafkaConfig}
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.InvalidOffsetException
@@ -429,11 +430,17 @@ class LogLoader(
           try {
             recoverSegment(segment)
           } catch {
-            case _: InvalidOffsetException =>
-              val startOffset = segment.baseOffset
-              warn(s"Found invalid offset during recovery. Deleting the" +
-                s" corrupt segment and creating an empty one with starting offset $startOffset")
-              segment.truncateTo(startOffset)
+            case ooe: LogSegmentOffsetOverflowException =>
+              throw ooe
+            case e: Exception =>
+              if (e.isInstanceOf[InvalidOffsetException] || GlobalConfig.liDropCorruptedFilesEnable) {
+                val startOffset = segment.baseOffset
+                warn(s"Found exception during recovery. Deleting the" +
+                  s" corrupt segment and creating an empty one with starting offset $startOffset", e)
+                segment.truncateTo(startOffset)
+              } else {
+                throw new IllegalStateException(s"Found corruption during log recovery and the ${KafkaConfig.LiDropCorruptedFilesEnableProp} property is set to false")
+              }
           }
         if (truncatedBytes > 0) {
           // we had an invalid message, delete all remaining log

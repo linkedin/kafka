@@ -2259,7 +2259,9 @@ class KafkaConfig private(doLog: Boolean, val props: java.util.Map[_, _], dynami
   val longTailProduceRequestLogRatio = getDouble(KafkaConfig.LiLongTailProduceRequestLogRatioProp)
   val liMinLogRollMs = getLong(KafkaConfig.LiMinLogRollTimeMillisProp)
 
-  def getMaintenanceBrokerList: Seq[Int] = Seq.empty // LI stub
+  def getMaintenanceBrokerList: Seq[Int] = {
+    dynamicConfig.getMaintenanceBrokerList
+  }
 
   /** Internal Configurations **/
   val unstableApiVersionsEnabled = getBoolean(KafkaConfig.UnstableApiVersionsEnableProp)

@@ -347,6 +347,11 @@ class DynamicBrokerConfig(private val kafkaConfig: KafkaConfig) extends Logging 
     }
   }
 
+  private[server] def getMaintenanceBrokerList: Seq[Int] = CoreUtils.inReadLock(lock) {
+    DynamicConfig.Broker.getMaintenanceBrokerListFromString(dynamicDefaultConfigs.getOrElse(DynamicConfig.Broker.MaintenanceBrokerListProp,
+      DynamicConfig.Broker.DefaultMaintenanceBrokerList).toString)
+  }
+
   /**
    * All config updates through ZooKeeper are triggered through actual changes in values stored in ZooKeeper.
    * For some configs like SSL keystores and truststores, we also want to reload the store if it was modified

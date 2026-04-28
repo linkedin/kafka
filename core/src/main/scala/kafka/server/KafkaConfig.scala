@@ -307,7 +307,6 @@ object Defaults {
   val LiUpdateMetadataDelayMs = 0
   val LiDropFetchFollowerEnable = false
   val LiDenyAlterIsr = false
-  val LiAsyncFetcherEnabled = false
   val LiNumControllerInitThreads = 1
   val LiLogCleanerFineGrainedLockEnabled = true
   val LiDropCorruptedFilesEnabled = false
@@ -1229,7 +1228,6 @@ object KafkaConfig {
   val ProducerBatchDecompressionEnableProp = "producer.batch.decompression.enable"
   val PreferredControllerProp = "preferred.controller"
   val LiMinPreferredControllerCountProp = "li.min.preferred.controller.count"
-  val LiAsyncFetcherEnableProp = "li.async.fetcher.enable"
   val LiCombinedControlRequestEnableProp = "li.combined.control.request.enable"
   val LiUpdateMetadataDelayMsProp = "li.update.metadata.delay.ms"
   val LiDropFetchFollowerEnableProp = "li.stop.replication.enable"
@@ -1613,7 +1611,6 @@ object KafkaConfig {
       .define(ProducerBatchDecompressionEnableProp, BOOLEAN, Defaults.ProducerBatchDecompressionEnable, LOW, "Enable producer batch decompression")
       .define(PreferredControllerProp, BOOLEAN, Defaults.PreferredController, HIGH, "Whether this broker is a preferred controller")
       .define(LiMinPreferredControllerCountProp, INT, Defaults.LiMinPreferredControllerCount, atLeast(0), HIGH, "Minimum preferred controller count")
-      .define(LiAsyncFetcherEnableProp, BOOLEAN, Defaults.LiAsyncFetcherEnabled, HIGH, "Enable async fetcher")
       .define(LiCombinedControlRequestEnableProp, BOOLEAN, Defaults.LiCombinedControlRequestEnabled, HIGH, "Enable combined control requests")
       .define(LiUpdateMetadataDelayMsProp, LONG, Defaults.LiUpdateMetadataDelayMs, atLeast(0), LOW, "Delay for UpdateMetadata in ms")
       .define(LiDropFetchFollowerEnableProp, BOOLEAN, Defaults.LiDropFetchFollowerEnable, LOW, "Enable dropping fetch follower")
@@ -2227,7 +2224,6 @@ class KafkaConfig private(doLog: Boolean, val props: java.util.Map[_, _], dynami
   val producerBatchDecompressionEnable = getBoolean(KafkaConfig.ProducerBatchDecompressionEnableProp)
   def preferredController: Boolean = getBoolean(KafkaConfig.PreferredControllerProp)
   def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)
-  val liAsyncFetcherEnable = getBoolean(KafkaConfig.LiAsyncFetcherEnableProp)
   def liCombinedControlRequestEnable = getBoolean(KafkaConfig.LiCombinedControlRequestEnableProp)
   def liUpdateMetadataDelayMs = getLong(KafkaConfig.LiUpdateMetadataDelayMsProp)
   def liDropFetchFollowerEnable = getBoolean(KafkaConfig.LiDropFetchFollowerEnableProp)

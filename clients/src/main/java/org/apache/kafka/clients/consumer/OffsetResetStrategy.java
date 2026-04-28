@@ -19,7 +19,14 @@ package org.apache.kafka.clients.consumer;
 import java.util.Locale;
 
 public enum OffsetResetStrategy {
-    LATEST, EARLIEST, NONE;
+    LATEST, EARLIEST, NONE,
+    /**
+     * LinkedIn-only strategy. Behaves equivalently to {@link #NONE} in the consumer
+     * runtime (the broker has no special handling for it). Retained as an enum constant
+     * so that LI consumer configs of the form {@code auto.offset.reset=licloasest}
+     * continue to parse without {@code IllegalArgumentException}. See LIKAFKA-18568.
+     */
+    LICLOSEST;
 
     @Override
     public String toString() {

@@ -1242,7 +1242,21 @@ class Partition(val topicPartition: TopicPartition,
   }
 
   private def needsShrinkIsr(): Boolean = {
-    leaderLogIfLocal.exists { _ => getOutOfSyncReplicas(replicaLagTimeMaxMs).nonEmpty }
+    leaderLogIfLocal.exists { log =>
+      val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
+      if (outOfSyncReplicaIds.isEmpty) {
+        false
+      } else if ((inSyncReplicaIds -- outOfSyncReplicaIds).size >= log.config.minInSyncReplicas) {
+        true
+      } else {
+        // Refuse to shrink ISR if doing so would push the partition below minInSyncReplicas.
+        // Without this guard the broker happily shrinks an ISR of e.g. {0,1,2} with minISR=2
+        // down to {0} when 1 and 2 lag, instantly making the partition unavailable for writes.
+        // LIKAFKA hotfix; 3.0-li commit 95f2bbeec9.
+        info(s"Refuse to shrink ISR for partition ${topicPartition} to avoid underMinISR. Out of sync replicas: ${outOfSyncReplicaIds}.")
+        false
+      }
+    }
   }
 
   private def isFollowerOutOfSync(replicaId: Int,

@@ -103,11 +103,18 @@ operator action:
   `OneAboveMinIsrPartitionCount`, `live-cleaner-thread-count`,
   `IncrementalFetchSessionCacheMissesPerSec`,
   `BytesInTotal`, `MessagesInTotal` (with full
-  `CounterWrapper` infrastructure).
+  `CounterWrapper` infrastructure plus a new
+  `KafkaMetricsGroup.newCounter` API to fill the gap left when
+  metrics group migrated Scala→Java in 3.6).
 - Dead `li.async.fetcher.enable` config removed (the underlying
   feature was retired in the squash; the stub left a no-op config
   that operators may have set in `server.properties` — see "Operator
   notes" below).
+- Parallel-ZK controller startup feature restored (LIKAFKA-44768).
+  `li.num.controller.init.threads > 1` once again splits ZK work
+  across multiple `KafkaZkClient` instances during controller
+  failover/init, restoring the ~3x speedup on 15k+ partition
+  clusters. Default is 1 (sequential) so operators must opt in.
 
 ### Known regressions vs 3.0-li (acceptable for upgrade)
 
@@ -155,18 +162,20 @@ operator action:
   `TransferLeaderManager`, `AbstractAsyncFetcher`, `AsyncReplicaFetcher`,
   `FetcherEventBus`, `FetcherEventManager` are absent. Brokers fall
   back to the synchronous fetcher.
-- **Parallel-ZK controller startup feature appears missing** despite
-  audit class A — the config `li.num.controller.init.threads` still
-  parses, but the underlying parallel `updateLeaderAndIsrCacheParallel`
-  code path and multi-`zkClients` plumbing are absent in 3.6-li
-  `KafkaController` / `KafkaServer`. Large LI clusters
-  (200K+ partitions) will see the controller startup time regress to
-  the sequential O(n) path. Restoration is a substantial feature
-  reconstruction.
 - **`rearrangePartitionReplicaAssignmentForNewTopics`** (LI method that
   consumed `getMaintenanceBrokerList` during topic auto-creation) was
   removed entirely from `KafkaController`. Maintenance brokers are no
   longer excluded from new-topic placement at the topic-creation path.
+  Restoration requires either (a) reintroducing
+  `AdminZkClient.assignReplicasToAvailableBrokers` (the LI variant that
+  accepted a broker-exclusion set) plus
+  `KafkaConfig.rackIdMapperForRackAwareReplicaAssignment`, or
+  (b) reimplementing the topic-rewrite flow against the 3.6
+  topic-id-aware ZK assignment write path (KIP-516). Both are
+  KIP-level changes warranting team review. Mitigation in the
+  meantime: operators can manually rebalance after topic creation via
+  the reassignment tool, or coordinate creation timing to avoid
+  maintenance windows.
 - **3 LI metrics not restored** — see "regressions" above.
 
 These regressions are listed in priority order. The wire-collision

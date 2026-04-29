@@ -313,9 +313,21 @@ class ReplicaManager(val config: KafkaConfig,
         fatal(s"Halting broker because dir $newOfflineLogDir is offline")
         Exit.halt(1)
       }
-      handleLogDirFailure(newOfflineLogDir)
+      // Defensive try/catch: an unhandled exception inside handleLogDirFailure used to
+      // kill the LogDirFailureHandler thread, leaving subsequent dir failures
+      // un-acted-upon. Bump the metric and log; the thread keeps running.
+      // LIKAFKA hotfix; 3.0-li commit 634e3fca3c.
+      try {
+        handleLogDirFailure(newOfflineLogDir)
+      } catch {
+        case t: Throwable =>
+          numLogDirFailureHandlerExceptions += 1
+          error(s"Error handling failures for log dir $newOfflineLogDir", t)
+      }
     }
   }
+
+  @volatile private var numLogDirFailureHandlerExceptions = 0L
 
   // Visible for testing
   private[server] val replicaSelectorOpt: Option[ReplicaSelector] = createReplicaSelector()

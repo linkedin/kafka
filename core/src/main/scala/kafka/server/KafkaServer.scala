@@ -1056,7 +1056,11 @@ class KafkaServer(
           CoreUtils.swallow(socketServer.shutdown(), this)
         if (metrics != null)
           CoreUtils.swallow(metrics.close(), this)
-        // kafkaYammerMetrics.shutdownJmxReporter() removed in 3.6
+        // Explicitly shut down the JMX reporter on broker shutdown. Upstream removed
+        // the JVM shutdown hook (LI commit 77afab9813), so an explicit call is needed
+        // here to deregister Yammer metrics' JMX MBeans on a clean shutdown.
+        if (kafkaYammerMetrics != null)
+          CoreUtils.swallow(kafkaYammerMetrics.shutdownJmxReporter(), this)
         if (brokerTopicStats != null)
           CoreUtils.swallow(brokerTopicStats.close(), this)
 

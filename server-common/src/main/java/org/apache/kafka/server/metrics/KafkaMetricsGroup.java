@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Gauge;
 import com.yammer.metrics.core.Histogram;
 import com.yammer.metrics.core.Meter;
@@ -89,6 +90,14 @@ public class KafkaMetricsGroup {
 
     public final Meter newMeter(MetricName metricName, String eventType, TimeUnit timeUnit) {
         return KafkaYammerMetrics.defaultRegistry().newMeter(metricName, eventType, timeUnit);
+    }
+
+    public final Counter newCounter(String name, Map<String, String> tags) {
+        return KafkaYammerMetrics.defaultRegistry().newCounter(metricName(name, tags));
+    }
+
+    public final Counter newCounter(String name) {
+        return newCounter(name, Collections.emptyMap());
     }
 
     public final Histogram newHistogram(String name, boolean biased, Map<String, String> tags) {

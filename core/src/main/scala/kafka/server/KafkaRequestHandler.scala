@@ -23,7 +23,7 @@ import kafka.server.KafkaRequestHandler.{threadCurrentRequest, threadRequestChan
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
-import com.yammer.metrics.core.Meter
+import com.yammer.metrics.core.{Counter, Meter}
 import org.apache.kafka.common.internals.FatalExitError
 import org.apache.kafka.common.utils.{KafkaThread, Time}
 import org.apache.kafka.server.log.remote.storage.RemoteStorageMetrics
@@ -269,6 +269,35 @@ class BrokerTopicMetrics(name: Option[String], configOpt: java.util.Optional[Kaf
       meter()
   }
 
+  case class CounterWrapper(metricType: String) {
+    @volatile private var lazyCounter: Counter = _
+    private val counterLock = new Object
+
+    def counter(): Counter = {
+      var counter = lazyCounter
+      if (counter == null) {
+        counterLock synchronized {
+          counter = lazyCounter
+          if (counter == null) {
+            counter = metricsGroup.newCounter(metricType, tags)
+            lazyCounter = counter
+          }
+        }
+      }
+      counter
+    }
+
+    def close(): Unit = counterLock synchronized {
+      if (lazyCounter != null) {
+        metricsGroup.removeMetric(metricType, tags)
+        lazyCounter = null
+      }
+    }
+
+    if (tags.isEmpty) // greedily initialize the general topic metrics
+      counter()
+  }
+
   // an internal map for "lazy initialization" of certain metrics
   private val metricTypeMap = new Pool[String, MeterWrapper]()
   metricTypeMap.putAll(Map(
@@ -308,12 +337,25 @@ class BrokerTopicMetrics(name: Option[String], configOpt: java.util.Optional[Kaf
       ).asJava)
     })
 
+  // LI counter map for monotonic totals (BytesInTotal, MessagesInTotal).
+  private val counterMetricTypeMap = new Pool[String, CounterWrapper]()
+  counterMetricTypeMap.putAll(Map(
+    BrokerTopicStats.MessagesInTotal -> CounterWrapper(BrokerTopicStats.MessagesInTotal),
+    BrokerTopicStats.BytesInTotal -> CounterWrapper(BrokerTopicStats.BytesInTotal)
+  ).asJava)
+
   // used for testing only
   def metricMap: Map[String, MeterWrapper] = metricTypeMap.toMap
 
+  def counterMetricMap: Map[String, CounterWrapper] = counterMetricTypeMap.toMap
+
   def messagesInRate: Meter = metricTypeMap.get(BrokerTopicStats.MessagesInPerSec).meter()
 
+  def messagesInTotal: Counter = counterMetricTypeMap.get(BrokerTopicStats.MessagesInTotal).counter()
+
   def bytesInRate: Meter = metricTypeMap.get(BrokerTopicStats.BytesInPerSec).meter()
+
+  def bytesInTotal: Counter = counterMetricTypeMap.get(BrokerTopicStats.BytesInTotal).counter()
 
   def bytesOutRate: Meter = metricTypeMap.get(BrokerTopicStats.BytesOutPerSec).meter()
 
@@ -373,9 +415,15 @@ class BrokerTopicMetrics(name: Option[String], configOpt: java.util.Optional[Kaf
     val meter = metricTypeMap.get(metricType)
     if (meter != null)
       meter.close()
+    val counter = counterMetricTypeMap.get(metricType)
+    if (counter != null)
+      counter.close()
   }
 
-  def close(): Unit = metricTypeMap.values.foreach(_.close())
+  def close(): Unit = {
+    metricTypeMap.values.foreach(_.close())
+    counterMetricTypeMap.values.foreach(_.close())
+  }
 }
 
 object BrokerTopicStats {
@@ -399,6 +447,10 @@ object BrokerTopicStats {
   val InvalidMagicNumberRecordsPerSec = "InvalidMagicNumberRecordsPerSec"
   val InvalidMessageCrcRecordsPerSec = "InvalidMessageCrcRecordsPerSec"
   val InvalidOffsetOrSequenceRecordsPerSec = "InvalidOffsetOrSequenceRecordsPerSec"
+  // LI counters that complement the per-second meters with monotonically-increasing totals.
+  // Required by LI ops dashboards. See LIKAFKA-* (3.0-li commit b3489a1a6d).
+  val MessagesInTotal = "MessagesInTotal"
+  val BytesInTotal = "BytesInTotal"
 }
 
 class BrokerTopicStats(configOpt: java.util.Optional[KafkaConfig] = java.util.Optional.empty()) extends Logging {

@@ -980,7 +980,10 @@ class KafkaController(val config: KafkaConfig,
     info(s"Initialized broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
     controllerContext.setAllTopics(zkClient.getAllTopicsInCluster(true))
     registerPartitionModificationsHandlers(controllerContext.allTopics.toSeq)
-    val replicaAssignmentAndTopicIds = zkClient.getReplicaAssignmentAndTopicIdForTopics(controllerContext.allTopics.toSet)
+    val rawReplicaAssignmentAndTopicIds = zkClient.getReplicaAssignmentAndTopicIdForTopics(controllerContext.allTopics.toSet)
+    // LI: rewrite assignments for new topics that landed on maintenance brokers
+    // (LIKAFKA hotfix; restored in 3.6-li).
+    val replicaAssignmentAndTopicIds = rearrangePartitionReplicaAssignmentForNewTopics(rawReplicaAssignmentAndTopicIds)
     processTopicIds(replicaAssignmentAndTopicIds)
 
     replicaAssignmentAndTopicIds.foreach { case TopicIdReplicaAssignment(_, _, assignments) =>
@@ -1108,6 +1111,94 @@ class KafkaController(val config: KafkaConfig,
       }
     } finally {
       pool.shutdownNow()
+    }
+  }
+
+  /**
+   * For new topics whose replica assignments include any maintenance broker, rewrite the
+   * assignment in ZooKeeper to use only non-maintenance brokers. This is the 3.6-li
+   * port of the 3.0-li `rearrangePartitionReplicaAssignmentForNewTopics` LI feature
+   * (LIKAFKA hotfix; commit lost in PR #538 squash).
+   *
+   * Differences from 3.0-li:
+   * - Operates on `Set[TopicIdReplicaAssignment]` (the 3.6 KIP-516 shape) rather than
+   *   re-reading the assignment from ZK.
+   * - Uses upstream `AdminUtils.assignReplicasToBrokers` with a pre-filtered broker
+   *   list (drops the LI extension `assignReplicasToAvailableBrokers` which accepted
+   *   an exclusion set; pre-filtering is functionally equivalent).
+   * - Writes via `zkClient.setTopicAssignment(topic, topicId, assignment,
+   *   controllerContext.epochZkVersion)` (the 3.6 KIP-516 topic-id-aware path)
+   *   rather than the now-private `adminZkClient.writeTopicPartitionAssignment`.
+   *
+   * Returns the (possibly updated) replica assignments. Topics that did not need
+   * rearrangement are returned unchanged. On any unexpected error the original
+   * assignments are returned and the error is logged — this matches 3.0-li's
+   * defensive try/catch around the whole method.
+   */
+  private def rearrangePartitionReplicaAssignmentForNewTopics(
+    replicaAssignmentAndTopicIds: Set[TopicIdReplicaAssignment]
+  ): Set[TopicIdReplicaAssignment] = {
+    try {
+      val noNewPartitionBrokerIds: Seq[Int] =
+        controllerContext.partitionUnassignableBrokerIds(config.getMaintenanceBrokerList)
+      if (noNewPartitionBrokerIds.isEmpty) {
+        return replicaAssignmentAndTopicIds
+      }
+      val excludedSet = noNewPartitionBrokerIds.toSet
+
+      // Only consider topics that don't yet have partition znodes (i.e., truly new).
+      val candidateTopics = replicaAssignmentAndTopicIds.map(_.topic)
+      val trulyNewTopics = zkClient.getPartitionNodeNonExistsTopics(candidateTopics)
+      if (trulyNewTopics.isEmpty) {
+        return replicaAssignmentAndTopicIds
+      }
+
+      // For each truly-new topic that has any partition assigned to a maintenance broker,
+      // recompute the assignment using only non-maintenance brokers.
+      val availableBrokers: Iterable[kafka.admin.BrokerMetadata] = controllerContext.liveOrShuttingDownBrokers
+        .filterNot(b => excludedSet.contains(b.id))
+        .map(b => kafka.admin.BrokerMetadata(b.id, b.rack))
+
+      replicaAssignmentAndTopicIds.map { tira =>
+        if (!trulyNewTopics.contains(tira.topic)) {
+          tira
+        } else {
+          val needsRearrangement = tira.assignment.values.exists { repAssignment =>
+            repAssignment.replicas.exists(excludedSet.contains)
+          }
+          val numPartitions = tira.assignment.size
+          val numReplicas = tira.assignment.headOption.map(_._2.replicas.size).getOrElse(0)
+          if (!needsRearrangement || availableBrokers.isEmpty || numPartitions == 0 || numReplicas == 0) {
+            tira
+          } else {
+            // assignReplicasToBrokers returns Map[Int, Seq[Int]] keyed by partition index;
+            // promote that to Map[TopicPartition, ReplicaAssignment] for setTopicAssignment.
+            val rawAssignment: Map[Int, Seq[Int]] =
+              kafka.admin.AdminUtils.assignReplicasToBrokers(availableBrokers, numPartitions, numReplicas)
+            val newAssignment: Map[TopicPartition, ReplicaAssignment] = rawAssignment.map {
+              case (partitionIndex, replicas) =>
+                new TopicPartition(tira.topic, partitionIndex) -> ReplicaAssignment(replicas)
+            }
+
+            // Write the new assignment to ZK so the rest of init/processTopicChange
+            // sees the rearranged shape.
+            zkClient.setTopicAssignment(
+              tira.topic,
+              tira.topicId,
+              newAssignment,
+              controllerContext.epochZkVersion)
+            info(s"Rearranged partition assignment for new topic ${tira.topic} to avoid " +
+              s"maintenance brokers ${noNewPartitionBrokerIds.mkString(",")}")
+
+            TopicIdReplicaAssignment(tira.topic, tira.topicId, newAssignment)
+          }
+        }
+      }
+    } catch {
+      case e: Throwable =>
+        error("Error during rearranging partition and replica assignment for new topics " +
+          "for maintenance brokers: " + e.getMessage, e)
+        replicaAssignmentAndTopicIds
     }
   }
 
@@ -1763,7 +1854,10 @@ class KafkaController(val config: KafkaConfig,
     controllerContext.setAllTopics(topics)
 
     registerPartitionModificationsHandlers(newTopics.toSeq)
-    val addedPartitionReplicaAssignment = zkClient.getReplicaAssignmentAndTopicIdForTopics(newTopics)
+    val rawAddedPartitionReplicaAssignment = zkClient.getReplicaAssignmentAndTopicIdForTopics(newTopics)
+    // LI: rewrite assignments for new topics that landed on maintenance brokers
+    // (LIKAFKA hotfix; restored in 3.6-li).
+    val addedPartitionReplicaAssignment = rearrangePartitionReplicaAssignmentForNewTopics(rawAddedPartitionReplicaAssignment)
     deletedTopics.foreach(controllerContext.removeTopic)
     processTopicIds(addedPartitionReplicaAssignment)
 

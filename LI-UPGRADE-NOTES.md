@@ -99,8 +99,15 @@ operator action:
 - `OffsetResetStrategy.LICLOSEST` enum constant restored (LI consumer
   configs of the form `auto.offset.reset=licloasest` were failing
   `IllegalArgumentException` at parse).
-- LI metrics restored: `OneAboveMinIsrPartitionCount`,
-  `live-cleaner-thread-count`, `IncrementalFetchSessionCacheMissesPerSec`.
+- LI metrics restored: `MaintenanceBrokerCount`,
+  `OneAboveMinIsrPartitionCount`, `live-cleaner-thread-count`,
+  `IncrementalFetchSessionCacheMissesPerSec`,
+  `BytesInTotal`, `MessagesInTotal` (with full
+  `CounterWrapper` infrastructure).
+- Dead `li.async.fetcher.enable` config removed (the underlying
+  feature was retired in the squash; the stub left a no-op config
+  that operators may have set in `server.properties` — see "Operator
+  notes" below).
 
 ### Known regressions vs 3.0-li (acceptable for upgrade)
 
@@ -109,20 +116,59 @@ operator action:
   `AbstractAsyncFetcher`, `AsyncReplicaFetcher`, `FetcherEventBus`,
   `FetcherEventManager` are absent. Brokers fall back to the synchronous
   fetcher. Config keys for the feature still parse but are no-ops.
-- **Some LI metrics not yet restored**: `BytesInTotal`, `MessagesInTotal`,
-  `recompressionRate`, `message-produce-latency-*`, `totalTimeBucketHist`.
-  Dashboards and alerts that read these will produce empty time series
-  until a follow-up commit. Track via the audit document
-  `kafka_36_audit.md`.
+- **Some LI metrics still not restored**:
+  - `recompressionRate` — broker-side recompression detection.
+    Restoration requires plumbing a `recompressApplied` field through
+    `LogValidator` results and `LogAppendInfo`, plus an `AtomicLong`
+    counter + gauge in `ReplicaManager`. Not blocking but used by LI
+    compression-analysis dashboards.
+  - `message-produce-latency-{avg,max}` — *client-side* sensor on
+    `KafkaProducer`. Producer end-to-end latency tracking. Not affected
+    by the broker upgrade but the metric is missing from the LI client
+    library variant of this fork.
+  - `totalTimeBucketHist` — broker request latency in custom buckets.
+    Requires a custom `Histogram` class plus
+    `totalTimeHistogramEnabledMetrics` and `requestMetricsTotalTimeBuckets`
+    config plumbing through `KafkaConfig`. Mostly redundant with the
+    existing percentile metrics.
+  Dashboards and alerts that read these specific names will produce empty
+  time series until follow-up commits restore them.
 - **`rearrangePartitionReplicaAssignmentForNewTopics`** (LI method that
   consumed `getMaintenanceBrokerList` during topic auto-creation) was
   removed in the squash. Maintenance brokers are no longer excluded from
   new-topic placement at the topic-creation path. Follow-up needed.
 
-### Future work
+### Operator notes
 
-- Restore the missing LI metrics listed above.
-- Re-introduce `MaxBrokerEpoch` under new non-colliding wire versions
-  (option b) if the request-cacheability optimization is still needed.
-- Re-integrate `rearrangePartitionReplicaAssignmentForNewTopics` (or its
-  3.6-equivalent) into the topic auto-create flow.
+- If your `server.properties` contains `li.async.fetcher.enable=...`,
+  remove that line. The config no longer exists in 3.6-li; brokers will
+  log an "Unknown configuration" warning at startup but still start.
+  The feature it would have toggled was retired in the squash — the
+  config was a no-op anyway.
+
+### Future work / known regressions vs 3.0-li
+
+- **`MaxBrokerEpoch` request-cacheability optimization permanently lost**
+  in this fork version. Re-introducing it under new non-colliding wire
+  versions (audit option b) is KIP-level work.
+- **Async/event-based replica fetcher series retired** —
+  `TransferLeaderManager`, `AbstractAsyncFetcher`, `AsyncReplicaFetcher`,
+  `FetcherEventBus`, `FetcherEventManager` are absent. Brokers fall
+  back to the synchronous fetcher.
+- **Parallel-ZK controller startup feature appears missing** despite
+  audit class A — the config `li.num.controller.init.threads` still
+  parses, but the underlying parallel `updateLeaderAndIsrCacheParallel`
+  code path and multi-`zkClients` plumbing are absent in 3.6-li
+  `KafkaController` / `KafkaServer`. Large LI clusters
+  (200K+ partitions) will see the controller startup time regress to
+  the sequential O(n) path. Restoration is a substantial feature
+  reconstruction.
+- **`rearrangePartitionReplicaAssignmentForNewTopics`** (LI method that
+  consumed `getMaintenanceBrokerList` during topic auto-creation) was
+  removed entirely from `KafkaController`. Maintenance brokers are no
+  longer excluded from new-topic placement at the topic-creation path.
+- **3 LI metrics not restored** — see "regressions" above.
+
+These regressions are listed in priority order. The wire-collision
+fence in section 1 is the only operationally blocking item; everything
+else affects observability or efficiency, not broker correctness.

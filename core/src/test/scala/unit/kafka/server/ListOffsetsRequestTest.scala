@@ -207,7 +207,9 @@ class ListOffsetsRequestTest extends BaseRequestTest {
     assertEquals((0L, 0), fetchOffsetAndEpoch(secondLeaderId, ListOffsetsRequest.EARLIEST_TIMESTAMP, -1))
 
     // The latest offset reflects the updated epoch
-    assertEquals((10L, secondLeaderEpoch, Errors.NONE.code), fetchOffsetAndEpochWithError(secondLeaderId, ListOffsetsRequest.LATEST_TIMESTAMP, -1))
+    TestUtils.waitUntilTrue(
+      () => (10L, secondLeaderEpoch, Errors.NONE.code) == fetchOffsetAndEpochWithError(secondLeaderId, ListOffsetsRequest.LATEST_TIMESTAMP, -1),
+      "offset for latest timestamp cannot converge")
     assertEquals((9L, secondLeaderEpoch, Errors.NONE.code), fetchOffsetAndEpochWithError(secondLeaderId, ListOffsetsRequest.MAX_TIMESTAMP, -1))
   }
 

@@ -1147,7 +1147,8 @@ class KafkaController(val config: KafkaConfig,
       val excludedSet = noNewPartitionBrokerIds.toSet
 
       // Only consider topics that don't yet have partition znodes (i.e., truly new).
-      val candidateTopics = replicaAssignmentAndTopicIds.map(_.topic)
+      val candidateTopics: scala.collection.immutable.Set[String] =
+        replicaAssignmentAndTopicIds.iterator.map(_.topic).toSet
       val trulyNewTopics = zkClient.getPartitionNodeNonExistsTopics(candidateTopics)
       if (trulyNewTopics.isEmpty) {
         return replicaAssignmentAndTopicIds
@@ -1155,9 +1156,9 @@ class KafkaController(val config: KafkaConfig,
 
       // For each truly-new topic that has any partition assigned to a maintenance broker,
       // recompute the assignment using only non-maintenance brokers.
-      val availableBrokers: Iterable[kafka.admin.BrokerMetadata] = controllerContext.liveOrShuttingDownBrokers
+      val availableBrokers: Iterable[org.apache.kafka.admin.BrokerMetadata] = controllerContext.liveOrShuttingDownBrokers
         .filterNot(b => excludedSet.contains(b.id))
-        .map(b => kafka.admin.BrokerMetadata(b.id, b.rack))
+        .map(b => new org.apache.kafka.admin.BrokerMetadata(b.id, java.util.Optional.ofNullable(b.rack.orNull)))
 
       replicaAssignmentAndTopicIds.map { tira =>
         if (!trulyNewTopics.contains(tira.topic)) {

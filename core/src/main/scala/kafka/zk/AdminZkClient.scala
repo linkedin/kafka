@@ -221,10 +221,14 @@ class AdminZkClient(zkClient: KafkaZkClient,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                     validateOnly: Boolean = false): Map[Int, Seq[Int]] = {
 
+    val maintenanceBrokerIds = kafkaConfig.map(_.getMaintenanceBrokerList.toSet).getOrElse(Set.empty[Int])
+    val eligibleBrokers = if (maintenanceBrokerIds.isEmpty) allBrokers
+      else allBrokers.filterNot(b => maintenanceBrokerIds.contains(b.id))
+
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,
       existingAssignment,
-      allBrokers,
+      eligibleBrokers,
       numPartitions,
       replicaAssignment
     )

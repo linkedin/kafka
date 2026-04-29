@@ -536,19 +536,14 @@ public class FetchSessionHandler {
         }
         Set<TopicPartition> topicPartitions = response.responseData(sessionTopicNames, version).keySet();
         if (nextMetadata.isFull()) {
-            if (topicPartitions.isEmpty() && response.throttleTimeMs() > 0) {
-                // Normally, an empty full fetch response would be invalid.  However, KIP-219
-                // specifies that if the broker wants to throttle the client, it will respond
-                // to a full fetch request with an empty response and a throttleTimeMs
-                // value set.  We don't want to log this with a warning, since it's not an error.
-                // However, the empty full fetch response can't be processed, so it's still appropriate
-                // to return false here.
+            if (response.throttleTimeMs() > 0) {
+                // [LIKAFKA-59133] To avoid stuck consumer, we made a server side change to return valid fetch responses
+                // even when the request is throttled. To honor the server side change, we log the throttling and still
+                // handle the fetch response.
                 if (log.isDebugEnabled()) {
-                    log.debug("Node {} sent a empty full fetch response to indicate that this " +
-                        "client should be throttled for {} ms.", node, response.throttleTimeMs());
+                    log.debug("Node {} sent a response indicating the request is throttled for {} ms.", node,
+                        response.throttleTimeMs());
                 }
-                nextMetadata = FetchMetadata.INITIAL;
-                return false;
             }
             String problem = verifyFullFetchResponsePartitions(topicPartitions, response.topicIds(), version);
             if (problem != null) {

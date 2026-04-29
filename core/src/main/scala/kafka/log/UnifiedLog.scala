@@ -1721,6 +1721,8 @@ class UnifiedLog(@volatile var logStartOffset: Long,
 
         false
       } else {
+        val originalLogEndOffset = localLog.logEndOffset
+        val sizeBefore = localLog.segments.sizeInBytes
         info(s"Truncating to offset $targetOffset")
         lock synchronized {
           localLog.checkIfMemoryMappedBufferClosed()
@@ -1735,6 +1737,10 @@ class UnifiedLog(@volatile var logStartOffset: Long,
             if (highWatermark >= localLog.logEndOffset)
               updateHighWatermark(localLog.logEndOffsetMetadata)
           }
+          val messagesTruncated = math.max(0L, originalLogEndOffset - targetOffset)
+          val bytesTruncated = math.max(0L, sizeBefore - localLog.segments.sizeInBytes)
+          LogTruncationStats.logTruncatedBytesRate.mark(bytesTruncated)
+          LogTruncationStats.logTruncatedMessagesRate.mark(messagesTruncated)
           true
         }
       }
@@ -2309,4 +2315,10 @@ case class StartOffsetBreach(log: UnifiedLog, remoteLogEnabled: Boolean) extends
     else
       log.info(s"Deleting segments due to log start offset ${log.logStartOffset} breach: ${toDelete.mkString(",")}")
   }
+}
+
+object LogTruncationStats {
+  private val metricsGroup = new KafkaMetricsGroup(this.getClass)
+  val logTruncatedBytesRate = metricsGroup.newMeter("LogTruncatedBytesPerSec", "log-truncation", java.util.concurrent.TimeUnit.SECONDS)
+  val logTruncatedMessagesRate = metricsGroup.newMeter("LogTruncatedMessagesPerSec", "log-truncation", java.util.concurrent.TimeUnit.SECONDS)
 }

@@ -74,7 +74,7 @@ object DynamicConfig {
     def validate(props: Properties) = DynamicConfig.validate(brokerConfigDef, props, customPropsAllowed = true)
 
     def getMaintenanceBrokerListFromString(brokerListStr: String): Seq[Int] = {
-      brokerListStr.split(",").map(_.trim).filter(_.nonEmpty).map(_.toInt)
+      brokerListStr.split(",").iterator.map(_.trim).filter(_.nonEmpty).map(_.toInt).toSeq
     }
 
     object MaintenanceBrokerListValidator extends Validator {

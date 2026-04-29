@@ -61,6 +61,10 @@ public class KafkaYammerMetrics implements Reconfigurable {
         Exit.addShutdownHook("kafka-jmx-shutdown-hook", jmxReporter::shutdown);
     }
 
+    public void shutdownJmxReporter() {
+        jmxReporter.shutdown();
+    }
+
     @Override
     public void configure(Map<String, ?> configs) {
         reconfigure(configs);

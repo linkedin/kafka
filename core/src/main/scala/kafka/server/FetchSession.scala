@@ -43,7 +43,9 @@ object FetchSession {
   val NUM_INCREMENTAL_FETCH_SESSIONS = "NumIncrementalFetchSessions"
   val NUM_INCREMENTAL_FETCH_PARTITIONS_CACHED = "NumIncrementalFetchPartitionsCached"
   val INCREMENTAL_FETCH_SESSIONS_EVICTIONS_PER_SEC = "IncrementalFetchSessionEvictionsPerSec"
+  val INCREMENTAL_FETCH_SESSION_CACHE_MISSES_PER_SEC = "IncrementalFetchSessionCacheMissesPerSec"
   val EVICTIONS = "evictions"
+  val CACHE_MISSES = "cacheMisses"
 
   def partitionsToLogString(partitions: util.Collection[TopicIdPartition], traceEnabled: Boolean): String = {
     if (traceEnabled) {

@@ -162,20 +162,18 @@ operator action:
   `TransferLeaderManager`, `AbstractAsyncFetcher`, `AsyncReplicaFetcher`,
   `FetcherEventBus`, `FetcherEventManager` are absent. Brokers fall
   back to the synchronous fetcher.
-- **`rearrangePartitionReplicaAssignmentForNewTopics`** (LI method that
-  consumed `getMaintenanceBrokerList` during topic auto-creation) was
-  removed entirely from `KafkaController`. Maintenance brokers are no
-  longer excluded from new-topic placement at the topic-creation path.
-  Restoration requires either (a) reintroducing
-  `AdminZkClient.assignReplicasToAvailableBrokers` (the LI variant that
-  accepted a broker-exclusion set) plus
-  `KafkaConfig.rackIdMapperForRackAwareReplicaAssignment`, or
-  (b) reimplementing the topic-rewrite flow against the 3.6
-  topic-id-aware ZK assignment write path (KIP-516). Both are
-  KIP-level changes warranting team review. Mitigation in the
-  meantime: operators can manually rebalance after topic creation via
-  the reassignment tool, or coordinate creation timing to avoid
-  maintenance windows.
+- **`rearrangePartitionReplicaAssignmentForNewTopics`** has been
+  restored. The 3.6-li port operates on `Set[TopicIdReplicaAssignment]`
+  (the KIP-516 shape) and writes via `zkClient.setTopicAssignment`
+  instead of the now-private `adminZkClient.writeTopicPartitionAssignment`.
+  Pre-filters the broker metadata list to drop maintenance brokers
+  before calling upstream `AdminUtils.assignReplicasToBrokers` —
+  functionally equivalent to 3.0-li's `assignReplicasToAvailableBrokers`
+  which took an exclusion set. The LI
+  `rackIdMapperForRackAwareReplicaAssignment` config has *not* been
+  restored; native upstream rack-ID handling applies. If your fleet
+  needs LI-custom rack-id mapping plus maintenance-broker exclusion,
+  that's a follow-up.
 - **3 LI metrics not restored** — see "regressions" above.
 
 These regressions are listed in priority order. The wire-collision

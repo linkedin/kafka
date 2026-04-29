@@ -191,6 +191,10 @@ class KafkaServer(
 
   val zkClientConfig: ZKClientConfig = KafkaServer.zkClientConfigFromKafkaConfig(config)
   private var _zkClient: KafkaZkClient = _
+  // For parallel-ZK controller startup (LIKAFKA-44768): additional ZK clients allocated when
+  // li.num.controller.init.threads > 1, passed to KafkaController so the parallel init path
+  // has distinct ZK client instances (single client serializes via ZooKeeperClient lock).
+  private var _additionalZkClients: Seq[KafkaZkClient] = Seq.empty
   private var configRepository: ZkConfigRepository = _
 
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -429,7 +433,7 @@ class KafkaServer(
         tokenManager.startup()
 
         /* start kafka controller */
-        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch, tokenManager, brokerFeatures, metadataCache, threadNamePrefix)
+        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch, tokenManager, brokerFeatures, metadataCache, threadNamePrefix, _additionalZkClients)
         kafkaController.startup()
 
         if (config.migrationEnabled) {
@@ -711,6 +715,17 @@ class KafkaServer(
     info(s"Connecting to zookeeper on ${config.zkConnect}")
     _zkClient = KafkaZkClient.createZkClient("Kafka server", time, config, zkClientConfig)
     _zkClient.createTopLevelPaths()
+
+    // Allocate additional ZK client instances when parallel controller startup is enabled
+    // (LIKAFKA-44768). Each instance is independent of the others, allowing the controller's
+    // failover/init path to issue concurrent ZK requests in parallel rather than serializing
+    // through a single client's internal lock.
+    if (config.liNumControllerInitThreads > 1) {
+      _additionalZkClients = (1 until config.liNumControllerInitThreads).map { i =>
+        debug(s"creating additional zkClient ${i + 1} of ${config.liNumControllerInitThreads}")
+        KafkaZkClient.createZkClient(s"Kafka server zk${i}", time, config, zkClientConfig)
+      }
+    }
   }
 
   private def getOrGenerateClusterId(zkClient: KafkaZkClient): String = {
@@ -1019,6 +1034,12 @@ class KafkaServer(
 
         if (zkClient != null)
           CoreUtils.swallow(zkClient.close(), this)
+
+        // Close any additional ZK clients allocated for parallel controller startup.
+        _additionalZkClients.foreach { extra =>
+          CoreUtils.swallow(extra.close(), this)
+        }
+        _additionalZkClients = Seq.empty
 
         if (quotaManagers != null)
           CoreUtils.swallow(quotaManagers.shutdown(), this)

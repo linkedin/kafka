@@ -18,7 +18,7 @@ package kafka.controller
 
 import com.yammer.metrics.core.Timer
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{Callable, ExecutionException, Executors, TimeUnit}
 import kafka.api._
 import kafka.common._
 import kafka.cluster.Broker
@@ -122,8 +122,16 @@ class KafkaController(val config: KafkaConfig,
                       tokenManager: DelegationTokenManager,
                       brokerFeatures: BrokerFeatures,
                       featureCache: ZkFinalizedFeatureCache,
-                      threadNamePrefix: Option[String] = None)
+                      threadNamePrefix: Option[String] = None,
+                      additionalZkClients: Seq[KafkaZkClient] = Seq.empty)
   extends ControllerEventProcessor with Logging {
+
+  // For parallel-ZK controller startup (LIKAFKA-44768): zkClients(0) is the primary client
+  // (the `zkClient` ctor param) used by all non-init code paths; additional clients are used
+  // only by updateLeaderAndIsrCacheParallel during controller failover/init when
+  // li.num.controller.init.threads > 1. Individual KafkaZkClient instances serialize via
+  // ZooKeeperClient's internal lock, so true parallelism requires distinct client instances.
+  private val zkClients: IndexedSeq[KafkaZkClient] = (zkClient +: additionalZkClients).toIndexedSeq
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
 
@@ -1042,9 +1050,64 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def updateLeaderAndIsrCache(partitions: Seq[TopicPartition] = controllerContext.allPartitions.toSeq): Unit = {
-    val leaderIsrAndControllerEpochs = zkClient.getTopicPartitionStates(partitions)
-    leaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
-      controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+    // Dispatch to the parallel implementation when (1) configured for parallel init AND
+    // (2) we actually have multiple distinct ZK client instances (the additional clients
+    // come from KafkaServer; without them, single-client serialization defeats parallelism).
+    if (config.liNumControllerInitThreads > 1 && zkClients.size > 1) {
+      updateLeaderAndIsrCacheParallel(partitions.toSet)
+    } else {
+      val leaderIsrAndControllerEpochs = zkClient.getTopicPartitionStates(partitions)
+      leaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
+        controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+      }
+    }
+  }
+
+  /**
+   * Parallel implementation of updateLeaderAndIsrCache for the controller startup/failover
+   * hot path. Splits partitions across li.num.controller.init.threads ZK clients to reduce
+   * the wall-clock cost of recursing the topic-partition tree on large clusters
+   * (LIKAFKA-44768; original PR linkedin/kafka#362). Only invoked when both the config
+   * threshold is satisfied and additional ZK client instances were supplied at construction.
+   */
+  private def updateLeaderAndIsrCacheParallel(partitions: Set[TopicPartition]): Unit = {
+    val numThreads = math.min(config.liNumControllerInitThreads, zkClients.size)
+    val numTopicPartitionsPerBatch = (partitions.size + numThreads - 1) / numThreads
+    val splitPartitions = partitions.grouped(math.max(numTopicPartitionsPerBatch, 1)).toSeq
+
+    // Pair each batch with a distinct ZK client. If we have fewer batches than clients
+    // (very small partition counts) we just use the prefix.
+    val pairs = zkClients.take(numThreads).zip(splitPartitions)
+
+    val pool = Executors.newFixedThreadPool(numThreads)
+    try {
+      val futures = pairs.map { case (zkClientN, partitionsBatch) =>
+        val callable = new Callable[Map[TopicPartition, LeaderIsrAndControllerEpoch]] {
+          override def call(): Map[TopicPartition, LeaderIsrAndControllerEpoch] = {
+            val batchStartMs = time.milliseconds()
+            val result = zkClientN.getTopicPartitionStates(partitionsBatch.toSeq)
+            debug(s"parallel ZK init: read ${result.size} partition states in ${time.milliseconds() - batchStartMs} ms")
+            result
+          }
+        }
+        pool.submit(callable)
+      }
+
+      // Aggregate results into the controller context.
+      futures.foreach { future =>
+        try {
+          future.get().forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
+            controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+          }
+        } catch {
+          case ee: ExecutionException =>
+            // Surface the underlying exception; the controller event processor will react
+            // appropriately (failover or shutdown). Wrap to preserve the failure point.
+            throw ee.getCause
+        }
+      }
+    } finally {
+      pool.shutdownNow()
     }
   }
 

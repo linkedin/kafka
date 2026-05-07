@@ -1401,6 +1401,7 @@ project(':clients') {
     implementation libs.lz4
     implementation libs.snappy
     implementation libs.slf4jApi
+    implementation libs.conscrypt    // [LI-HOTFIX] BoringSSL/Conscrypt support (KAFKA-2561)
 
     compileOnly libs.jacksonDatabind // for SASL/OAUTHBEARER bearer token parsing
     compileOnly libs.jacksonJDK8Datatypes

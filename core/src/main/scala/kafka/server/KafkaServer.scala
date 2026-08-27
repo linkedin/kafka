@@ -113,7 +113,8 @@ class KafkaServer(
   val config: KafkaConfig,
   time: Time = Time.SYSTEM,
   threadNamePrefix: Option[String] = None,
-  enableForwarding: Boolean = false
+  enableForwarding: Boolean = false,
+  kafkaActions: KafkaActions = NoOpKafkaActions
 ) extends KafkaBroker with Server {
 
   private val startupComplete = new AtomicBoolean(false)
@@ -854,6 +855,7 @@ class KafkaServer(
 
         while (!shutdownSucceeded && remainingRetries > 0) {
           remainingRetries = remainingRetries - 1
+          var shutdownResponse: ControlledShutdownResponse = null
 
           // 1. Find the controller and establish a connection to it.
           // If the controller id or the broker registration are missing, we sleep and retry (if there are remaining retries)
@@ -903,7 +905,7 @@ class KafkaServer(
                 time.milliseconds(), true)
               val clientResponse = NetworkClientUtils.sendAndReceive(networkClient, request, time)
 
-              val shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
+              shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
               if (shutdownResponse.error != Errors.NONE) {
                 info(s"Controlled shutdown request returned after ${clientResponse.requestLatencyMs}ms " +
                   s"with error ${shutdownResponse.error}")
@@ -928,6 +930,9 @@ class KafkaServer(
                   s"configured controller.socket.timeout.ms and/or request.timeout.ms: ${ioe.getMessage}")
                 // ignore and try again
             }
+          }
+          if (shutdownResponse != null) {
+            kafkaActions.notifyControlledShutdownStatus(shutdownSucceeded, shutdownResponse, remainingRetries)
           }
           if (!shutdownSucceeded && remainingRetries > 0) {
             Thread.sleep(config.controlledShutdownRetryBackoffMs)

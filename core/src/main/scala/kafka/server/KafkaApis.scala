@@ -232,6 +232,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.DESCRIBE_DELEGATION_TOKEN => handleDescribeTokensRequest(request)
         case ApiKeys.DELETE_GROUPS => handleDeleteGroupsRequest(request, requestLocal).exceptionally(handleError)
         case ApiKeys.ELECT_LEADERS => maybeForwardToController(request, handleElectLeaders)
+        case ApiKeys.LI_MOVE_CONTROLLER => handleLiMoveController(request)
         case ApiKeys.INCREMENTAL_ALTER_CONFIGS => handleIncrementalAlterConfigsRequest(request)
         case ApiKeys.ALTER_PARTITION_REASSIGNMENTS => maybeForwardToController(request, handleAlterPartitionReassignmentsRequest)
         case ApiKeys.LIST_PARTITION_REASSIGNMENTS => maybeForwardToController(request, handleListPartitionReassignmentsRequest)
@@ -3388,6 +3389,20 @@ class KafkaApis(val requestChannel: RequestChannel,
       false
     else
       true
+  }
+
+  def handleLiMoveController(request: RequestChannel.Request): Unit = {
+    authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
+    val moveControllerRequest = request.body[LiMoveControllerRequest]
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+
+    val response = try {
+      zkSupport.zkClient.deleteControllerRaw()
+      LiMoveControllerResponse.prepareResponse(Errors.NONE, moveControllerRequest.version)
+    } catch {
+      case throwable: Throwable => moveControllerRequest.getErrorResponse(throwable)
+    }
+    requestHelper.sendResponseExemptThrottle(request, response)
   }
 
   def handleElectLeaders(request: RequestChannel.Request): Unit = {

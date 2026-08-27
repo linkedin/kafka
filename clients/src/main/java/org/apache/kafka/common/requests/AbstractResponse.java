@@ -287,6 +287,8 @@ public abstract class AbstractResponse implements AbstractRequestResponse {
                 return DeleteShareGroupStateResponse.parse(responseBuffer, version);
             case READ_SHARE_GROUP_STATE_SUMMARY:
                 return ReadShareGroupStateSummaryResponse.parse(responseBuffer, version);
+            case LI_MOVE_CONTROLLER:
+                return LiMoveControllerResponse.parse(responseBuffer, version);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseResponse`, the " +
                         "code should be updated to do so.", apiKey));

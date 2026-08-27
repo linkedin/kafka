@@ -1297,6 +1297,12 @@ class KafkaZkClient private[zk] (
     retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
   }
 
+  /** Delete the controller znode without an epoch check so operational tooling can force a new election. */
+  def deleteControllerRaw(): Unit = {
+    val deleteRequest = DeleteRequest(ControllerZNode.path, ZkVersion.MatchAnyVersion)
+    retryRequestUntilConnected(deleteRequest, ZkVersion.MatchAnyVersion)
+  }
+
   /**
    * Gets the controller epoch.
    * @return optional (Int, Stat) that is Some if the controller epoch path exists and None otherwise.

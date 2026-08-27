@@ -191,6 +191,10 @@ public class MetadataRequest extends AbstractRequest {
         return data.allowAutoTopicCreation();
     }
 
+    public boolean excludePartitions() {
+        return data.excludePartitions();
+    }
+
     public static MetadataRequest parse(ByteBuffer buffer, short version) {
         return new MetadataRequest(new MetadataRequestData(new ByteBufferAccessor(buffer), version), version);
     }

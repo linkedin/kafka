@@ -1275,6 +1275,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   private def getTopicMetadata(
     request: RequestChannel.Request,
     fetchAllTopics: Boolean,
+    excludePartitions: Boolean,
     allowAutoTopicCreation: Boolean,
     topics: Set[String],
     listenerName: ListenerName,
@@ -1283,11 +1284,24 @@ class KafkaApis(val requestChannel: RequestChannel,
   ): Seq[MetadataResponseTopic] = {
     val topicResponses = metadataCache.getTopicMetadata(topics, listenerName,
       errorUnavailableEndpoints, errorUnavailableListeners)
-
-    if (topics.isEmpty || topicResponses.size == topics.size || fetchAllTopics) {
-      topicResponses
+    val effectiveTopicResponses = if (excludePartitions) {
+      topicResponses.map { topic =>
+        new MetadataResponseTopic()
+          .setErrorCode(topic.errorCode)
+          .setName(topic.name)
+          .setTopicId(topic.topicId)
+          .setIsInternal(topic.isInternal)
+          .setPartitions(util.Collections.emptyList())
+          .setTopicAuthorizedOperations(topic.topicAuthorizedOperations)
+      }
     } else {
-      val nonExistingTopics = topics.diff(topicResponses.map(_.name).toSet)
+      topicResponses
+    }
+
+    if (topics.isEmpty || effectiveTopicResponses.size == topics.size || fetchAllTopics) {
+      effectiveTopicResponses
+    } else {
+      val nonExistingTopics = topics.diff(effectiveTopicResponses.map(_.name).toSet)
       val nonExistingTopicResponses = if (allowAutoTopicCreation) {
         val controllerMutationQuota = quotas.controllerMutation.newPermissiveQuotaFor(request)
         autoTopicCreationManager.createTopics(nonExistingTopics, controllerMutationQuota, Some(request.context))
@@ -1311,7 +1325,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
-      topicResponses ++ nonExistingTopicResponses
+      effectiveTopicResponses ++ nonExistingTopicResponses
     }
   }
 
@@ -1392,8 +1406,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     val errorUnavailableListeners = requestVersion >= 6
 
     val allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation && !metadataRequest.isAllTopics
-    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, allowAutoCreation, authorizedTopics,
-      request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
+    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, metadataRequest.excludePartitions,
+      allowAutoCreation, authorizedTopics, request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
 
     var clusterAuthorizedOperations = Int.MinValue // Default value in the schema
     if (requestVersion >= 8) {

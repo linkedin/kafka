@@ -19,6 +19,7 @@ package kafka.server
 import kafka.network
 import kafka.network.RequestChannel
 import org.apache.kafka.common.feature.SupportedVersionRange
+import org.apache.kafka.common.message.ApiVersionsResponseData
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
 import org.apache.kafka.common.protocol.ApiKeys
 import org.apache.kafka.common.requests.ApiVersionsResponse
@@ -59,7 +60,8 @@ object ApiVersionManager {
       metadataCache,
       config.unstableApiVersionsEnabled,
       config.migrationEnabled,
-      clientMetricsManager
+      clientMetricsManager,
+      () => config.liProtocolBridgeMoveControllerActive
     )
   }
 }
@@ -141,10 +143,16 @@ class DefaultApiVersionManager(
   metadataCache: MetadataCache,
   val enableUnstableLastVersion: Boolean,
   val zkMigrationEnabled: Boolean = false,
-  val clientMetricsManager: Option[ClientMetricsManager] = None
+  val clientMetricsManager: Option[ClientMetricsManager] = None,
+  liMoveControllerEnabled: () => Boolean = () => false
 ) extends ApiVersionManager {
 
   val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala
+
+  override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean = {
+    super.isApiEnabled(apiKey, apiVersion) &&
+      (apiKey != ApiKeys.LI_MOVE_CONTROLLER || liMoveControllerEnabled())
+  }
 
   override def apiVersionResponse(
     throttleTimeMs: Int,
@@ -156,7 +164,7 @@ class DefaultApiVersionManager(
       case Some(manager) => manager.isTelemetryReceiverConfigured
       case None => false
     }
-    val apiVersions = if (controllerApiVersions.isDefined) {
+    val unfilteredApiVersions = if (controllerApiVersions.isDefined) {
       ApiVersionsResponse.controllerApiVersions(
         finalizedFeatures.metadataVersion().highestSupportedRecordVersion,
         controllerApiVersions.get,
@@ -170,6 +178,10 @@ class DefaultApiVersionManager(
         enableUnstableLastVersion,
         clientTelemetryEnabled)
     }
+    val apiVersions = new ApiVersionsResponseData.ApiVersionCollection(
+      unfilteredApiVersions.iterator.asScala.filter { apiVersion =>
+        apiVersion.apiKey != ApiKeys.LI_MOVE_CONTROLLER.id || liMoveControllerEnabled()
+      }.asJava)
     new ApiVersionsResponse.Builder().
       setThrottleTimeMs(throttleTimeMs).
       setApiVersions(apiVersions).

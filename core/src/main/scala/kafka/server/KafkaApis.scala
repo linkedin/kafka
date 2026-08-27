@@ -66,7 +66,7 @@ import org.apache.kafka.common.resource.{Resource, ResourceType}
 import org.apache.kafka.common.security.auth.{KafkaPrincipal, SecurityProtocol}
 import org.apache.kafka.common.security.token.delegation.{DelegationToken, TokenInformation}
 import org.apache.kafka.common.utils.{ProducerIdAndEpoch, Time}
-import org.apache.kafka.common.{Node, TopicIdPartition, TopicPartition, Uuid}
+import org.apache.kafka.common.{ElectionType, Node, TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.coordinator.group.{Group, GroupCoordinator}
 import org.apache.kafka.server.ClientMetricsManager
 import org.apache.kafka.server.authorizer._
@@ -1161,15 +1161,19 @@ class KafkaApis(val requestChannel: RequestChannel,
     val clientId = request.header.clientId
     val offsetRequest = request.body[ListOffsetsRequest]
     val version = request.header.apiVersion
-    val timestampMinSupportedVersion = immutable.Map[Long, Short](
+    val upstreamTimestampMinSupportedVersion = immutable.Map[Long, Short](
       ListOffsetsRequest.EARLIEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.LATEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.MAX_TIMESTAMP -> 7.toShort,
-      // 3.0-li introduced its private earliest-local value in ListOffsets v7.
-      ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP -> 7.toShort,
       ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP -> 8.toShort,
       ListOffsetsRequest.LATEST_TIERED_TIMESTAMP -> 9.toShort
     )
+    val timestampMinSupportedVersion = if (config.liProtocolBridgeFollowerRecoveryActive) {
+      // 3.0-li introduced its private earliest-local value in ListOffsets v7.
+      upstreamTimestampMinSupportedVersion + (ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP -> 7.toShort)
+    } else {
+      upstreamTimestampMinSupportedVersion
+    }
 
     def buildErrorResponse(e: Errors, partition: ListOffsetsPartition): ListOffsetsPartitionResponse = {
       new ListOffsetsPartitionResponse()
@@ -1407,8 +1411,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     val errorUnavailableListeners = requestVersion >= 6
 
     val allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation && !metadataRequest.isAllTopics
-    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, metadataRequest.excludePartitions,
-      allowAutoCreation, authorizedTopics, request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
+    val excludePartitions = metadataRequest.excludePartitions && config.liProtocolBridgeExcludePartitionsEnable
+    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, excludePartitions, allowAutoCreation,
+      authorizedTopics, request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
 
     var clusterAuthorizedOperations = Int.MinValue // Default value in the schema
     if (requestVersion >= 8) {
@@ -3394,6 +3399,12 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleLiMoveController(request: RequestChannel.Request): Unit = {
     authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
     val moveControllerRequest = request.body[LiMoveControllerRequest]
+    if (!config.liProtocolBridgeMoveControllerActive) {
+      requestHelper.sendResponseExemptThrottle(request,
+        moveControllerRequest.getErrorResponse(new UnsupportedVersionException(
+          "LI move-controller compatibility is disabled")))
+      return
+    }
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
 
     val response = try {
@@ -3408,6 +3419,13 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleElectLeaders(request: RequestChannel.Request): Unit = {
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldAlwaysForward(request))
     val electionRequest = request.body[ElectLeadersRequest]
+    if (electionRequest.electionType == ElectionType.RECOMMENDED &&
+      !config.liProtocolBridgeRecommendedElectionActive) {
+      requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+        electionRequest.getErrorResponse(throttleMs,
+          new InvalidRequestException("Recommended leader election compatibility is disabled")))
+      return
+    }
 
     def sendResponseCallback(
       error: ApiError

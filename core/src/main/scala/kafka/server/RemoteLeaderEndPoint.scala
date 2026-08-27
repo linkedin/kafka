@@ -104,7 +104,11 @@ class RemoteLeaderEndPoint(logPrefix: String,
   }
 
   override def fetchEarliestLocalOffset(topicPartition: TopicPartition, currentLeaderEpoch: Int): OffsetAndEpoch = {
-    fetchOffset(topicPartition, currentLeaderEpoch, ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP)
+    val timestamp = if (brokerConfig.liProtocolBridgeModeActive)
+      ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP
+    else
+      ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP
+    fetchOffset(topicPartition, currentLeaderEpoch, timestamp)
   }
 
   private def fetchOffset(topicPartition: TopicPartition, currentLeaderEpoch: Int, timestamp: Long): OffsetAndEpoch = {

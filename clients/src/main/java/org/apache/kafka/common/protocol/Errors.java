@@ -413,6 +413,8 @@ public enum Errors {
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 
+    static final short LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE = 1107;
+
     private static final Map<Class<?>, Errors> CLASS_TO_ERROR = new HashMap<>();
     private static final Map<Short, Errors> CODE_TO_ERROR = new HashMap<>();
 
@@ -425,6 +427,10 @@ public enum Errors {
             if (error.exception != null)
                 CLASS_TO_ERROR.put(error.exception.getClass(), error);
         }
+        // 3.0-li reports this condition with private code 1107; see
+        // d54ff658e478d6314fdf1d51ca98592fb4f4d36f. Treat it as the upstream KIP-405 error
+        // while old brokers remain in the cluster.
+        CODE_TO_ERROR.put(LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE, OFFSET_MOVED_TO_TIERED_STORAGE);
     }
 
     private final short code;

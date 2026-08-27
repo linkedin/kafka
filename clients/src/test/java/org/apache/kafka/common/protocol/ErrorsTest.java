@@ -50,6 +50,13 @@ public class ErrorsTest {
     }
 
     @Test
+    public void testBridgeDecodesLiTieredStorageError() {
+        Errors decoded = Errors.forCode(Errors.LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE);
+        assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, decoded);
+        assertEquals((short) 109, decoded.code(), "The bridge normalizes LI code 1107 to upstream code 109");
+    }
+
+    @Test
     public void testExceptionsAreNotGeneric() {
         for (Errors error : Errors.values()) {
             if (error != Errors.NONE)

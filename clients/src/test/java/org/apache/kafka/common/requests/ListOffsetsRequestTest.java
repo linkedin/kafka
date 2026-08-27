@@ -42,12 +42,20 @@ import java.util.Map;
 import static org.apache.kafka.common.requests.ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP;
 import static org.apache.kafka.common.requests.ListOffsetsRequest.LATEST_TIERED_TIMESTAMP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ListOffsetsRequestTest {
 
     private final NodeApiVersions versionInfo = new NodeApiVersions(new ApiVersionsResponseData.ApiVersionCollection(), Collections.emptyList(), false);
+
+    @Test
+    public void testBridgeAcceptsBothEarliestLocalTimestamps() {
+        assertTrue(ListOffsetsRequest.isEarliestLocalTimestamp(ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP));
+        assertTrue(ListOffsetsRequest.isEarliestLocalTimestamp(ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP));
+        assertFalse(ListOffsetsRequest.isEarliestLocalTimestamp(ListOffsetsRequest.EARLIEST_TIMESTAMP));
+    }
 
     @Test
     public void testDuplicatePartitions() {

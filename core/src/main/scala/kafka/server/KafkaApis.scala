@@ -1164,6 +1164,8 @@ class KafkaApis(val requestChannel: RequestChannel,
       ListOffsetsRequest.EARLIEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.LATEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.MAX_TIMESTAMP -> 7.toShort,
+      // 3.0-li introduced its private earliest-local value in ListOffsets v7.
+      ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP -> 7.toShort,
       ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP -> 8.toShort,
       ListOffsetsRequest.LATEST_TIERED_TIMESTAMP -> 9.toShort
     )

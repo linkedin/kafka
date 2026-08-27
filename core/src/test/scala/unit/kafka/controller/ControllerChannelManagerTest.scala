@@ -180,9 +180,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: MetadataVersion,
-                                                                       expectedLeaderAndIsrVersion: Short): Unit = {
+                                                                       expectedLeaderAndIsrVersion: Short,
+                                                                       bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo", "bar"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     val partition = new TopicPartition("foo", 0)
@@ -206,20 +207,26 @@ class ControllerChannelManagerTest {
     val request = leaderAndIsrRequests.head
     val byteBuffer = request.serialize
     val deserializedRequest = LeaderAndIsrRequest.parse(byteBuffer, expectedLeaderAndIsrVersion)
+    if (bridgeMode)
+      assertEquals(context.liveBrokerIdAndEpochs(2), deserializedRequest.brokerEpoch)
 
-    val expectedRecovery = if (interBrokerProtocolVersion.isAtLeast(IBP_3_2_IV0)) {
+    val expectedRequestRecovery = if (interBrokerProtocolVersion.isAtLeast(IBP_3_2_IV0))
       LeaderRecoveryState.RECOVERING
-    } else {
+    else
       LeaderRecoveryState.RECOVERED
+    request.partitionStates.forEach { state =>
+      assertEquals(expectedRequestRecovery, LeaderRecoveryState.of(state.leaderRecoveryState()))
     }
 
-    Seq(request, deserializedRequest).foreach { request =>
-      request.partitionStates.forEach { state =>
-        assertEquals(expectedRecovery , LeaderRecoveryState.of(state.leaderRecoveryState()))
-      }
+    val expectedWireRecovery = if (expectedLeaderAndIsrVersion >= 6)
+      LeaderRecoveryState.RECOVERING
+    else
+      LeaderRecoveryState.RECOVERED
+    deserializedRequest.partitionStates.forEach { state =>
+      assertEquals(expectedWireRecovery, LeaderRecoveryState.of(state.leaderRecoveryState()))
     }
 
-    if (interBrokerProtocolVersion.isAtLeast(IBP_2_8_IV1)) {
+    if (expectedLeaderAndIsrVersion >= 5) {
       assertFalse(request.topicIds().get("foo").equals(Uuid.ZERO_UUID))
       assertFalse(deserializedRequest.topicIds().get("foo").equals(Uuid.ZERO_UUID))
     } else if (interBrokerProtocolVersion.isAtLeast(IBP_2_2_IV0)) {
@@ -399,9 +406,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testUpdateMetadataFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: MetadataVersion,
-                                                                  expectedUpdateMetadataVersion: Short): Unit = {
+                                                                  expectedUpdateMetadataVersion: Short,
+                                                                  bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo", "bar"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     batch.newBatch()
@@ -416,6 +424,12 @@ class ControllerChannelManagerTest {
     val allVersions = requests.map(_.version)
     assertTrue(allVersions.forall(_ == expectedUpdateMetadataVersion),
       s"IBP $interBrokerProtocolVersion should use version $expectedUpdateMetadataVersion, but found versions $allVersions")
+    if (bridgeMode) {
+      requests.foreach { request =>
+        val parsedRequest = UpdateMetadataRequest.parse(request.serialize, request.version)
+        assertEquals(context.liveBrokerIdAndEpochs(2), parsedRequest.brokerEpoch)
+      }
+    }
   }
 
   @Test
@@ -793,9 +807,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testStopReplicaFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: MetadataVersion,
-                                                               expectedStopReplicaRequestVersion: Short): Unit = {
+                                                               expectedStopReplicaRequestVersion: Short,
+                                                               bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     val partition = new TopicPartition("foo", 0)
@@ -815,6 +830,32 @@ class ControllerChannelManagerTest {
     val allVersions = requests.map(_.version)
     assertTrue(allVersions.forall(_ == expectedStopReplicaRequestVersion),
       s"IBP $interBrokerProtocolVersion should use version $expectedStopReplicaRequestVersion, but found versions $allVersions")
+    if (bridgeMode) {
+      requests.foreach { request =>
+        val parsedRequest = StopReplicaRequest.parse(request.serialize, request.version)
+        assertEquals(context.liveBrokerIdAndEpochs(2), parsedRequest.brokerEpoch)
+      }
+    }
+  }
+
+  @Test
+  def testProtocolBridgeModeUsesCommonControlRequestVersions(): Unit = {
+    MetadataVersion.VERSIONS.foreach { version =>
+      assertEquals(ControllerChannelManager.BridgeLeaderAndIsrRequestVersion,
+        ControllerChannelManager.leaderAndIsrRequestVersion(version, bridgeMode = true))
+      assertEquals(ControllerChannelManager.BridgeUpdateMetadataRequestVersion,
+        ControllerChannelManager.updateMetadataRequestVersion(version, bridgeMode = true))
+      assertEquals(ControllerChannelManager.BridgeStopReplicaRequestVersion,
+        ControllerChannelManager.stopReplicaRequestVersion(version, bridgeMode = true))
+    }
+
+    val latestVersion = MetadataVersion.latestTesting
+    testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeLeaderAndIsrRequestVersion, bridgeMode = true)
+    testUpdateMetadataFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeUpdateMetadataRequestVersion, bridgeMode = true)
+    testStopReplicaFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeStopReplicaRequestVersion, bridgeMode = true)
   }
 
   private case class LeaderAndDelete(leaderAndIsr: LeaderAndIsr,
@@ -893,10 +934,11 @@ class ControllerChannelManagerTest {
     }
   }
 
-  private def createConfig(interBrokerVersion: MetadataVersion): KafkaConfig = {
+  private def createConfig(interBrokerVersion: MetadataVersion, bridgeMode: Boolean = false): KafkaConfig = {
     val props = new Properties()
     props.put(ServerConfigs.BROKER_ID_CONFIG, controllerId.toString)
     props.put(ZkConfigs.ZK_CONNECT_CONFIG, "zkConnect")
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, bridgeMode.toString)
     TestUtils.setIbpAndMessageFormatVersions(props, interBrokerVersion)
     KafkaConfig.fromProps(props)
   }

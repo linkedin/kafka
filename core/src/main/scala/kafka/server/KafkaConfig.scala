@@ -59,6 +59,11 @@ import scala.collection.{Map, Seq}
 
 object KafkaConfig {
 
+  val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
+  val LiProtocolBridgeModeEnableDoc =
+    "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +
+    "In ZooKeeper mode, bridge controllers send LeaderAndIsr v2, UpdateMetadata v5, and StopReplica v1."
+
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
       DynamicBrokerConfig.dynamicConfigUpdateModes))
@@ -88,7 +93,9 @@ object KafkaConfig {
       zooKeeperClientProperty(zkClientConfig, ZkConfigs.ZK_SSL_KEY_STORE_LOCATION_CONFIG).isDefined
   }
 
-  val configDef = AbstractKafkaConfig.CONFIG_DEF
+  val configDef = new ConfigDef(AbstractKafkaConfig.CONFIG_DEF)
+    .define(LiProtocolBridgeModeEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeModeEnableDoc)
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -187,6 +194,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   // Cache the current config to avoid acquiring read lock to access from dynamicConfig
   @volatile private var currentConfig = this
   val processRoles: Set[ProcessRole] = parseProcessRoles()
+  def liProtocolBridgeModeEnable: Boolean = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
+  def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 
   private[server] def updateCurrentConfig(newConfig: KafkaConfig): Unit = {

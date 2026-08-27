@@ -426,6 +426,8 @@ class ZkPartitionStateMachine(config: KafkaConfig,
         leaderForPreferredReplica(controllerContext, validLeaderAndIsrs).partition(_.leaderAndIsr.isEmpty)
       case ControlledShutdownPartitionLeaderElectionStrategy =>
         leaderForControlledShutdown(controllerContext, validLeaderAndIsrs).partition(_.leaderAndIsr.isEmpty)
+      case RecommendedLeaderElectionStrategy(recommendedLeaders) =>
+        leaderForRecommendation(controllerContext, validLeaderAndIsrs, recommendedLeaders).partition(_.leaderAndIsr.isEmpty)
     }
     partitionsWithoutLeaders.foreach { electionResult =>
       val partition = electionResult.topicPartition
@@ -546,6 +548,12 @@ object PartitionLeaderElectionAlgorithms {
     reassignment.find(id => liveReplicas.contains(id) && isr.contains(id))
   }
 
+  def recommendedPartitionLeaderElection(recommendedLeader: Option[Int],
+                                           isr: Seq[Int],
+                                           liveReplicas: Set[Int]): Option[Int] = {
+    recommendedLeader.filter(leader => isr.contains(leader) && liveReplicas.contains(leader))
+  }
+
   def preferredReplicaPartitionLeaderElection(assignment: Seq[Int], isr: Seq[Int], liveReplicas: Set[Int]): Option[Int] = {
     assignment.headOption.filter(id => liveReplicas.contains(id) && isr.contains(id))
   }
@@ -560,6 +568,8 @@ final case class OfflinePartitionLeaderElectionStrategy(allowUnclean: Boolean) e
 case object ReassignPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
 case object PreferredReplicaPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
 case object ControlledShutdownPartitionLeaderElectionStrategy extends PartitionLeaderElectionStrategy
+final case class RecommendedLeaderElectionStrategy(recommendedLeaders: Map[TopicPartition, Int])
+  extends PartitionLeaderElectionStrategy
 
 sealed trait PartitionState {
   def state: Byte

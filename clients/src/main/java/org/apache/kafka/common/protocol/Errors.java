@@ -90,6 +90,7 @@ import org.apache.kafka.common.errors.NewLeaderElectedException;
 import org.apache.kafka.common.errors.NoReassignmentInProgressException;
 import org.apache.kafka.common.errors.NotControllerException;
 import org.apache.kafka.common.errors.NotCoordinatorException;
+import org.apache.kafka.common.errors.NotEnoughPreferredControllersException;
 import org.apache.kafka.common.errors.NotEnoughReplicasAfterAppendException;
 import org.apache.kafka.common.errors.NotEnoughReplicasException;
 import org.apache.kafka.common.errors.NotLeaderOrFollowerException;
@@ -409,7 +410,11 @@ public enum Errors {
     FENCED_STATE_EPOCH(124, "The share coordinator rejected the request because the share-group state epoch did not match.", FencedStateEpochException::new),
     INVALID_VOTER_KEY(125, "The voter key doesn't match the receiving replica's key.", InvalidVoterKeyException::new),
     DUPLICATE_VOTER(126, "The voter is already part of the set of voters.", DuplicateVoterException::new),
-    VOTER_NOT_FOUND(127, "The voter is not part of the set of voters.", VoterNotFoundException::new);
+    VOTER_NOT_FOUND(127, "The voter is not part of the set of voters.", VoterNotFoundException::new),
+
+    // Private 3.0-li error retained while old brokers can respond to controlled shutdown requests.
+    NOT_ENOUGH_PREFERRED_CONTROLLERS(2000, "Not enough live preferred controllers.",
+            NotEnoughPreferredControllersException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

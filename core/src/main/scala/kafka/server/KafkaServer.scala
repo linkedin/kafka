@@ -117,6 +117,7 @@ class KafkaServer(
 ) extends KafkaBroker with Server {
 
   private val startupComplete = new AtomicBoolean(false)
+  private val liProtocolBridgeMetrics = new LiProtocolBridgeMetrics(config)
   private val isShuttingDown = new AtomicBoolean(false)
   private val isStartingUp = new AtomicBoolean(false)
 
@@ -1071,6 +1072,7 @@ class KafkaServer(
           CoreUtils.swallow(metrics.close(), this)
         if (brokerTopicStats != null)
           CoreUtils.swallow(brokerTopicStats.close(), this)
+        CoreUtils.swallow(liProtocolBridgeMetrics.close(), this)
 
         // Clear all reconfigurable instances stored in DynamicBrokerConfig
         config.dynamicConfig.clear()

@@ -39,7 +39,9 @@ trait ApiVersionManager {
   def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean = {
     apiKey != null && apiKey.inScope(listenerType) && apiKey.isVersionEnabled(apiVersion, enableUnstableLastVersion)
   }
-  def newRequestMetrics: RequestChannel.Metrics = new network.RequestChannel.Metrics(enabledApis)
+  protected def requestMetricsConfig: Option[KafkaConfig] = None
+  def newRequestMetrics: RequestChannel.Metrics =
+    new network.RequestChannel.Metrics(enabledApis, requestMetricsConfig)
 
   def features: FinalizedFeatures
 }
@@ -69,7 +71,8 @@ object ApiVersionManager {
              ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES |
              ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES => config.liProtocolBridgeFederatedTopicsActive
         case _ => true
-      }
+      },
+      Some(config)
     )
   }
 }
@@ -152,7 +155,8 @@ class DefaultApiVersionManager(
   val enableUnstableLastVersion: Boolean,
   val zkMigrationEnabled: Boolean = false,
   val clientMetricsManager: Option[ClientMetricsManager] = None,
-  liApiEnabled: ApiKeys => Boolean = _ => false
+  liApiEnabled: ApiKeys => Boolean = _ => false,
+  override protected val requestMetricsConfig: Option[KafkaConfig] = None
 ) extends ApiVersionManager {
 
   val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala

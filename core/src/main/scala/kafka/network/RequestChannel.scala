@@ -21,11 +21,12 @@ import java.nio.ByteBuffer
 import java.util.concurrent._
 import com.fasterxml.jackson.databind.JsonNode
 import com.typesafe.scalalogging.Logger
-import com.yammer.metrics.core.{Histogram, Meter}
+import com.yammer.metrics.core.{Counter, Histogram, Meter}
 import kafka.network
 import kafka.server.{BrokerMetadataStats, KafkaConfig, NoOpObserver, Observer, RequestLocal}
 import kafka.utils.{Logging, Pool}
 import kafka.utils.Implicits._
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.common.memory.MemoryPool
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
@@ -35,7 +36,7 @@ import org.apache.kafka.common.protocol.{ApiKeys, Errors}
 import org.apache.kafka.common.requests._
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.network.Session
-import org.apache.kafka.server.metrics.KafkaMetricsGroup
+import org.apache.kafka.server.metrics.{KafkaMetricsGroup, KafkaYammerMetrics}
 
 import java.util
 import scala.collection.mutable
@@ -60,23 +61,49 @@ object RequestChannel extends Logging {
   case object ShutdownRequest extends BaseRequest
   case object WakeupRequest extends BaseRequest
 
-  class Metrics(enabledApis: Iterable[ApiKeys]) {
+  class Metrics(enabledApis: Iterable[ApiKeys], config: Option[KafkaConfig] = None) {
     def this(scope: ListenerType) = {
-      this(ApiKeys.apisForListener(scope).asScala)
+      this(ApiKeys.apisForListener(scope).asScala, None)
     }
 
     private val metricsMap = mutable.Map[String, RequestMetrics]()
+    private val bucketConfig = config.filter(_.liProtocolBridgeRequestMetricBucketsActive)
 
+    val produceRequestAcksSizeMetricNameMap: Map[Int, util.TreeMap[Int, String]] =
+      bucketConfig.map(_ => createProduceSizeMetricNames()).getOrElse(Map.empty)
+    val consumerFetchRequestSizeMetricNameMap: util.TreeMap[Int, String] =
+      bucketConfig.map(_ => createSizeMetricNames(RequestMetrics.consumerFetchMetricName))
+        .getOrElse(new util.TreeMap[Int, String])
+
+    private val additionalMetricNames =
+      produceRequestAcksSizeMetricNameMap.values.flatMap(_.values.asScala) ++
+        consumerFetchRequestSizeMetricNameMap.values.asScala
     (enabledApis.map(_.name) ++
-      Seq(RequestMetrics.consumerFetchMetricName, RequestMetrics.followFetchMetricName, RequestMetrics.verifyPartitionsInTxnMetricName)).foreach { name =>
-      metricsMap.put(name, new RequestMetrics(name))
+      Seq(RequestMetrics.consumerFetchMetricName, RequestMetrics.followFetchMetricName,
+        RequestMetrics.verifyPartitionsInTxnMetricName) ++ additionalMetricNames).foreach { name =>
+      metricsMap.put(name, new RequestMetrics(name, bucketConfig))
     }
+
+    private def createSizeMetricNames(requestType: String): util.TreeMap[Int, String] =
+      RequestMetrics.getBucketBoundaryObjectMap(bucketConfig.get.requestMetricsSizeBuckets,
+        requestType, "Mb", identity, addBinNumber = false)
+
+    private def createProduceSizeMetricNames(): Map[Int, util.TreeMap[Int, String]] = {
+      val baseNames = createSizeMetricNames(ApiKeys.PRODUCE.name)
+      Seq(0 -> "0", 1 -> "1", -1 -> "All").map { case (acks, suffix) =>
+        val names = new util.TreeMap[Int, String]
+        baseNames.asScala.foreach { case (boundary, name) => names.put(boundary, s"${name}Acks$suffix") }
+        acks -> names
+      }.toMap
+    }
+
+    def requestSizeBucketMetricName(names: util.TreeMap[Int, String], sizeBytes: Long): Option[String] =
+      if (names.isEmpty) None
+      else Some(RequestMetrics.getBucketObject(names, (sizeBytes / 1024 / 1024).toInt))
 
     def apply(metricName: String): RequestMetrics = metricsMap(metricName)
 
-    def close(): Unit = {
-       metricsMap.values.foreach(_.removeMetrics())
-    }
+    def close(): Unit = metricsMap.values.foreach(_.removeMetrics())
   }
 
   case class CallbackRequest(fun: RequestLocal => Unit,
@@ -242,12 +269,21 @@ object RequestChannel extends Logging {
       val totalTimeMs = nanosToMs(endTimeNanos - startTimeNanos)
       val overrideMetricNames =
         if (header.apiKey == ApiKeys.FETCH) {
+          val fetchRequest = body[FetchRequest]
           val specifiedMetricName =
-            if (body[FetchRequest].isFromFollower) RequestMetrics.followFetchMetricName
+            if (fetchRequest.isFromFollower) RequestMetrics.followFetchMetricName
             else RequestMetrics.consumerFetchMetricName
-          Seq(specifiedMetricName, header.apiKey.name)
+          val sizeMetricName =
+            if (fetchRequest.isFromFollower || fetchRequest.maxWait > ConsumerConfig.DEFAULT_FETCH_MAX_WAIT_MS) None
+            else metrics.requestSizeBucketMetricName(metrics.consumerFetchRequestSizeMetricNameMap, responseBytes)
+          Seq(specifiedMetricName, header.apiKey.name) ++ sizeMetricName
+        } else if (header.apiKey == ApiKeys.PRODUCE) {
+          val acks = body[ProduceRequest].acks.toInt
+          val names = metrics.produceRequestAcksSizeMetricNameMap.get(acks)
+            .orElse(metrics.produceRequestAcksSizeMetricNameMap.get(-1))
+          Seq(header.apiKey.name) ++ names.flatMap(metrics.requestSizeBucketMetricName(_, sizeOfBodyInBytes))
         } else if (header.apiKey == ApiKeys.ADD_PARTITIONS_TO_TXN && body[AddPartitionsToTxnRequest].allVerifyOnlyRequest) {
-            Seq(RequestMetrics.verifyPartitionsInTxnMetricName)
+          Seq(RequestMetrics.verifyPartitionsInTxnMetricName)
         } else {
           Seq(header.apiKey.name)
         }
@@ -263,6 +299,7 @@ object RequestChannel extends Logging {
         m.responseQueueTimeHist.update(Math.round(responseQueueTimeMs))
         m.responseSendTimeHist.update(Math.round(responseSendTimeMs))
         m.totalTimeHist.update(Math.round(totalTimeMs))
+        m.totalTimeBucketHist.foreach(_.update(totalTimeMs))
         m.requestBytesHist.update(sizeOfBodyInBytes)
         m.responseBytesHist.update(responseBytes)
         m.messageConversionsTimeHist.foreach(_.update(Math.round(messageConversionsTimeMs)))
@@ -548,11 +585,27 @@ object RequestMetrics {
   val MessageConversionsTimeMs: String = "MessageConversionsTimeMs"
   val TemporaryMemoryBytes: String = "TemporaryMemoryBytes"
   val ErrorsPerSec: String = "ErrorsPerSec"
+
+  def getBucketBoundaryObjectMap[T](boundaries: Array[Int], prefix: String, postfix: String,
+                                    create: String => T, addBinNumber: Boolean): util.TreeMap[Int, T] = {
+    val result = new util.TreeMap[Int, T]
+    boundaries.indices.foreach { index =>
+      val left = boundaries(index)
+      val bin = if (addBinNumber) s"_Bin${index + 1}_" else ""
+      val name = if (index == boundaries.length - 1) s"$prefix$bin$left${postfix}Greater"
+      else s"$prefix$bin${left}To${boundaries(index + 1)}$postfix"
+      result.put(left, create(name))
+    }
+    result
+  }
+
+  def getBucketObject[T](objects: util.TreeMap[Int, T], value: Int): T =
+    if (value < objects.firstKey) objects.firstEntry.getValue else objects.floorEntry(value).getValue
 }
 
 private case class DeprecatedRequestRateKey(version: Short, clientInformation: ClientInformation)
 
-class RequestMetrics(name: String) {
+class RequestMetrics(name: String, bucketConfig: Option[KafkaConfig] = None) {
 
   import RequestMetrics._
 
@@ -580,6 +633,9 @@ class RequestMetrics(name: String) {
   // request and response sizes in bytes
   val requestBytesHist: Histogram = metricsGroup.newHistogram(RequestBytes, true, tags)
   val responseBytesHist: Histogram = metricsGroup.newHistogram(ResponseBytes, true, tags)
+  val totalTimeBucketHist: Option[TotalTimeBuckets] = bucketConfig
+    .filter(_.totalTimeHistogramEnabledMetrics.exists(_.equalsIgnoreCase(name)))
+    .map(config => new TotalTimeBuckets(config.requestMetricsTotalTimeBuckets))
   // time for message conversions (only relevant to fetch and produce requests)
   val messageConversionsTimeHist: Option[Histogram] =
     if (name == ApiKeys.FETCH.name || name == ApiKeys.PRODUCE.name)
@@ -593,6 +649,22 @@ class RequestMetrics(name: String) {
       Some(metricsGroup.newHistogram(TemporaryMemoryBytes, true, tags))
     else
       None
+
+  final class TotalTimeBuckets(boundaries: Array[Int]) {
+    private val counters: util.TreeMap[Int, (String, Counter)] =
+      RequestMetrics.getBucketBoundaryObjectMap(boundaries, "TotalTime", "Ms", metricName =>
+        metricName -> KafkaYammerMetrics.defaultRegistry.newCounter(metricsGroup.metricName(metricName, tags)),
+        addBinNumber = true)
+
+    def update(value: Double): Unit = {
+      val bounded = math.min(Int.MaxValue.toLong, Math.round(value)).toInt
+      RequestMetrics.getBucketObject(counters, bounded)._2.inc()
+    }
+
+    def remove(): Unit = counters.values.asScala.foreach { case (metricName, _) =>
+      metricsGroup.removeMetric(metricName, tags)
+    }
+  }
 
   private val errorMeters = mutable.Map[Errors, ErrorMeter]()
   Errors.values.foreach(error => errorMeters.put(error, new ErrorMeter(name, error)))
@@ -669,6 +741,7 @@ class RequestMetrics(name: String) {
     metricsGroup.removeMetric(ResponseSendTimeMs, tags)
     metricsGroup.removeMetric(RequestBytes, tags)
     metricsGroup.removeMetric(ResponseBytes, tags)
+    totalTimeBucketHist.foreach(_.remove())
     if (name == ApiKeys.FETCH.name || name == ApiKeys.PRODUCE.name) {
       metricsGroup.removeMetric(MessageConversionsTimeMs, tags)
       metricsGroup.removeMetric(TemporaryMemoryBytes, tags)

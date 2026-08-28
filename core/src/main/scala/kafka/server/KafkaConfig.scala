@@ -77,6 +77,9 @@ object KafkaConfig {
     "li.protocol.bridge.dynamic.topic.deletion.enable"
   val LiProtocolBridgeProduceRequestInstrumentationEnableProp =
     "li.protocol.bridge.produce.request.instrumentation.enable"
+  val LiProtocolBridgeRequestMetricBucketsEnableProp =
+    "li.protocol.bridge.request.metric.buckets.enable"
+  val TotalTimeHistogramEnabledMetricsProp = "total.time.histogram.enabled.metrics"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
   val PreferredControllerProp = "preferred.controller"
@@ -154,6 +157,8 @@ object KafkaConfig {
     "Read delete.topic.enable dynamically from the 3.0-li /topic_deletion_flag ZooKeeper path."
   val LiProtocolBridgeProduceRequestInstrumentationEnableDoc =
     "Log sampled stage timings for long-tail produce requests using the 3.0-li log format."
+  val LiProtocolBridgeRequestMetricBucketsEnableDoc =
+    "Expose 3.0-li request size groups and total-time bucket counters."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -219,6 +224,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeDynamicTopicDeletionEnableDoc)
     .define(LiProtocolBridgeProduceRequestInstrumentationEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeProduceRequestInstrumentationEnableDoc)
+    .define(LiProtocolBridgeRequestMetricBucketsEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeRequestMetricBucketsEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -245,6 +252,14 @@ object KafkaConfig {
     .define(LiLongTailProduceRequestLogRatioProp, ConfigDef.Type.DOUBLE, 0.0,
       ConfigDef.Range.between(0.0, 1.0), ConfigDef.Importance.MEDIUM,
       "Ratio of long-tail produce requests to log after applying the threshold.")
+    .define(RequestMetricsSizeBucketsProp, ConfigDef.Type.STRING, "0,1,10,50,100",
+      ConfigDef.Importance.LOW, "Request and response size bucket boundaries in MiB.")
+    .define(RequestMetricsTotalTimeBucketsProp, ConfigDef.Type.STRING,
+      "0,5,10,20,30,40,50,100,200,300,500,1000,5000,15000",
+      ConfigDef.Importance.LOW, "Request total-time bucket boundaries in milliseconds.")
+    .define(TotalTimeHistogramEnabledMetricsProp, ConfigDef.Type.LIST,
+      java.util.Arrays.asList("Produce0To1MbAcks1", "Produce0To1MbAcksAll", "FetchConsumer0To1Mb"),
+      ConfigDef.Importance.LOW, "Request metric groups that expose total-time bucket counters.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -366,6 +381,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeDynamicTopicDeletionEnableProp)
   def liProtocolBridgeProduceRequestInstrumentationEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp)
+  def liProtocolBridgeRequestMetricBucketsEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeRequestMetricBucketsEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -386,6 +403,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeDynamicTopicDeletionEnable
   def liProtocolBridgeProduceRequestInstrumentationActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeProduceRequestInstrumentationEnable
+  def liProtocolBridgeRequestMetricBucketsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeRequestMetricBucketsEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -409,6 +428,12 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getLong(KafkaConfig.LiLongTailProduceRequestLogThresholdMsProp)
   def longTailProduceRequestLogRatio: Double =
     getDouble(KafkaConfig.LiLongTailProduceRequestLogRatioProp)
+  def requestMetricsSizeBuckets: Array[Int] = parseIntArray(KafkaConfig.RequestMetricsSizeBucketsProp)
+  def requestMetricsTotalTimeBuckets: Array[Int] = parseIntArray(KafkaConfig.RequestMetricsTotalTimeBucketsProp)
+  def totalTimeHistogramEnabledMetrics: Seq[String] =
+    getList(KafkaConfig.TotalTimeHistogramEnabledMetricsProp).asScala.toSeq
+  private def parseIntArray(name: String): Array[Int] =
+    getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)
   def maintenanceBrokerList: Set[Int] = {
     getString(KafkaConfig.MaintenanceBrokerListProp).split(',').iterator

@@ -90,6 +90,11 @@ object KafkaConfig {
   val TotalTimeHistogramEnabledMetricsProp = "total.time.histogram.enabled.metrics"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
+  val ListenersProp: String = SocketServerConfigs.LISTENERS_CONFIG
+  val ZkConnectProp: String = ZkConfigs.ZK_CONNECT_CONFIG
+  val ZkSessionTimeoutMsProp: String = ZkConfigs.ZK_SESSION_TIMEOUT_MS_CONFIG
+  val ZkConnectionTimeoutMsProp: String = ZkConfigs.ZK_CONNECTION_TIMEOUT_MS_CONFIG
+  val LogMessageFormatVersionProp: String = ServerLogConfigs.LOG_MESSAGE_FORMAT_VERSION_CONFIG
   val PreferredControllerProp = "preferred.controller"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val LiMinPreferredControllerCountProp = "li.min.preferred.controller.count"

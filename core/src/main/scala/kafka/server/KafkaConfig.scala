@@ -20,6 +20,7 @@ package kafka.server
 import java.util
 import java.util.concurrent.TimeUnit
 import java.util.Properties
+import kafka.admin.RackAwareReplicaAssignmentRackIdMapper
 import kafka.cluster.EndPoint
 import kafka.utils.{CoreUtils, Logging}
 import kafka.utils.Implicits._
@@ -70,6 +71,8 @@ object KafkaConfig {
     "li.protocol.bridge.preferred.controller.enable"
   val LiProtocolBridgeFederatedTopicsEnableProp =
     "li.protocol.bridge.federated.topics.enable"
+  val LiProtocolBridgeRackIdMapperEnableProp =
+    "li.protocol.bridge.rack.id.mapper.enable"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
   val PreferredControllerProp = "preferred.controller"
@@ -140,6 +143,8 @@ object KafkaConfig {
     "Enable 3.0-li preferred-controller election and shutdown behavior on ZooKeeper brokers."
   val LiProtocolBridgeFederatedTopicsEnableDoc =
     "Enable the 3.0-li federated-topic APIs and ZooKeeper metadata used by the LinkedIn authorizer."
+  val LiProtocolBridgeRackIdMapperEnableDoc =
+    "Apply the configured 3.0-li rack ID mapper during automatic replica assignment."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -198,6 +203,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgePreferredControllerEnableDoc)
     .define(LiProtocolBridgeFederatedTopicsEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeFederatedTopicsEnableDoc)
+    .define(LiProtocolBridgeRackIdMapperEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeRackIdMapperEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -212,6 +219,8 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, ObserverClassNameDoc)
     .define(ObserverShutdownTimeoutMsProp, ConfigDef.Type.LONG, 60000L, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.MEDIUM, ObserverShutdownTimeoutMsDoc)
+    .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, ConfigDef.Type.STRING, "",
+      ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -325,6 +334,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp)
   def liProtocolBridgeFederatedTopicsEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp)
+  def liProtocolBridgeRackIdMapperEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeRackIdMapperEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -339,6 +350,16 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgePreferredControllerEnable
   def liProtocolBridgeFederatedTopicsActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeFederatedTopicsEnable
+  def liProtocolBridgeRackIdMapperActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeRackIdMapperEnable
+
+  lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
+    val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
+    if (liProtocolBridgeRackIdMapperActive && className.nonEmpty)
+      CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](className)
+    else
+      rackId => rackId
+  }
 
   def preferredController: Boolean = getBoolean(KafkaConfig.PreferredControllerProp)
   def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)

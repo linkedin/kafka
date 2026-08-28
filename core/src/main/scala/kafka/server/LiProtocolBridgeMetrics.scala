@@ -29,9 +29,11 @@ object LiProtocolBridgeMetrics {
   val ShutdownSafetyOverrideEnabled = "ShutdownSafetyOverrideEnabled"
   val PreferredControllerEnabled = "PreferredControllerEnabled"
   val FederatedTopicsEnabled = "FederatedTopicsEnabled"
+  val RackIdMapperEnabled = "RackIdMapperEnabled"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
-    ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled)
+    ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
+    RackIdMapperEnabled)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -56,6 +58,8 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgePreferredControllerActive), tags)
   metricsGroup.newGauge(FederatedTopicsEnabled,
     () => enabled(config.liProtocolBridgeFederatedTopicsActive), tags)
+  metricsGroup.newGauge(RackIdMapperEnabled,
+    () => enabled(config.liProtocolBridgeRackIdMapperActive), tags)
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 

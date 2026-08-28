@@ -113,8 +113,9 @@ object KafkaController extends Logging {
     liveBrokerIds: Set[Int],
     minimumAliveReplicas: Int
   ): Option[ApiError] = {
-    val aliveOriginalReplicas = originalReplicas.toSet.intersect(liveBrokerIds)
-    if (aliveOriginalReplicas.size >= minimumAliveReplicas) None
+    val originalReplicaSet = originalReplicas.toSet
+    val aliveOriginalReplicas = originalReplicaSet.intersect(liveBrokerIds)
+    if (originalReplicaSet.subsetOf(liveBrokerIds) || aliveOriginalReplicas.size >= minimumAliveReplicas) None
     else Some(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
       s"Replica assignment cancellation requires at least $minimumAliveReplicas live original replicas. " +
         s"Original replicas: $originalReplicas; live brokers: $liveBrokerIds"))

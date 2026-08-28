@@ -101,6 +101,8 @@ class KafkaControllerTest {
       Seq(1, 2, 3), Set(1, 4), minimumAliveReplicas = 2).isDefined)
     assertEquals(None, KafkaController.validateReassignmentCancellation(
       Seq(1, 2, 3), Set(1, 2, 4), minimumAliveReplicas = 2))
+    assertEquals(None, KafkaController.validateReassignmentCancellation(
+      Seq(1), Set(1, 4), minimumAliveReplicas = 2))
   }
 
 }

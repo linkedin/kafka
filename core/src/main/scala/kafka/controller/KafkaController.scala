@@ -1027,7 +1027,7 @@ class KafkaController(val config: KafkaConfig,
     info(s"Current list of topics in the cluster: ${controllerContext.allTopics}")
   }
 
-  private def loadReplicaAssignments(
+  private[controller] def loadReplicaAssignments(
     topics: scala.collection.immutable.Set[String]
   ): scala.collection.immutable.Set[TopicIdReplicaAssignment] = {
     if (controllerInitZkClients.size <= 1 || topics.size <= 1) {
@@ -1094,9 +1094,29 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def updateLeaderAndIsrCache(partitions: Seq[TopicPartition] = controllerContext.allPartitions.toSeq): Unit = {
-    val leaderIsrAndControllerEpochs = zkClient.getTopicPartitionStates(partitions)
+    val leaderIsrAndControllerEpochs = loadPartitionStates(partitions)
     leaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
       controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+    }
+  }
+
+  private[controller] def loadPartitionStates(
+    partitions: Seq[TopicPartition]
+  ): scala.collection.immutable.Map[TopicPartition, LeaderIsrAndControllerEpoch] = {
+    if (controllerInitZkClients.size <= 1 || partitions.size <= 1) {
+      zkClient.getTopicPartitionStates(partitions).toMap
+    } else {
+      val executor = Executors.newFixedThreadPool(controllerInitZkClients.size)
+      try {
+        val chunkSize = math.max(1, math.ceil(partitions.size.toDouble / controllerInitZkClients.size).toInt)
+        val futures = partitions.grouped(chunkSize).zipWithIndex.map { case (partitionChunk, index) =>
+          CompletableFuture.supplyAsync(
+            () => controllerInitZkClients(index).getTopicPartitionStates(partitionChunk), executor)
+        }.toSeq
+        futures.flatMap(_.join()).toMap
+      } finally {
+        executor.shutdown()
+      }
     }
   }
 

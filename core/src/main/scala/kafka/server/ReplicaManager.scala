@@ -1442,10 +1442,10 @@ class ReplicaManager(val config: KafkaConfig,
           val numAppendedMessages = info.numMessages
 
           // update stats for successfully appended bytes and messages as bytesInRate and messageInRate
-          brokerTopicStats.topicStats(topicPartition.topic).bytesInRate.mark(records.sizeInBytes)
-          brokerTopicStats.allTopicsStats.bytesInRate.mark(records.sizeInBytes)
-          brokerTopicStats.topicStats(topicPartition.topic).messagesInRate.mark(numAppendedMessages)
-          brokerTopicStats.allTopicsStats.messagesInRate.mark(numAppendedMessages)
+          brokerTopicStats.topicStats(topicPartition.topic).markBytesIn(records.sizeInBytes)
+          brokerTopicStats.allTopicsStats.markBytesIn(records.sizeInBytes)
+          brokerTopicStats.topicStats(topicPartition.topic).markMessagesIn(numAppendedMessages)
+          brokerTopicStats.allTopicsStats.markMessagesIn(numAppendedMessages)
 
           if (traceEnabled)
             trace(s"${records.sizeInBytes} written to log $topicPartition beginning at offset " +

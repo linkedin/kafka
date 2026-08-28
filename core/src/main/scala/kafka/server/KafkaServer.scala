@@ -293,7 +293,9 @@ class KafkaServer(
         createCurrentControllerIdMetric()
 
         /* register broker metrics */
-        _brokerTopicStats = new BrokerTopicStats(config.remoteLogManagerConfig.isRemoteStorageSystemEnabled())
+        _brokerTopicStats = new BrokerTopicStats(
+          config.remoteLogManagerConfig.isRemoteStorageSystemEnabled(),
+          config.liProtocolBridgeLegacyRequestMetricsActive)
 
         quotaManagers = QuotaFactory.instantiate(config, metrics, time, threadNamePrefix.getOrElse(""))
         KafkaBroker.notifyClusterListeners(clusterId, kafkaMetricsReporters ++ metrics.reporters.asScala)

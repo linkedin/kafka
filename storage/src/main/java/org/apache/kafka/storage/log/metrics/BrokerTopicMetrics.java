@@ -18,7 +18,9 @@ package org.apache.kafka.storage.log.metrics;
 
 import org.apache.kafka.server.log.remote.storage.RemoteStorageMetrics;
 import org.apache.kafka.server.metrics.KafkaMetricsGroup;
+import org.apache.kafka.server.metrics.KafkaYammerMetrics;
 
+import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Meter;
 
 import java.util.Collections;
@@ -33,6 +35,8 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class BrokerTopicMetrics {
     public static final String MESSAGE_IN_PER_SEC = "MessagesInPerSec";
     public static final String BYTES_IN_PER_SEC = "BytesInPerSec";
+    public static final String MESSAGES_IN_TOTAL = "MessagesInTotal";
+    public static final String BYTES_IN_TOTAL = "BytesInTotal";
     public static final String BYTES_OUT_PER_SEC = "BytesOutPerSec";
     public static final String BYTES_REJECTED_PER_SEC = "BytesRejectedPerSec";
     public static final String REPLICATION_BYTES_IN_PER_SEC = "ReplicationBytesInPerSec";
@@ -56,21 +60,34 @@ public final class BrokerTopicMetrics {
     private final KafkaMetricsGroup metricsGroup = new KafkaMetricsGroup("kafka.server", "BrokerTopicMetrics");
     private final Map<String, String> tags;
     private final Map<String, MeterWrapper> metricTypeMap = new java.util.HashMap<>();
+    private final Map<String, CounterWrapper> counterTypeMap = new java.util.HashMap<>();
     private final Map<String, GaugeWrapper> metricGaugeTypeMap = new java.util.HashMap<>();
 
     public BrokerTopicMetrics(boolean remoteStorageEnabled) {
-        this(Optional.empty(), remoteStorageEnabled);
+        this(Optional.empty(), remoteStorageEnabled, false);
+    }
+
+    public BrokerTopicMetrics(boolean remoteStorageEnabled, boolean legacyMetricsEnabled) {
+        this(Optional.empty(), remoteStorageEnabled, legacyMetricsEnabled);
     }
 
     public BrokerTopicMetrics(String name, boolean remoteStorageEnabled) {
-        this(Optional.of(name), remoteStorageEnabled);
+        this(Optional.of(name), remoteStorageEnabled, false);
     }
 
-    private BrokerTopicMetrics(Optional<String> name, boolean remoteStorageEnabled) {
+    public BrokerTopicMetrics(String name, boolean remoteStorageEnabled, boolean legacyMetricsEnabled) {
+        this(Optional.of(name), remoteStorageEnabled, legacyMetricsEnabled);
+    }
+
+    private BrokerTopicMetrics(Optional<String> name, boolean remoteStorageEnabled, boolean legacyMetricsEnabled) {
         this.tags = name.map(s -> Collections.singletonMap("topic", s)).orElse(Collections.emptyMap());
 
         metricTypeMap.put(MESSAGE_IN_PER_SEC, new MeterWrapper(MESSAGE_IN_PER_SEC, "messages"));
         metricTypeMap.put(BYTES_IN_PER_SEC, new MeterWrapper(BYTES_IN_PER_SEC, "bytes"));
+        if (legacyMetricsEnabled) {
+            counterTypeMap.put(MESSAGES_IN_TOTAL, new CounterWrapper(MESSAGES_IN_TOTAL));
+            counterTypeMap.put(BYTES_IN_TOTAL, new CounterWrapper(BYTES_IN_TOTAL));
+        }
         metricTypeMap.put(BYTES_OUT_PER_SEC, new MeterWrapper(BYTES_OUT_PER_SEC, "bytes"));
         metricTypeMap.put(BYTES_REJECTED_PER_SEC, new MeterWrapper(BYTES_REJECTED_PER_SEC, "bytes"));
         metricTypeMap.put(FAILED_PRODUCE_REQUESTS_PER_SEC, new MeterWrapper(FAILED_PRODUCE_REQUESTS_PER_SEC, "requests"));
@@ -122,6 +139,7 @@ public final class BrokerTopicMetrics {
 
     public void close() {
         metricTypeMap.values().forEach(MeterWrapper::close);
+        counterTypeMap.values().forEach(CounterWrapper::close);
         metricGaugeTypeMap.values().forEach(GaugeWrapper::close);
     }
 
@@ -140,6 +158,28 @@ public final class BrokerTopicMetrics {
 
     public Meter bytesInRate() {
         return metricTypeMap.get(BYTES_IN_PER_SEC).meter();
+    }
+
+    public Optional<Counter> messagesInTotal() {
+        CounterWrapper counter = counterTypeMap.get(MESSAGES_IN_TOTAL);
+        return counter == null ? Optional.empty() : Optional.of(counter.counter());
+    }
+
+    public Optional<Counter> bytesInTotal() {
+        CounterWrapper counter = counterTypeMap.get(BYTES_IN_TOTAL);
+        return counter == null ? Optional.empty() : Optional.of(counter.counter());
+    }
+
+    public void markMessagesIn(long value) {
+        messagesInRate().mark(value);
+        CounterWrapper counter = counterTypeMap.get(MESSAGES_IN_TOTAL);
+        if (counter != null) counter.counter().inc(value);
+    }
+
+    public void markBytesIn(long value) {
+        bytesInRate().mark(value);
+        CounterWrapper counter = counterTypeMap.get(BYTES_IN_TOTAL);
+        if (counter != null) counter.counter().inc(value);
     }
 
     public Meter bytesOutRate() {
@@ -320,6 +360,46 @@ public final class BrokerTopicMetrics {
 
     public Meter failedBuildRemoteLogAuxStateRate() {
         return metricTypeMap.get(RemoteStorageMetrics.FAILED_BUILD_REMOTE_LOG_AUX_STATE_PER_SEC_METRIC.getName()).meter();
+    }
+
+    private class CounterWrapper {
+        private final String metricType;
+        private volatile Counter lazyCounter;
+        private final Lock counterLock = new ReentrantLock();
+
+        CounterWrapper(String metricType) {
+            this.metricType = metricType;
+            if (tags.isEmpty()) counter();
+        }
+
+        Counter counter() {
+            Counter counter = lazyCounter;
+            if (counter == null) {
+                counterLock.lock();
+                try {
+                    counter = lazyCounter;
+                    if (counter == null) {
+                        counter = KafkaYammerMetrics.defaultRegistry().newCounter(metricsGroup.metricName(metricType, tags));
+                        lazyCounter = counter;
+                    }
+                } finally {
+                    counterLock.unlock();
+                }
+            }
+            return counter;
+        }
+
+        void close() {
+            counterLock.lock();
+            try {
+                if (lazyCounter != null) {
+                    metricsGroup.removeMetric(metricType, tags);
+                    lazyCounter = null;
+                }
+            } finally {
+                counterLock.unlock();
+            }
+        }
     }
 
     private class MeterWrapper {

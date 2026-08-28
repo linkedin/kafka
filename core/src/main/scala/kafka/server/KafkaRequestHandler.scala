@@ -245,11 +245,15 @@ class KafkaRequestHandlerPool(
   }
 }
 
-class BrokerTopicStats(remoteStorageEnabled: Boolean = false) extends Logging {
+class BrokerTopicStats(remoteStorageEnabled: Boolean = false,
+                       legacyMetricsEnabled: Boolean = false) extends Logging {
 
-  private val valueFactory = (k: String) => new BrokerTopicMetrics(k, remoteStorageEnabled)
+  def this() = this(false, false)
+  def this(remoteStorageEnabled: Boolean) = this(remoteStorageEnabled, false)
+
+  private val valueFactory = (k: String) => new BrokerTopicMetrics(k, remoteStorageEnabled, legacyMetricsEnabled)
   private val stats = new Pool[String, BrokerTopicMetrics](Some(valueFactory))
-  val allTopicsStats = new BrokerTopicMetrics(remoteStorageEnabled)
+  val allTopicsStats = new BrokerTopicMetrics(remoteStorageEnabled, legacyMetricsEnabled)
 
   def isTopicStatsExisted(topic: String): Boolean =
     stats.contains(topic)

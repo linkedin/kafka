@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 import kafka.api._
 import kafka.common._
 import kafka.cluster.Broker
-import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, ActivePreferredControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName, StandbyPreferredControllerCountMetricName}
+import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, ActivePreferredControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, MaintenanceBrokerCountMetricName, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName, StandbyPreferredControllerCountMetricName}
 import kafka.coordinator.transaction.ZkProducerIdManager
 import kafka.server._
 import kafka.server.metadata.ZkFinalizedFeatureCache
@@ -84,6 +84,7 @@ object KafkaController extends Logging {
   private val TopicsIneligibleToDeleteCountMetricName = "TopicsIneligibleToDeleteCount"
   private val ReplicasIneligibleToDeleteCountMetricName = "ReplicasIneligibleToDeleteCount"
   private val ActiveBrokerCountMetricName = "ActiveBrokerCount"
+  private val MaintenanceBrokerCountMetricName = "MaintenanceBrokerCount"
   private val FencedBrokerCountMetricName = "FencedBrokerCount"
   private val ZkMigrationStateMetricName = "ZkMigrationState"
 
@@ -103,6 +104,7 @@ object KafkaController extends Logging {
     TopicsIneligibleToDeleteCountMetricName,
     ReplicasIneligibleToDeleteCountMetricName,
     ActiveBrokerCountMetricName,
+    MaintenanceBrokerCountMetricName,
     FencedBrokerCountMetricName
   )
 }
@@ -197,6 +199,8 @@ class KafkaController(val config: KafkaConfig,
   metricsGroup.newGauge(TopicsIneligibleToDeleteCountMetricName, () => ineligibleTopicsToDeleteCount)
   metricsGroup.newGauge(ReplicasIneligibleToDeleteCountMetricName, () => ineligibleReplicasToDeleteCount)
   metricsGroup.newGauge(ActiveBrokerCountMetricName, () => activeBrokerCount)
+  metricsGroup.newGauge(MaintenanceBrokerCountMetricName,
+    () => if (isActive) config.maintenanceBrokerList.size else 0)
   // FencedBrokerCount metric is always 0 in the ZK controller.
   metricsGroup.newGauge(FencedBrokerCountMetricName, () => 0)
 

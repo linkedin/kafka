@@ -83,6 +83,7 @@ object KafkaConfig {
     "controlled.shutdown.safety.check.redundancy.factor"
   val ObserverClassNameProp = "observer.class.name"
   val ObserverShutdownTimeoutMsProp = "observer.shutdown.timeout"
+  val MaintenanceBrokerListProp = "maintenance.broker.list"
 
   // Source-compatible names used by the LinkedIn KafkaServer wrapper. Apache 3.9 moved most of
   // these definitions into Java config classes, but the wrapper still calls KafkaConfig.*Prop().
@@ -156,6 +157,7 @@ object KafkaConfig {
     "Additional live ISR replicas required by the controlled shutdown safety check."
   val ObserverClassNameDoc = "Broker request observer implementation class."
   val ObserverShutdownTimeoutMsDoc = "Maximum time in milliseconds allowed to close the request observer."
+  val MaintenanceBrokerListDoc = "Comma-separated broker IDs excluded from automatic replica assignment."
 
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
@@ -219,6 +221,8 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, ObserverClassNameDoc)
     .define(ObserverShutdownTimeoutMsProp, ConfigDef.Type.LONG, 60000L, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.MEDIUM, ObserverShutdownTimeoutMsDoc)
+    .define(MaintenanceBrokerListProp, ConfigDef.Type.STRING, "",
+      ConfigDef.Importance.HIGH, MaintenanceBrokerListDoc)
     .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, ConfigDef.Type.STRING, "",
       ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
     .define(LiZookeeperPaginationEnableProp, ConfigDef.Type.BOOLEAN, false,
@@ -373,6 +377,10 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
   def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
   def liZookeeperPaginationEnable: Boolean = getBoolean(KafkaConfig.LiZookeeperPaginationEnableProp)
+  def maintenanceBrokerList: Set[Int] = {
+    getString(KafkaConfig.MaintenanceBrokerListProp).split(',').iterator
+      .map(_.trim).filter(_.nonEmpty).map(_.toInt).toSet
+  }
 
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 

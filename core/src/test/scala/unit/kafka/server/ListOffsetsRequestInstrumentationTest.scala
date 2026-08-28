@@ -32,6 +32,15 @@ class ListOffsetsRequestInstrumentationTest {
     assertTrue(instrumentation.snapshotAndResetListOffsetByTimeStampApiUsers().isEmpty)
   }
 
+  @Test
+  def testEnabledInstrumentationRemovesMetricsOnClose(): Unit = {
+    val before = instrumentationMetricNames
+    val instrumentation = new ListOffsetsRequestInstrumentation(enabled = true)
+    assertTrue(instrumentationMetricNames.size > before.size)
+    instrumentation.close()
+    assertEquals(before, instrumentationMetricNames)
+  }
+
   private def instrumentationMetricNames: Set[String] =
     KafkaYammerMetrics.defaultRegistry.allMetrics.keySet.asScala
       .filter(_.getMBeanName.contains("type=ListOffsetsRequestInstrumentation"))

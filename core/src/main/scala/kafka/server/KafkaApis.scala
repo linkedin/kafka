@@ -133,6 +133,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def close(): Unit = {
+    listOffsetsRequestInstrumentation.close()
     aclApis.close()
     info("Shutdown complete.")
   }

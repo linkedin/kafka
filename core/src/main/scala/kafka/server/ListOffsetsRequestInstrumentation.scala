@@ -80,6 +80,15 @@ class ListOffsetsRequestInstrumentation(enabled: Boolean = true) {
     old
   }
 
+  def close(): Unit = {
+    if (enabled) {
+      Seq(UNKNOWN, EARLIEST, LATEST, LI_EARLIEST_LOCAL, MAX, BY_TIMESTAMP).foreach { value =>
+        metricsGroup.removeMetric(partitionRequestRate, tags(value))
+        metricsGroup.removeMetric(partitionsPerRequest, tags(value))
+      }
+    }
+  }
+
   def logUsage(principal: KafkaPrincipal, topic: ListOffsetsTopic): Unit = {
     if (!enabled) return
 

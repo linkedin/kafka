@@ -56,6 +56,14 @@ public class MetadataRequestTest {
     }
 
     @Test
+    public void testAllTopicsOnlyBuilder() {
+        MetadataRequest request = MetadataRequest.Builder.allTopicsOnly().build((short) 12);
+        assertTrue(request.isAllTopics());
+        assertTrue(request.excludePartitions());
+        assertFalse(request.allowAutoTopicCreation());
+    }
+
+    @Test
     public void testLiExcludePartitionsTagRoundTrip() {
         short version = 9;
         MetadataRequest request = new MetadataRequest.Builder(

@@ -95,6 +95,8 @@ object KafkaConfig {
     "li.protocol.bridge.offsets.topic.config.enable"
   val LiProtocolBridgeLeaderTransferEnableProp =
     "li.protocol.bridge.leader.transfer.on.isr.shrink.enable"
+  val LiProtocolBridgeLegacyRequestMetricsEnableProp =
+    "li.protocol.bridge.legacy.request.metrics.enable"
 
   val LiProtocolBridgeEnableProps: Seq[String] = Seq(
     LiProtocolBridgeModeEnableProp,
@@ -116,7 +118,8 @@ object KafkaConfig {
     LiProtocolBridgeStaticDefaultQuotasEnableProp,
     LiProtocolBridgeReplicaRequestTimeoutEnableProp,
     LiProtocolBridgeOffsetsTopicConfigEnableProp,
-    LiProtocolBridgeLeaderTransferEnableProp)
+    LiProtocolBridgeLeaderTransferEnableProp,
+    LiProtocolBridgeLegacyRequestMetricsEnableProp)
 
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
@@ -222,6 +225,8 @@ object KafkaConfig {
     "Apply the 3.0-li max message, minimum ISR, and compaction lag settings when creating __consumer_offsets."
   val LiProtocolBridgeLeaderTransferEnableDoc =
     "Transfer leadership instead of shrinking an ISR below min.insync.replicas."
+  val LiProtocolBridgeLegacyRequestMetricsEnableDoc =
+    "Expose aggregate request rates and response-size histograms consumed by production monitoring."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -305,6 +310,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeOffsetsTopicConfigEnableDoc)
     .define(LiProtocolBridgeLeaderTransferEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeLeaderTransferEnableDoc)
+    .define(LiProtocolBridgeLegacyRequestMetricsEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeLegacyRequestMetricsEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -501,6 +508,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeOffsetsTopicConfigEnableProp)
   def liProtocolBridgeLeaderTransferEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp)
+  def liProtocolBridgeLegacyRequestMetricsEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeLegacyRequestMetricsEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -541,6 +550,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeOffsetsTopicConfigEnable
   def liProtocolBridgeLeaderTransferActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeLeaderTransferEnable
+  def liProtocolBridgeLegacyRequestMetricsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeLegacyRequestMetricsEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)

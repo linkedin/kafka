@@ -15,27 +15,26 @@
  * limitations under the License.
  */
 
-package kafka.server
+package kafka.network
 
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 
-import java.util.Properties
-
-class LiProtocolBridgeConfigTest {
+class LegacyRequestMetricsTest {
   @Test
-  def testEveryCompatibilityGateDefaultsToFalseAndCanBeEnabled(): Unit = {
-    val defaults = KafkaConfig.fromProps(new Properties)
-    assertEquals(21, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
-    KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
-      assertFalse(defaults.getBoolean(name), s"$name must default to false")
-    }
+  def testAggregateRateAndResponseBytesRequireCompatibilityGate(): Unit = {
+    val disabled = new RequestMetrics("LegacyDisabled")
+    try {
+      assertTrue(disabled.requestRateAcrossVersions.isEmpty)
+      assertTrue(disabled.responseBytesHist.isEmpty)
+    } finally disabled.removeMetrics()
 
-    val props = new Properties
-    KafkaConfig.LiProtocolBridgeEnableProps.foreach(props.put(_, "true"))
-    val enabled = KafkaConfig.fromProps(props)
-    KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
-      assertTrue(enabled.getBoolean(name), s"$name was not enabled")
-    }
+    val enabled = new RequestMetrics("LegacyEnabled", legacyRequestMetricsEnabled = true)
+    try {
+      assertTrue(enabled.requestRateAcrossVersions.isDefined)
+      assertTrue(enabled.responseBytesHist.isDefined)
+    } finally enabled.removeMetrics()
+
+    assertFalse(enabled.requestRateAcrossVersions.isEmpty)
   }
 }

@@ -68,6 +68,7 @@ object RequestChannel extends Logging {
 
     private val metricsMap = mutable.Map[String, RequestMetrics]()
     private val bucketConfig = config.filter(_.liProtocolBridgeRequestMetricBucketsActive)
+    private val legacyRequestMetricsEnabled = config.exists(_.liProtocolBridgeLegacyRequestMetricsActive)
 
     val produceRequestAcksSizeMetricNameMap: Map[Int, util.TreeMap[Int, String]] =
       bucketConfig.map(_ => createProduceSizeMetricNames()).getOrElse(Map.empty)
@@ -81,7 +82,7 @@ object RequestChannel extends Logging {
     (enabledApis.map(_.name) ++
       Seq(RequestMetrics.consumerFetchMetricName, RequestMetrics.followFetchMetricName,
         RequestMetrics.verifyPartitionsInTxnMetricName) ++ additionalMetricNames).foreach { name =>
-      metricsMap.put(name, new RequestMetrics(name, bucketConfig))
+      metricsMap.put(name, new RequestMetrics(name, bucketConfig, legacyRequestMetricsEnabled))
     }
 
     private def createSizeMetricNames(requestType: String): util.TreeMap[Int, String] =
@@ -102,7 +103,8 @@ object RequestChannel extends Logging {
       else Some(RequestMetrics.getBucketObject(names, (sizeBytes / 1024 / 1024).toInt))
 
     def apply(metricName: String): RequestMetrics = metricsMap.synchronized {
-      metricsMap.getOrElseUpdate(metricName, new RequestMetrics(metricName, bucketConfig))
+      metricsMap.getOrElseUpdate(metricName,
+        new RequestMetrics(metricName, bucketConfig, legacyRequestMetricsEnabled))
     }
 
     def close(): Unit = metricsMap.values.foreach(_.removeMetrics())
@@ -292,7 +294,7 @@ object RequestChannel extends Logging {
       overrideMetricNames.foreach { metricName =>
         val m = metrics(metricName)
         m.requestRate(header.apiVersion).mark()
-        m.requestRateAcrossVersions.mark()
+        m.requestRateAcrossVersions.foreach(_.mark())
         m.deprecatedRequestRate(header.apiKey, header.apiVersion, context.clientInformation).foreach(_.mark())
         m.requestQueueTimeHist.update(Math.round(requestQueueTimeMs))
         m.localTimeHist.update(Math.round(apiLocalTimeMs))
@@ -303,7 +305,7 @@ object RequestChannel extends Logging {
         m.totalTimeHist.update(Math.round(totalTimeMs))
         m.totalTimeBucketHist.foreach(_.update(totalTimeMs))
         m.requestBytesHist.update(sizeOfBodyInBytes)
-        m.responseBytesHist.update(responseBytes)
+        m.responseBytesHist.foreach(_.update(responseBytes))
         m.messageConversionsTimeHist.foreach(_.update(Math.round(messageConversionsTimeMs)))
         m.tempMemoryBytesHist.foreach(_.update(temporaryMemoryBytes))
       }
@@ -623,7 +625,9 @@ object RequestMetrics {
 
 private case class DeprecatedRequestRateKey(version: Short, clientInformation: ClientInformation)
 
-class RequestMetrics(name: String, bucketConfig: Option[KafkaConfig] = None) {
+class RequestMetrics(name: String,
+                     bucketConfig: Option[KafkaConfig] = None,
+                     legacyRequestMetricsEnabled: Boolean = false) {
 
   import RequestMetrics._
 
@@ -631,8 +635,9 @@ class RequestMetrics(name: String, bucketConfig: Option[KafkaConfig] = None) {
 
   val tags: util.Map[String, String] = Map("request" -> name).asJava
   private val requestRateInternal = new Pool[Short, Meter]()
-  val requestRateAcrossVersions: Meter =
-    metricsGroup.newMeter(RequestsPerSecAcrossVersions, "requests", TimeUnit.SECONDS, tags)
+  val requestRateAcrossVersions: Option[Meter] = if (legacyRequestMetricsEnabled)
+    Some(metricsGroup.newMeter(RequestsPerSecAcrossVersions, "requests", TimeUnit.SECONDS, tags))
+  else None
   private val deprecatedRequestRateInternal = new Pool[DeprecatedRequestRateKey, Meter]()
   // time a request spent in a request queue
   val requestQueueTimeHist: Histogram = metricsGroup.newHistogram(RequestQueueTimeMs, true, tags)
@@ -650,7 +655,8 @@ class RequestMetrics(name: String, bucketConfig: Option[KafkaConfig] = None) {
   val totalTimeHist: Histogram = metricsGroup.newHistogram(TotalTimeMs, true, tags)
   // request and response sizes in bytes
   val requestBytesHist: Histogram = metricsGroup.newHistogram(RequestBytes, true, tags)
-  val responseBytesHist: Histogram = metricsGroup.newHistogram(ResponseBytes, true, tags)
+  val responseBytesHist: Option[Histogram] = if (legacyRequestMetricsEnabled)
+    Some(metricsGroup.newHistogram(ResponseBytes, true, tags)) else None
   val totalTimeBucketHist: Option[TotalTimeBuckets] = bucketConfig
     .filter(_.totalTimeHistogramEnabledMetrics.exists(_.equalsIgnoreCase(name)))
     .map(config => new TotalTimeBuckets(config.requestMetricsTotalTimeBuckets))
@@ -752,13 +758,15 @@ class RequestMetrics(name: String, bucketConfig: Option[KafkaConfig] = None) {
     metricsGroup.removeMetric(LocalTimeMs, tags)
     metricsGroup.removeMetric(RemoteTimeMs, tags)
     metricsGroup.removeMetric(RequestsPerSec, tags)
-    metricsGroup.removeMetric(RequestsPerSecAcrossVersions, tags)
+    if (legacyRequestMetricsEnabled)
+      metricsGroup.removeMetric(RequestsPerSecAcrossVersions, tags)
     metricsGroup.removeMetric(ThrottleTimeMs, tags)
     metricsGroup.removeMetric(ResponseQueueTimeMs, tags)
     metricsGroup.removeMetric(TotalTimeMs, tags)
     metricsGroup.removeMetric(ResponseSendTimeMs, tags)
     metricsGroup.removeMetric(RequestBytes, tags)
-    metricsGroup.removeMetric(ResponseBytes, tags)
+    if (legacyRequestMetricsEnabled)
+      metricsGroup.removeMetric(ResponseBytes, tags)
     totalTimeBucketHist.foreach(_.remove())
     if (name == ApiKeys.FETCH.name || name == ApiKeys.PRODUCE.name) {
       metricsGroup.removeMetric(MessageConversionsTimeMs, tags)

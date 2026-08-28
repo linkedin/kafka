@@ -135,6 +135,7 @@ class KafkaServer(
   private var controlPlaneRequestProcessor: KafkaApis = _
 
   var authorizer: Option[Authorizer] = None
+  private var observer: Observer = _
   @volatile var socketServer: SocketServer = _
   var dataPlaneRequestHandlerPool: KafkaRequestHandlerPool = _
   private var controlPlaneRequestHandlerPool: KafkaRequestHandlerPool = _
@@ -376,13 +377,15 @@ class KafkaServer(
           None
         )
 
+        observer = Observer(config)
+
         // Create and start the socket server acceptor threads so that the bound port is known.
         // Delay starting processors until the end of the initialization sequence to ensure
         // that credentials have been loaded before processing authentications.
         //
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
-        socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager)
+        socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager, observer)
 
         // Start alter partition manager based on the IBP version
         alterPartitionManager = if (config.interBrokerProtocolVersion.isAlterPartitionSupported) {
@@ -1026,6 +1029,8 @@ class KafkaServer(
         if (controlPlaneRequestProcessor != null)
           CoreUtils.swallow(controlPlaneRequestProcessor.close(), this)
         CoreUtils.swallow(authorizer.foreach(_.close()), this)
+        if (observer != null)
+          CoreUtils.swallow(observer.close(config.observerShutdownTimeoutMs, TimeUnit.MILLISECONDS), this)
         if (adminManager != null)
           CoreUtils.swallow(adminManager.shutdown(), this)
 

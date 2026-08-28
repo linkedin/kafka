@@ -149,6 +149,8 @@ object KafkaConfig {
     "Reject controlled shutdown when the remaining live ISR would be below min ISR plus the configured redundancy."
   val ControlledShutdownSafetyCheckRedundancyFactorDoc =
     "Additional live ISR replicas required by the controlled shutdown safety check."
+  val ObserverClassNameDoc = "Broker request observer implementation class."
+  val ObserverShutdownTimeoutMsDoc = "Maximum time in milliseconds allowed to close the request observer."
 
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
@@ -206,6 +208,10 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckEnableDoc)
     .define(ControlledShutdownSafetyCheckRedundancyFactorProp, ConfigDef.Type.INT, 0,
       ConfigDef.Range.atLeast(0), ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckRedundancyFactorDoc)
+    .define(ObserverClassNameProp, ConfigDef.Type.STRING, "kafka.server.NoOpObserver",
+      ConfigDef.Importance.MEDIUM, ObserverClassNameDoc)
+    .define(ObserverShutdownTimeoutMsProp, ConfigDef.Type.LONG, 60000L, ConfigDef.Range.atLeast(1),
+      ConfigDef.Importance.MEDIUM, ObserverShutdownTimeoutMsDoc)
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -341,6 +347,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.ControlledShutdownSafetyCheckEnableProp)
   def controlledShutdownSafetyCheckRedundancyFactor: Int =
     getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
+  def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
+  def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
 
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 

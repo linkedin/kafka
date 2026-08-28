@@ -59,8 +59,11 @@ class AdminZkClient(zkClient: KafkaZkClient,
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced,
                   usesTopicId: Boolean = false): Unit = {
-    val brokerMetadatas = getBrokerMetadatas(rackAwareMode).asJava
-    val replicaAssignment = CoreUtils.replicaToBrokerAssignmentAsScala(AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor))
+    val maintenanceBrokerIds = getMaintenanceBrokerList()
+    val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
+      .filterNot(metadata => maintenanceBrokerIds.contains(metadata.id)).asJava
+    val replicaAssignment = CoreUtils.replicaToBrokerAssignmentAsScala(
+      AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor))
     createTopicWithAssignment(topic, topicConfig, replicaAssignment, usesTopicId = usesTopicId)
   }
 
@@ -87,6 +90,13 @@ class AdminZkClient(zkClient: KafkaZkClient,
       case _ => brokers.map(broker => new BrokerMetadata(broker.id, Optional.ofNullable(broker.rack.orNull)))
     }
     brokerMetadatas.sortBy(_.id)
+  }
+
+  /** Return broker IDs excluded from automatic assignment by the cluster-level maintenance setting. */
+  def getMaintenanceBrokerList(): Set[Int] = {
+    val value = fetchEntityConfig(ConfigType.BROKER, "<default>")
+      .getProperty(KafkaConfig.MaintenanceBrokerListProp, "")
+    value.split(',').iterator.map(_.trim).filter(_.nonEmpty).map(_.toInt).toSet
   }
 
   /**
@@ -223,10 +233,15 @@ class AdminZkClient(zkClient: KafkaZkClient,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                     validateOnly: Boolean = false): Map[Int, Seq[Int]] = {
 
+    val assignmentBrokers = if (replicaAssignment.isDefined) allBrokers
+    else {
+      val maintenanceBrokerIds = getMaintenanceBrokerList()
+      allBrokers.filterNot(metadata => maintenanceBrokerIds.contains(metadata.id))
+    }
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,
       existingAssignment,
-      allBrokers,
+      assignmentBrokers,
       numPartitions,
       replicaAssignment
     )

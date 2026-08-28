@@ -97,6 +97,8 @@ object KafkaConfig {
     "li.protocol.bridge.leader.transfer.on.isr.shrink.enable"
   val LiProtocolBridgeLegacyRequestMetricsEnableProp =
     "li.protocol.bridge.legacy.request.metrics.enable"
+  val LiProtocolBridgeLogTruncationMetricsEnableProp =
+    "li.protocol.bridge.log.truncation.metrics.enable"
 
   val LiProtocolBridgeEnableProps: Seq[String] = Seq(
     LiProtocolBridgeModeEnableProp,
@@ -119,7 +121,8 @@ object KafkaConfig {
     LiProtocolBridgeReplicaRequestTimeoutEnableProp,
     LiProtocolBridgeOffsetsTopicConfigEnableProp,
     LiProtocolBridgeLeaderTransferEnableProp,
-    LiProtocolBridgeLegacyRequestMetricsEnableProp)
+    LiProtocolBridgeLegacyRequestMetricsEnableProp,
+    LiProtocolBridgeLogTruncationMetricsEnableProp)
 
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
@@ -227,6 +230,8 @@ object KafkaConfig {
     "Transfer leadership instead of shrinking an ISR below min.insync.replicas."
   val LiProtocolBridgeLegacyRequestMetricsEnableDoc =
     "Expose aggregate request rates and response-size histograms consumed by production monitoring."
+  val LiProtocolBridgeLogTruncationMetricsEnableDoc =
+    "Expose LinkedIn counters for messages and bytes removed by log truncation."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -312,6 +317,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeLeaderTransferEnableDoc)
     .define(LiProtocolBridgeLegacyRequestMetricsEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeLegacyRequestMetricsEnableDoc)
+    .define(LiProtocolBridgeLogTruncationMetricsEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeLogTruncationMetricsEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -510,6 +517,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp)
   def liProtocolBridgeLegacyRequestMetricsEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeLegacyRequestMetricsEnableProp)
+  def liProtocolBridgeLogTruncationMetricsEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeLogTruncationMetricsEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -552,6 +561,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeLeaderTransferEnable
   def liProtocolBridgeLegacyRequestMetricsActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeLegacyRequestMetricsEnable
+  def liProtocolBridgeLogTruncationMetricsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeLogTruncationMetricsEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -1532,6 +1543,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     logProps.put(TopicConfig.SEGMENT_JITTER_MS_CONFIG, logRollTimeJitterMillis)
     logProps.put(org.apache.kafka.storage.internals.log.LogConfig.LI_MIN_SEGMENT_MS_CONFIG,
       java.lang.Long.valueOf(if (liProtocolBridgeMinimumLogRollActive) liMinLogRollTimeMillis else 0L))
+    logProps.put(org.apache.kafka.storage.internals.log.LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG,
+      java.lang.Boolean.valueOf(liProtocolBridgeLogTruncationMetricsActive))
     logProps.put(TopicConfig.SEGMENT_INDEX_BYTES_CONFIG, logIndexSizeMaxBytes)
     logProps.put(TopicConfig.FLUSH_MESSAGES_INTERVAL_CONFIG, logFlushIntervalMessages)
     logProps.put(TopicConfig.FLUSH_MS_CONFIG, logFlushIntervalMs)

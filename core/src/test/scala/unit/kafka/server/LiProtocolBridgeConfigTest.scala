@@ -18,6 +18,7 @@
 package kafka.server
 
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.apache.kafka.storage.internals.log.LogConfig
 import org.junit.jupiter.api.Test
 
 import java.util.Properties
@@ -26,10 +27,11 @@ class LiProtocolBridgeConfigTest {
   @Test
   def testEveryCompatibilityGateDefaultsToFalseAndCanBeEnabled(): Unit = {
     val defaults = KafkaConfig.fromProps(new Properties)
-    assertEquals(21, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
+    assertEquals(22, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
       assertFalse(defaults.getBoolean(name), s"$name must default to false")
     }
+    assertEquals(false, defaults.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
 
     val props = new Properties
     KafkaConfig.LiProtocolBridgeEnableProps.foreach(props.put(_, "true"))
@@ -37,5 +39,6 @@ class LiProtocolBridgeConfigTest {
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
       assertTrue(enabled.getBoolean(name), s"$name was not enabled")
     }
+    assertEquals(true, enabled.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
   }
 }

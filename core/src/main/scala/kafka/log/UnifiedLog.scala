@@ -1899,8 +1899,10 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         }
         val messagesTruncated = math.max(0L, originalEndOffset - localLog.logEndOffset)
         val bytesTruncated = math.max(0L, originalSize - size)
-        LogTruncationStats.logTruncatedMessagesRate.mark(messagesTruncated)
-        LogTruncationStats.logTruncatedBytesRate.mark(bytesTruncated)
+        if (config.liLogTruncationMetricsEnable) {
+          LogTruncationStats.logTruncatedMessagesRate.mark(messagesTruncated)
+          LogTruncationStats.logTruncatedBytesRate.mark(bytesTruncated)
+        }
         true
       }
     }

@@ -68,7 +68,7 @@ object RequestChannel extends Logging {
 
     private val metricsMap = mutable.Map[String, RequestMetrics]()
     private val bucketConfig = config.filter(_.liProtocolBridgeRequestMetricBucketsActive)
-    private val legacyRequestMetricsEnabled = config.exists(_.liProtocolBridgeLegacyRequestMetricsActive)
+    val legacyRequestMetricsEnabled: Boolean = config.exists(_.liProtocolBridgeLegacyRequestMetricsActive)
 
     val produceRequestAcksSizeMetricNameMap: Map[Int, util.TreeMap[Int, String]] =
       bucketConfig.map(_ => createProduceSizeMetricNames()).getOrElse(Map.empty)
@@ -464,7 +464,8 @@ class RequestChannel(val queueSize: Int,
     updateErrorMetrics(request.header.apiKey, response.errorCounts.asScala)
     val responseSend = request.buildResponseSend(response)
     request.responseBytes = responseSend.size
-    BrokerMetadataStats.outgoingBytesRate.mark(responseSend.size)
+    if (metrics.legacyRequestMetricsEnabled)
+      BrokerMetadataStats.outgoingBytesRate.mark(responseSend.size)
     sendResponse(new RequestChannel.SendResponse(
       request,
       responseSend,

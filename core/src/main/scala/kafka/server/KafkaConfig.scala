@@ -73,6 +73,8 @@ object KafkaConfig {
     "li.protocol.bridge.federated.topics.enable"
   val LiProtocolBridgeRackIdMapperEnableProp =
     "li.protocol.bridge.rack.id.mapper.enable"
+  val LiProtocolBridgeDynamicTopicDeletionEnableProp =
+    "li.protocol.bridge.dynamic.topic.deletion.enable"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
   val PreferredControllerProp = "preferred.controller"
@@ -146,6 +148,8 @@ object KafkaConfig {
     "Enable the 3.0-li federated-topic APIs and ZooKeeper metadata used by the LinkedIn authorizer."
   val LiProtocolBridgeRackIdMapperEnableDoc =
     "Apply the configured 3.0-li rack ID mapper during automatic replica assignment."
+  val LiProtocolBridgeDynamicTopicDeletionEnableDoc =
+    "Read delete.topic.enable dynamically from the 3.0-li /topic_deletion_flag ZooKeeper path."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -207,6 +211,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeFederatedTopicsEnableDoc)
     .define(LiProtocolBridgeRackIdMapperEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeRackIdMapperEnableDoc)
+    .define(LiProtocolBridgeDynamicTopicDeletionEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeDynamicTopicDeletionEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -342,6 +348,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp)
   def liProtocolBridgeRackIdMapperEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeRackIdMapperEnableProp)
+  def liProtocolBridgeDynamicTopicDeletionEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeDynamicTopicDeletionEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -358,6 +366,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeFederatedTopicsEnable
   def liProtocolBridgeRackIdMapperActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeRackIdMapperEnable
+  def liProtocolBridgeDynamicTopicDeletionActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeDynamicTopicDeletionEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)

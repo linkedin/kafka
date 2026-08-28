@@ -1337,6 +1337,21 @@ class KafkaZkClient private[zk] (
     retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
   }
 
+  def getTopicDeletionFlag: Option[Boolean] = {
+    val response = retryRequestUntilConnected(GetDataRequest(DeleteTopicFlagZNode.path))
+    response.resultCode match {
+      case Code.OK => DeleteTopicFlagZNode.decode(response.data)
+      case Code.NONODE => None
+      case _ => throw response.resultException.get
+    }
+  }
+
+  def setTopicDeletionFlag(enabled: Boolean): Unit = {
+    val response = retryRequestUntilConnected(
+      SetDataRequest(DeleteTopicFlagZNode.path, DeleteTopicFlagZNode.encode(enabled), ZkVersion.MatchAnyVersion))
+    response.maybeThrow()
+  }
+
   def createFederatedTopicZNode(topic: String, namespace: String): Unit =
     createRecursive(FederatedTopicZNode.path(topic, namespace))
 

@@ -60,7 +60,8 @@ class LiProtocolBridgeMetricsTest {
         LiProtocolBridgeMetrics.RequestChannelWatchdogEnabled,
         LiProtocolBridgeMetrics.MinimumLogRollEnabled,
         LiProtocolBridgeMetrics.ReassignmentCancellationSafetyEnabled,
-        LiProtocolBridgeMetrics.ListOffsetsInstrumentationEnabled)
+        LiProtocolBridgeMetrics.ListOffsetsInstrumentationEnabled,
+        LiProtocolBridgeMetrics.StaticDefaultQuotasEnabled)
       assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
       assertTrue(updatedValues.filterNot { case (name, _) =>

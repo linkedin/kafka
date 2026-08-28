@@ -321,7 +321,8 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   }
 
   private def quotaLimit(metricTags: util.Map[String, String]): Double = {
-    Option(quotaCallback.quotaLimit(clientQuotaType, metricTags)).map(_.toDouble).getOrElse(Long.MaxValue)
+    Option(quotaCallback.quotaLimit(clientQuotaType, metricTags)).map(_.toDouble)
+      .getOrElse(config.quotaDefault.toDouble)
   }
 
   /**

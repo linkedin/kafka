@@ -18,6 +18,7 @@ package org.apache.kafka.server.config;
 public class ClientQuotaManagerConfig {
     public final int numQuotaSamples;
     public final int quotaWindowSizeSeconds;
+    public final long quotaDefault;
 
     /**
      * Configuration settings for quota management
@@ -26,8 +27,13 @@ public class ClientQuotaManagerConfig {
      * @param quotaWindowSizeSeconds  The time span of each sample
      */
     public ClientQuotaManagerConfig(int numQuotaSamples, int quotaWindowSizeSeconds) {
+        this(numQuotaSamples, quotaWindowSizeSeconds, Long.MAX_VALUE);
+    }
+
+    public ClientQuotaManagerConfig(int numQuotaSamples, int quotaWindowSizeSeconds, long quotaDefault) {
         this.numQuotaSamples = numQuotaSamples;
         this.quotaWindowSizeSeconds = quotaWindowSizeSeconds;
+        this.quotaDefault = quotaDefault;
     }
 
     public ClientQuotaManagerConfig() {

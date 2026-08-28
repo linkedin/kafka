@@ -39,13 +39,15 @@ object LiProtocolBridgeMetrics {
   val MinimumLogRollEnabled = "MinimumLogRollEnabled"
   val ReassignmentCancellationSafetyEnabled = "ReassignmentCancellationSafetyEnabled"
   val ListOffsetsInstrumentationEnabled = "ListOffsetsInstrumentationEnabled"
+  val StaticDefaultQuotasEnabled = "StaticDefaultQuotasEnabled"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
     ControllerInitializationThreads, ProduceRequestInstrumentationEnabled,
     RequestMetricBucketsEnabled, RequestChannelWatchdogEnabled, MinimumLogRollEnabled,
-    ReassignmentCancellationSafetyEnabled, ListOffsetsInstrumentationEnabled)
+    ReassignmentCancellationSafetyEnabled, ListOffsetsInstrumentationEnabled,
+    StaticDefaultQuotasEnabled)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -90,6 +92,8 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
   metricsGroup.newGauge(ListOffsetsInstrumentationEnabled,
     () => enabled(config.liProtocolBridgeListOffsetsInstrumentationActive), tags)
+  metricsGroup.newGauge(StaticDefaultQuotasEnabled,
+    () => enabled(config.liProtocolBridgeStaticDefaultQuotasActive), tags)
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 

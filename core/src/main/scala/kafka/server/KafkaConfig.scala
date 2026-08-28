@@ -87,6 +87,8 @@ object KafkaConfig {
     "li.protocol.bridge.reassignment.cancellation.safety.enable"
   val LiProtocolBridgeListOffsetsInstrumentationEnableProp =
     "li.protocol.bridge.list.offsets.instrumentation.enable"
+  val LiProtocolBridgeStaticDefaultQuotasEnableProp =
+    "li.protocol.bridge.static.default.quotas.enable"
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"
@@ -180,6 +182,8 @@ object KafkaConfig {
     "Require enough original replicas to be alive before cancelling a reassignment."
   val LiProtocolBridgeListOffsetsInstrumentationEnableDoc =
     "Track ListOffsets timestamp modes and callers using the 3.0-li metrics."
+  val LiProtocolBridgeStaticDefaultQuotasEnableDoc =
+    "Use the 3.0-li static producer and consumer quota defaults when no dynamic quota matches."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -255,6 +259,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeReassignmentCancellationSafetyEnableDoc)
     .define(LiProtocolBridgeListOffsetsInstrumentationEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeListOffsetsInstrumentationEnableDoc)
+    .define(LiProtocolBridgeStaticDefaultQuotasEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeStaticDefaultQuotasEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -300,6 +306,10 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, "Minimum interval before a time-based log segment roll.")
     .define(LiMinOriginalAliveReplicasProp, ConfigDef.Type.INT, 2, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Minimum live original replicas required to cancel a reassignment.")
+    .define(ProducerQuotaBytesPerSecondDefaultProp, ConfigDef.Type.LONG, Long.MaxValue,
+      ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH, "Static default producer quota in bytes per second.")
+    .define(ConsumerQuotaBytesPerSecondDefaultProp, ConfigDef.Type.LONG, Long.MaxValue,
+      ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH, "Static default consumer quota in bytes per second.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -431,6 +441,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp)
   def liProtocolBridgeListOffsetsInstrumentationEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeListOffsetsInstrumentationEnableProp)
+  def liProtocolBridgeStaticDefaultQuotasEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeStaticDefaultQuotasEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -461,6 +473,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeReassignmentCancellationSafetyEnable
   def liProtocolBridgeListOffsetsInstrumentationActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeListOffsetsInstrumentationEnable
+  def liProtocolBridgeStaticDefaultQuotasActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeStaticDefaultQuotasEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -493,6 +507,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def heapDumpTimeout: Long = getLong(KafkaConfig.HeapDumpTimeoutProp)
   def liMinLogRollTimeMillis: Long = getLong(KafkaConfig.LiMinLogRollTimeMillisProp)
   def liMinOriginalAliveReplicas: Int = getInt(KafkaConfig.LiMinOriginalAliveReplicasProp)
+  def producerQuotaBytesPerSecondDefault: Long = getLong(KafkaConfig.ProducerQuotaBytesPerSecondDefaultProp)
+  def consumerQuotaBytesPerSecondDefault: Long = getLong(KafkaConfig.ConsumerQuotaBytesPerSecondDefaultProp)
   private def parseIntArray(name: String): Array[Int] =
     getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)

@@ -26,7 +26,7 @@ class LiProtocolBridgeConfigTest {
   @Test
   def testEveryCompatibilityGateDefaultsToFalseAndCanBeEnabled(): Unit = {
     val defaults = KafkaConfig.fromProps(new Properties)
-    assertEquals(19, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
+    assertEquals(20, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
       assertFalse(defaults.getBoolean(name), s"$name must default to false")
     }

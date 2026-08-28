@@ -172,6 +172,7 @@ class KafkaServer(
   var clientToControllerChannelManager: NodeToControllerChannelManager = _
 
   var alterPartitionManager: AlterPartitionManager = _
+  var leaderTransferManager: LeaderTransferManager = LeaderTransferManager.NoOp
 
   var kafkaScheduler: KafkaScheduler = _
 
@@ -429,6 +430,13 @@ class KafkaServer(
           AlterPartitionManager(kafkaScheduler, time, zkClient)
         }
         alterPartitionManager.start()
+
+        leaderTransferManager = if (config.liProtocolBridgeLeaderTransferActive)
+          LeaderTransferManager(config, controllerNodeProvider, kafkaScheduler, time, metrics,
+            s"zk-broker-${config.nodeId}-", brokerEpochSupplier)
+        else
+          LeaderTransferManager.NoOp
+        leaderTransferManager.start()
 
         // Start replica manager
         _replicaManager = createReplicaManager(isShuttingDown)
@@ -783,7 +791,8 @@ class KafkaServer(
       delayedRemoteFetchPurgatoryParam = None,
       threadNamePrefix = threadNamePrefix,
       brokerEpochSupplier = brokerEpochSupplier,
-      addPartitionsToTxnManager = Some(addPartitionsToTxnManager))
+      addPartitionsToTxnManager = Some(addPartitionsToTxnManager),
+      leaderTransferManager = leaderTransferManager)
   }
 
   private def initZkClient(time: Time): Unit = {
@@ -1078,6 +1087,8 @@ class KafkaServer(
         if (replicaManager != null)
           CoreUtils.swallow(replicaManager.shutdown(), this)
 
+        if (leaderTransferManager != null)
+          CoreUtils.swallow(leaderTransferManager.shutdown(), this)
         if (alterPartitionManager != null)
           CoreUtils.swallow(alterPartitionManager.shutdown(), this)
 

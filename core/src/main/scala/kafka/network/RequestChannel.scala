@@ -254,6 +254,7 @@ object RequestChannel extends Logging {
       overrideMetricNames.foreach { metricName =>
         val m = metrics(metricName)
         m.requestRate(header.apiVersion).mark()
+        m.requestRateAcrossVersions.mark()
         m.deprecatedRequestRate(header.apiKey, header.apiVersion, context.clientInformation).foreach(_.mark())
         m.requestQueueTimeHist.update(Math.round(requestQueueTimeMs))
         m.localTimeHist.update(Math.round(apiLocalTimeMs))
@@ -533,6 +534,7 @@ object RequestMetrics {
   val verifyPartitionsInTxnMetricName: String = ApiKeys.ADD_PARTITIONS_TO_TXN.name + "Verification"
 
   val RequestsPerSec: String = "RequestsPerSec"
+  val RequestsPerSecAcrossVersions: String = "RequestsPerSecAcrossVersions"
   val DeprecatedRequestsPerSec: String = "DeprecatedRequestsPerSec"
   val RequestQueueTimeMs = "RequestQueueTimeMs"
   val LocalTimeMs = "LocalTimeMs"
@@ -558,6 +560,8 @@ class RequestMetrics(name: String) {
 
   val tags: util.Map[String, String] = Map("request" -> name).asJava
   private val requestRateInternal = new Pool[Short, Meter]()
+  val requestRateAcrossVersions: Meter =
+    metricsGroup.newMeter(RequestsPerSecAcrossVersions, "requests", TimeUnit.SECONDS, tags)
   private val deprecatedRequestRateInternal = new Pool[DeprecatedRequestRateKey, Meter]()
   // time a request spent in a request queue
   val requestQueueTimeHist: Histogram = metricsGroup.newHistogram(RequestQueueTimeMs, true, tags)
@@ -658,6 +662,7 @@ class RequestMetrics(name: String) {
     metricsGroup.removeMetric(LocalTimeMs, tags)
     metricsGroup.removeMetric(RemoteTimeMs, tags)
     metricsGroup.removeMetric(RequestsPerSec, tags)
+    metricsGroup.removeMetric(RequestsPerSecAcrossVersions, tags)
     metricsGroup.removeMetric(ThrottleTimeMs, tags)
     metricsGroup.removeMetric(ResponseQueueTimeMs, tags)
     metricsGroup.removeMetric(TotalTimeMs, tags)

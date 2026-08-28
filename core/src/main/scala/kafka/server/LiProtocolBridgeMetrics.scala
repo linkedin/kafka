@@ -65,7 +65,7 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
   metricsGroup.newGauge(RecommendedLeaderElectionEnabled,
     () => enabled(config.liProtocolBridgeRecommendedElectionActive), tags)
   metricsGroup.newGauge(ExcludePartitionsEnabled,
-    () => enabled(config.liProtocolBridgeExcludePartitionsEnable), tags)
+    () => enabled(config.liProtocolBridgeExcludePartitionsActive), tags)
   metricsGroup.newGauge(MoveControllerEnabled,
     () => enabled(config.liProtocolBridgeMoveControllerActive), tags)
   metricsGroup.newGauge(ShutdownSafetyOverrideEnabled,

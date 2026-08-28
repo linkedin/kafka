@@ -498,6 +498,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeFollowerRecoveryEnable
   def liProtocolBridgeRecommendedElectionActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeRecommendedElectionEnable
+  def liProtocolBridgeExcludePartitionsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeExcludePartitionsEnable
   def liProtocolBridgeMoveControllerActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeMoveControllerEnable
   def liProtocolBridgeShutdownSafetyOverrideActive: Boolean =

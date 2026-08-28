@@ -1436,7 +1436,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val errorUnavailableListeners = requestVersion >= 6
 
     val allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation && !metadataRequest.isAllTopics
-    val excludePartitions = metadataRequest.excludePartitions && config.liProtocolBridgeExcludePartitionsEnable
+    val excludePartitions = metadataRequest.excludePartitions && config.liProtocolBridgeExcludePartitionsActive
     val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, excludePartitions, allowAutoCreation,
       authorizedTopics, request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
 

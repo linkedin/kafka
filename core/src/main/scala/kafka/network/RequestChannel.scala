@@ -115,7 +115,7 @@ object RequestChannel extends Logging {
 
     def header: RequestHeader = context.header
 
-    private def sizeOfBodyInBytes: Int = bodyAndSize.size
+    def sizeOfBodyInBytes: Int = bodyAndSize.size
 
     def sizeInBytes: Int = header.size + sizeOfBodyInBytes
 

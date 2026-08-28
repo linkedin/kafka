@@ -814,7 +814,9 @@ class ReplicaManager(val config: KafkaConfig,
                           recordValidationStatsCallback: Map[TopicPartition, RecordValidationStats] => Unit = _ => (),
                           requestLocal: RequestLocal = RequestLocal.NoCaching,
                           actionQueue: ActionQueue = this.defaultActionQueue,
-                          transactionSupportedOperation: TransactionSupportedOperation): Unit = {
+                          transactionSupportedOperation: TransactionSupportedOperation,
+                          produceRequestInstrumentation: kafka.server.instrumentation.ProduceRequestInstrumentation =
+                            kafka.server.instrumentation.ProduceRequestInstrumentation.Disabled): Unit = {
 
     val transactionalProducerInfo = mutable.HashSet[(Long, Short)]()
     val topicPartitionBatchInfo = mutable.Map[TopicPartition, Int]()
@@ -863,6 +865,8 @@ class ReplicaManager(val config: KafkaConfig,
         responseCallback(preAppendPartitionResponses ++ responses)
       }
 
+      import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
+      produceRequestInstrumentation.markStage(Stage.AppendToLocalLog)
       appendRecords(
         timeout = timeout,
         requiredAcks = requiredAcks,
@@ -875,6 +879,9 @@ class ReplicaManager(val config: KafkaConfig,
         actionQueue = actionQueue,
         verificationGuards = verificationGuards
       )
+      produceRequestInstrumentation.markStage(Stage.ProcessAppendToLocalLogStatus)
+      produceRequestInstrumentation.markStage(Stage.PrepareDelayedProduce)
+      produceRequestInstrumentation.markStage(Stage.EnqueueDelayedProduce)
     }
 
     if (transactionalProducerInfo.size < 1) {
@@ -2420,6 +2427,9 @@ class ReplicaManager(val config: KafkaConfig,
       onlinePartition(topicPartition).foreach(_.maybeShrinkIsr())
     }
   }
+
+  def numOfPartitionOfIsrState(stateClass: Class[_]): Int =
+    leaderPartitionsIterator.count(_.isrStateClass == stateClass)
 
   private def leaderPartitionsIterator: Iterator[Partition] =
     onlinePartitionsIterator.filter(_.leaderLogIfLocal.isDefined)

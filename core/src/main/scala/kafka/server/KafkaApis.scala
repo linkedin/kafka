@@ -23,6 +23,8 @@ import kafka.coordinator.transaction.{InitProducerIdResult, TransactionCoordinat
 import kafka.network.RequestChannel
 import kafka.server.QuotaFactory.{QuotaManagers, UnboundedQuota}
 import kafka.server.handlers.DescribeTopicPartitionsRequestHandler
+import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
+import kafka.server.instrumentation.{ProduceRequestInstrumentation, ProduceRequestInstrumentationLogger}
 import kafka.server.metadata.{ConfigRepository, KRaftMetadataCache}
 import kafka.utils.Implicits._
 import kafka.utils.{CoreUtils, Logging}
@@ -119,6 +121,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   val authHelper = new AuthHelper(authorizer)
   val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation
   val requestHelper = new RequestHandlerHelper(requestChannel, quotas, time)
+  private val produceRequestInstrumentationLogger =
+    new ProduceRequestInstrumentationLogger(config, time, new scala.util.Random, replicaManager)
   val aclApis = new AclApis(authHelper, authorizer, requestHelper, "broker", config)
   val configManager = new ConfigAdminManager(brokerId, config, configRepository)
   val describeTopicPartitionsRequestHandler : Option[DescribeTopicPartitionsRequestHandler] = metadataCache match {
@@ -611,7 +615,12 @@ class KafkaApis(val requestChannel: RequestChannel,
    */
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val produceRequest = request.body[ProduceRequest]
+    val instrumentation = if (config.liProtocolBridgeProduceRequestInstrumentationActive)
+      new ProduceRequestInstrumentation(time)
+    else
+      ProduceRequestInstrumentation.Disabled
     requestChannel.observer.observeProduceRequest(request.context, produceRequest)
+    instrumentation.markStage(Stage.Authorization)
 
     if (RequestUtils.hasTransactionalRecords(produceRequest)) {
       val isAuthorizedTransactional = produceRequest.transactionalId != null &&
@@ -656,6 +665,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // https://issues.apache.org/jira/browse/KAFKA-10730
     @nowarn("cat=deprecation")
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
+      instrumentation.markStage(Stage.BeginResponseCallback)
+      instrumentation.appliedTopicPartitions = responseStatus.keys
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
       var errorInResponse = false
 
@@ -695,6 +706,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         if (produceRequest.acks == 0) 0
         else quotas.request.maybeRecordAndGetThrottleTimeMs(request, timeMs)
       val maxThrottleTimeMs = Math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
+      instrumentation.markStage(Stage.ResponseThrottling)
       if (maxThrottleTimeMs > 0) {
         request.apiThrottleTimeMs = maxThrottleTimeMs
         if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
@@ -725,7 +737,9 @@ class KafkaApis(val requestChannel: RequestChannel,
           requestHelper.sendNoOpResponseExemptThrottle(request)
         }
       } else {
-        requestChannel.sendResponse(request, new ProduceResponse(mergedResponseStatus.asJava, maxThrottleTimeMs, nodeEndpoints.values.toList.asJava), None)
+        requestChannel.sendResponse(request,
+          new ProduceResponse(mergedResponseStatus.asJava, maxThrottleTimeMs, nodeEndpoints.values.toList.asJava),
+          Some(_ => produceRequestInstrumentationLogger.maybeLog(request, instrumentation)))
       }
     }
 
@@ -741,6 +755,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       val internalTopicsAllowed = request.header.clientId == AdminUtils.ADMIN_CLIENT_ID
       val transactionSupportedOperation = if (request.header.apiVersion > 10) genericError else defaultError
       // call the replica manager to append messages to the replicas
+      instrumentation.markStage(Stage.BeginAppendRecords)
       replicaManager.handleProduceAppend(
         timeout = produceRequest.timeout.toLong,
         requiredAcks = produceRequest.acks,
@@ -750,7 +765,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         responseCallback = sendResponseCallback,
         recordValidationStatsCallback = processingStatsCallback,
         requestLocal = requestLocal,
-        transactionSupportedOperation = transactionSupportedOperation)
+        transactionSupportedOperation = transactionSupportedOperation,
+        produceRequestInstrumentation = instrumentation)
 
       // if the request is put into the purgatory, it will have a held reference and hence cannot be garbage collected;
       // hence we clear its data here in order to let GC reclaim its memory since it is already appended to log

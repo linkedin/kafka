@@ -75,6 +75,8 @@ object KafkaConfig {
     "li.protocol.bridge.rack.id.mapper.enable"
   val LiProtocolBridgeDynamicTopicDeletionEnableProp =
     "li.protocol.bridge.dynamic.topic.deletion.enable"
+  val LiProtocolBridgeProduceRequestInstrumentationEnableProp =
+    "li.protocol.bridge.produce.request.instrumentation.enable"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
   val PreferredControllerProp = "preferred.controller"
@@ -150,6 +152,8 @@ object KafkaConfig {
     "Apply the configured 3.0-li rack ID mapper during automatic replica assignment."
   val LiProtocolBridgeDynamicTopicDeletionEnableDoc =
     "Read delete.topic.enable dynamically from the 3.0-li /topic_deletion_flag ZooKeeper path."
+  val LiProtocolBridgeProduceRequestInstrumentationEnableDoc =
+    "Log sampled stage timings for long-tail produce requests using the 3.0-li log format."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -213,6 +217,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeRackIdMapperEnableDoc)
     .define(LiProtocolBridgeDynamicTopicDeletionEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeDynamicTopicDeletionEnableDoc)
+    .define(LiProtocolBridgeProduceRequestInstrumentationEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeProduceRequestInstrumentationEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -233,6 +239,12 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
     .define(LiZookeeperPaginationEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, "Use paginated reads for ZooKeeper paths that may exceed the response limit.")
+    .define(LiLongTailProduceRequestLogThresholdMsProp, ConfigDef.Type.LONG, 60000L,
+      ConfigDef.Range.atLeast(0), ConfigDef.Importance.MEDIUM,
+      "Do not log produce request instrumentation below this total-time threshold.")
+    .define(LiLongTailProduceRequestLogRatioProp, ConfigDef.Type.DOUBLE, 0.0,
+      ConfigDef.Range.between(0.0, 1.0), ConfigDef.Importance.MEDIUM,
+      "Ratio of long-tail produce requests to log after applying the threshold.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -352,6 +364,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeRackIdMapperEnableProp)
   def liProtocolBridgeDynamicTopicDeletionEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeDynamicTopicDeletionEnableProp)
+  def liProtocolBridgeProduceRequestInstrumentationEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -370,6 +384,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeRackIdMapperEnable
   def liProtocolBridgeDynamicTopicDeletionActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeDynamicTopicDeletionEnable
+  def liProtocolBridgeProduceRequestInstrumentationActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeProduceRequestInstrumentationEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -389,6 +405,10 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
   def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
   def liZookeeperPaginationEnable: Boolean = getBoolean(KafkaConfig.LiZookeeperPaginationEnableProp)
+  def longTailProduceRequestLogThresholdMs: Long =
+    getLong(KafkaConfig.LiLongTailProduceRequestLogThresholdMsProp)
+  def longTailProduceRequestLogRatio: Double =
+    getDouble(KafkaConfig.LiLongTailProduceRequestLogRatioProp)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)
   def maintenanceBrokerList: Set[Int] = {
     getString(KafkaConfig.MaintenanceBrokerListProp).split(',').iterator

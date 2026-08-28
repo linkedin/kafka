@@ -324,6 +324,8 @@ class Partition(val topicPartition: TopicPartition,
   // Replica ID of the leader, defined when this broker is leader or follower for the partition.
   @volatile var leaderReplicaIdOpt: Option[Int] = None
   @volatile private[cluster] var partitionState: PartitionState = CommittedPartitionState(Set.empty, LeaderRecoveryState.RECOVERED)
+
+  def isrStateClass: Class[_] = partitionState.getClass
   @volatile var assignmentState: AssignmentState = SimpleAssignmentState(Seq.empty)
 
   // Logs belonging to this partition. Majority of time it will be only one log, but if log directory

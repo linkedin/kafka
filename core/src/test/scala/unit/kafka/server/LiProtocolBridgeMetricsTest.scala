@@ -47,7 +47,8 @@ class LiProtocolBridgeMetricsTest {
         KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
         KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
         KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp,
-        KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp
+        KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp,
+        KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp
       ).foreach(props.put(_, "true"))
       config.dynamicConfig.updateDefaultConfig(props)
 

@@ -742,6 +742,13 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
+    public synchronized ElectLeadersResult electRecommendedLeaders(
+            Map<TopicPartition, Integer> partitionsWithRecommendedLeaders,
+            ElectLeadersOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
     public synchronized ElectLeadersResult electLeaders(
             ElectionType electionType,
             Set<TopicPartition> partitions,

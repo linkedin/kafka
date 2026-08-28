@@ -117,6 +117,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   this.logIdent = "[KafkaApi-%d] ".format(brokerId)
   val configHelper = new ConfigHelper(metadataCache, config, configRepository)
   val authHelper = new AuthHelper(authorizer)
+  val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation
   val requestHelper = new RequestHandlerHelper(requestChannel, quotas, time)
   val aclApis = new AclApis(authHelper, authorizer, requestHelper, "broker", config)
   val configManager = new ConfigAdminManager(brokerId, config, configRepository)
@@ -1199,6 +1200,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     )
 
     val responseTopics = authorizedRequestInfo.map { topic =>
+      if (offsetRequest.replicaId == ListOffsetsRequest.CONSUMER_REPLICA_ID)
+        listOffsetsRequestInstrumentation.logUsage(request.context.principal, topic)
       val responsePartitions = topic.partitions.asScala.map { partition =>
         val topicPartition = new TopicPartition(topic.name, partition.partitionIndex)
         if (offsetRequest.duplicatePartitions.contains(topicPartition)) {

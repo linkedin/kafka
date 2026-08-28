@@ -65,7 +65,7 @@ import org.apache.kafka.storage.internals.log.{AppendOrigin, FetchDataInfo, Fetc
 import java.io.File
 import java.nio.file.{Files, Paths}
 import java.util
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.{CompletableFuture, Future, RejectedExecutionException, TimeUnit}
 import java.util.{Collections, Optional, OptionalInt, OptionalLong}
@@ -202,6 +202,8 @@ object ReplicaManager {
   private val IsrExpandsPerSecMetricName = "IsrExpandsPerSec"
   private val IsrShrinksPerSecMetricName = "IsrShrinksPerSec"
   private val FailedIsrUpdatesPerSecMetricName = "FailedIsrUpdatesPerSec"
+  private val OneAboveMinIsrPartitionCountMetricName = "OneAboveMinIsrPartitionCount"
+  private val NumLogDirFailureHandlerExceptionsMetricName = "NumLogDirFailureHandlerExceptions"
 
   private[server] val GaugeMetricNames = Set(
     LeaderCountMetricName,
@@ -315,6 +317,7 @@ class ReplicaManager(val config: KafkaConfig,
   protected val stateChangeLogger = new StateChangeLogger(localBrokerId, inControllerContext = false, None)
 
   private var logDirFailureHandler: LogDirFailureHandler = _
+  private val numLogDirFailureHandlerExceptions = new AtomicLong(0L)
 
   private class LogDirFailureHandler(name: String, haltBrokerOnDirFailure: Boolean) extends ShutdownableThread(name) {
     override def doWork(): Unit = {
@@ -323,7 +326,12 @@ class ReplicaManager(val config: KafkaConfig,
         fatal(s"Halting broker because dir $newOfflineLogDir is offline")
         Exit.halt(1)
       }
-      handleLogDirFailure(newOfflineLogDir)
+      try handleLogDirFailure(newOfflineLogDir)
+      catch {
+        case error: Throwable =>
+          numLogDirFailureHandlerExceptions.incrementAndGet()
+          throw error
+      }
     }
   }
 
@@ -337,6 +345,12 @@ class ReplicaManager(val config: KafkaConfig,
   metricsGroup.newGauge(UnderReplicatedPartitionsMetricName, () => underReplicatedPartitionCount)
   metricsGroup.newGauge(UnderMinIsrPartitionCountMetricName, () => leaderPartitionsIterator.count(_.isUnderMinIsr))
   metricsGroup.newGauge(AtMinIsrPartitionCountMetricName, () => leaderPartitionsIterator.count(_.isAtMinIsr))
+  if (config.liProtocolBridgeLegacyRequestMetricsActive) {
+    metricsGroup.newGauge(ReplicaManager.OneAboveMinIsrPartitionCountMetricName,
+      () => leaderPartitionsIterator.count(_.isOneAboveMinIsr))
+    metricsGroup.newGauge(ReplicaManager.NumLogDirFailureHandlerExceptionsMetricName,
+      () => numLogDirFailureHandlerExceptions.get())
+  }
   metricsGroup.newGauge(ReassigningPartitionsMetricName, () => reassigningPartitionsCount)
   metricsGroup.newGauge(PartitionsWithLateTransactionsCountMetricName, () => lateTransactionsCount)
   metricsGroup.newGauge(ProducerIdCountMetricName, () => producerIdCount)
@@ -2564,6 +2578,10 @@ class ReplicaManager(val config: KafkaConfig,
 
   def removeMetrics(): Unit = {
     ReplicaManager.MetricNames.foreach(metricsGroup.removeMetric)
+    if (config.liProtocolBridgeLegacyRequestMetricsActive) {
+      metricsGroup.removeMetric(ReplicaManager.OneAboveMinIsrPartitionCountMetricName)
+      metricsGroup.removeMetric(ReplicaManager.NumLogDirFailureHandlerExceptionsMetricName)
+    }
   }
 
   def beginControlledShutdown(): Unit = {

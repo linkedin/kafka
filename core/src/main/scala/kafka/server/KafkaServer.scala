@@ -300,7 +300,8 @@ class KafkaServer(
         quotaManagers = QuotaFactory.instantiate(config, metrics, time, threadNamePrefix.getOrElse(""))
         KafkaBroker.notifyClusterListeners(clusterId, kafkaMetricsReporters ++ metrics.reporters.asScala)
 
-        logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size)
+        logDirFailureChannel = new LogDirFailureChannel(
+          config.logDirs.size, config.liProtocolBridgeLegacyRequestMetricsActive)
 
         // Make sure all storage directories have meta.properties files.
         val metaPropsEnsemble = {
@@ -1102,6 +1103,8 @@ class KafkaServer(
 
         if (logManager != null)
           CoreUtils.swallow(logManager.shutdown(), this)
+        if (logDirFailureChannel != null)
+          CoreUtils.swallow(logDirFailureChannel.close(), this)
 
         if (kafkaController != null)
           CoreUtils.swallow(kafkaController.shutdown(), this)

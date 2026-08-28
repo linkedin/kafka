@@ -137,8 +137,6 @@ object KafkaConfig {
   val ZkSslTrustStorePasswordProp = "zookeeper.ssl.truststore.password"
   val ZkSslTrustStoreTypeProp = "zookeeper.ssl.truststore.type"
 
-  val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
-  val LiLeaderElectionOnCorruptionWaitMsProp = "li.leader.election.on.corruption.wait.ms"
   val LiLongTailProduceRequestLogRatioProp = "li.instrumentation.requests.produce.long.tail.log.ratio"
   val LiLongTailProduceRequestLogThresholdMsProp = "li.instrumentation.requests.produce.long.tail.log.threshold.ms"
   val LiMinOriginalAliveReplicasProp = "li.min.original.alive.replicas"

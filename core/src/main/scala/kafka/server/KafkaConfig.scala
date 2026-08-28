@@ -233,6 +233,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
     .define(LiZookeeperPaginationEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, "Use paginated reads for ZooKeeper paths that may exceed the response limit.")
+    .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
+      ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -387,6 +389,7 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
   def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
   def liZookeeperPaginationEnable: Boolean = getBoolean(KafkaConfig.LiZookeeperPaginationEnableProp)
+  def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)
   def maintenanceBrokerList: Set[Int] = {
     getString(KafkaConfig.MaintenanceBrokerListProp).split(',').iterator
       .map(_.trim).filter(_.nonEmpty).map(_.toInt).toSet

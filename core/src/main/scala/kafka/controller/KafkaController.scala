@@ -18,7 +18,7 @@ package kafka.controller
 
 import com.yammer.metrics.core.{Meter, Timer}
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{CompletableFuture, Executors, TimeUnit}
 import kafka.api._
 import kafka.common._
 import kafka.cluster.Broker
@@ -118,12 +118,15 @@ class KafkaController(val config: KafkaConfig,
                       tokenManager: DelegationTokenManager,
                       brokerFeatures: BrokerFeatures,
                       featureCache: ZkFinalizedFeatureCache,
-                      threadNamePrefix: Option[String] = None)
+                      threadNamePrefix: Option[String] = None,
+                      additionalZkClients: Seq[KafkaZkClient] = Seq.empty)
   extends ControllerEventProcessor with Logging {
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
 
   this.logIdent = s"[Controller id=${config.brokerId}] "
+
+  private val controllerInitZkClients = zkClient +: additionalZkClients
 
   @volatile private var brokerInfo = initialBrokerInfo
   @volatile private var _brokerEpoch = initialBrokerEpoch
@@ -989,7 +992,7 @@ class KafkaController(val config: KafkaConfig,
     info(s"Initialized broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
     controllerContext.setAllTopics(zkClient.getAllTopicsInCluster(true))
     registerPartitionModificationsHandlers(controllerContext.allTopics.toSeq)
-    val replicaAssignmentAndTopicIds = zkClient.getReplicaAssignmentAndTopicIdForTopics(controllerContext.allTopics.toSet)
+    val replicaAssignmentAndTopicIds = loadReplicaAssignments(controllerContext.allTopics.toSet)
     processTopicIds(replicaAssignmentAndTopicIds)
 
     replicaAssignmentAndTopicIds.foreach { case TopicIdReplicaAssignment(_, _, assignments) =>
@@ -1010,6 +1013,26 @@ class KafkaController(val config: KafkaConfig,
     info(s"Currently active brokers in the cluster: ${controllerContext.liveBrokerIds}")
     info(s"Currently shutting brokers in the cluster: ${controllerContext.shuttingDownBrokerIds}")
     info(s"Current list of topics in the cluster: ${controllerContext.allTopics}")
+  }
+
+  private def loadReplicaAssignments(
+    topics: scala.collection.immutable.Set[String]
+  ): scala.collection.immutable.Set[TopicIdReplicaAssignment] = {
+    if (controllerInitZkClients.size <= 1 || topics.size <= 1) {
+      zkClient.getReplicaAssignmentAndTopicIdForTopics(topics)
+    } else {
+      val executor = Executors.newFixedThreadPool(controllerInitZkClients.size)
+      try {
+        val chunkSize = math.max(1, math.ceil(topics.size.toDouble / controllerInitZkClients.size).toInt)
+        val futures = topics.grouped(chunkSize).zipWithIndex.map { case (topicChunk, index) =>
+          CompletableFuture.supplyAsync(
+            () => controllerInitZkClients(index).getReplicaAssignmentAndTopicIdForTopics(topicChunk.toSet), executor)
+        }.toSeq
+        futures.flatMap(_.join()).toSet
+      } finally {
+        executor.shutdown()
+      }
+    }
   }
 
   private def fetchPendingPreferredReplicaElections(): Set[TopicPartition] = {

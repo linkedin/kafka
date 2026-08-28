@@ -177,6 +177,7 @@ class KafkaServer(
 
   val zkClientConfig: ZKClientConfig = KafkaServer.zkClientConfigFromKafkaConfig(config)
   private var _zkClient: KafkaZkClient = _
+  private var additionalControllerZkClients: Seq[KafkaZkClient] = Seq.empty
   private var configRepository: ZkConfigRepository = _
 
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -418,7 +419,11 @@ class KafkaServer(
         tokenManager.startup()
 
         /* start kafka controller */
-        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch, tokenManager, brokerFeatures, metadataCache, threadNamePrefix)
+        additionalControllerZkClients = (1 until config.liNumControllerInitThreads).map { index =>
+          KafkaZkClient.createZkClient(s"Kafka controller init ${index + 1}", time, config, zkClientConfig)
+        }
+        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch,
+          tokenManager, brokerFeatures, metadataCache, threadNamePrefix, additionalControllerZkClients)
         kafkaController.startup()
 
         if (config.migrationEnabled) {
@@ -1068,6 +1073,8 @@ class KafkaServer(
         if (featureChangeListener != null)
           CoreUtils.swallow(featureChangeListener.close(), this)
 
+        additionalControllerZkClients.foreach(client => CoreUtils.swallow(client.close(), this))
+        additionalControllerZkClients = Seq.empty
         if (zkClient != null)
           CoreUtils.swallow(zkClient.close(), this)
 

@@ -36,12 +36,13 @@ object LiProtocolBridgeMetrics {
   val ProduceRequestInstrumentationEnabled = "ProduceRequestInstrumentationEnabled"
   val RequestMetricBucketsEnabled = "RequestMetricBucketsEnabled"
   val RequestChannelWatchdogEnabled = "RequestChannelWatchdogEnabled"
+  val MinimumLogRollEnabled = "MinimumLogRollEnabled"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
     ControllerInitializationThreads, ProduceRequestInstrumentationEnabled,
-    RequestMetricBucketsEnabled, RequestChannelWatchdogEnabled)
+    RequestMetricBucketsEnabled, RequestChannelWatchdogEnabled, MinimumLogRollEnabled)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -80,6 +81,8 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgeRequestMetricBucketsActive), tags)
   metricsGroup.newGauge(RequestChannelWatchdogEnabled,
     () => enabled(config.liProtocolBridgeRequestChannelWatchdogActive), tags)
+  metricsGroup.newGauge(MinimumLogRollEnabled,
+    () => enabled(config.liProtocolBridgeMinimumLogRollActive), tags)
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 

@@ -81,6 +81,9 @@ object KafkaConfig {
     "li.protocol.bridge.request.metric.buckets.enable"
   val LiProtocolBridgeRequestChannelWatchdogEnableProp =
     "li.protocol.bridge.request.channel.watchdog.enable"
+  val LiProtocolBridgeMinimumLogRollEnableProp =
+    "li.protocol.bridge.minimum.log.roll.enable"
+  val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"
   val HeapDumpTimeoutProp = "heap.dump.timeout"
@@ -166,6 +169,8 @@ object KafkaConfig {
     "Expose 3.0-li request size groups and total-time bucket counters."
   val LiProtocolBridgeRequestChannelWatchdogEnableDoc =
     "Halt a ZooKeeper broker when request handlers stop polling the request channel."
+  val LiProtocolBridgeMinimumLogRollEnableDoc =
+    "Apply a lower bound to time-based log segment rolling."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -235,6 +240,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeRequestMetricBucketsEnableDoc)
     .define(LiProtocolBridgeRequestChannelWatchdogEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeRequestChannelWatchdogEnableDoc)
+    .define(LiProtocolBridgeMinimumLogRollEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeMinimumLogRollEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -276,6 +283,8 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, "Directory used for a watchdog heap dump before halting.")
     .define(HeapDumpTimeoutProp, ConfigDef.Type.LONG, 120000L, ConfigDef.Range.atLeast(0),
       ConfigDef.Importance.MEDIUM, "Maximum time to wait for a watchdog heap dump.")
+    .define(LiMinLogRollTimeMillisProp, ConfigDef.Type.LONG, 0L, ConfigDef.Range.atLeast(0),
+      ConfigDef.Importance.MEDIUM, "Minimum interval before a time-based log segment roll.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -401,6 +410,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeRequestMetricBucketsEnableProp)
   def liProtocolBridgeRequestChannelWatchdogEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeRequestChannelWatchdogEnableProp)
+  def liProtocolBridgeMinimumLogRollEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeMinimumLogRollEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -425,6 +436,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeRequestMetricBucketsEnable
   def liProtocolBridgeRequestChannelWatchdogActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeRequestChannelWatchdogEnable
+  def liProtocolBridgeMinimumLogRollActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeMinimumLogRollEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -455,6 +468,7 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def requestMaxLocalTimeMs: Long = getLong(KafkaConfig.RequestMaxLocalTimeMsProp)
   def heapDumpFolder: java.io.File = new java.io.File(getString(KafkaConfig.HeapDumpFolderProp))
   def heapDumpTimeout: Long = getLong(KafkaConfig.HeapDumpTimeoutProp)
+  def liMinLogRollTimeMillis: Long = getLong(KafkaConfig.LiMinLogRollTimeMillisProp)
   private def parseIntArray(name: String): Array[Int] =
     getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)
@@ -1393,6 +1407,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     logProps.put(TopicConfig.SEGMENT_BYTES_CONFIG, logSegmentBytes)
     logProps.put(TopicConfig.SEGMENT_MS_CONFIG, logRollTimeMillis)
     logProps.put(TopicConfig.SEGMENT_JITTER_MS_CONFIG, logRollTimeJitterMillis)
+    logProps.put(org.apache.kafka.storage.internals.log.LogConfig.LI_MIN_SEGMENT_MS_CONFIG,
+      java.lang.Long.valueOf(if (liProtocolBridgeMinimumLogRollActive) liMinLogRollTimeMillis else 0L))
     logProps.put(TopicConfig.SEGMENT_INDEX_BYTES_CONFIG, logIndexSizeMaxBytes)
     logProps.put(TopicConfig.FLUSH_MESSAGES_INTERVAL_CONFIG, logFlushIntervalMessages)
     logProps.put(TopicConfig.FLUSH_MS_CONFIG, logFlushIntervalMs)

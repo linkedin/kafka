@@ -57,7 +57,8 @@ class LiProtocolBridgeMetricsTest {
       val staticMetrics = Set(LiProtocolBridgeMetrics.PreferredControllerEnabled,
         LiProtocolBridgeMetrics.RackIdMapperEnabled, LiProtocolBridgeMetrics.ZookeeperPaginationEnabled,
         LiProtocolBridgeMetrics.DynamicTopicDeletionEnabled, LiProtocolBridgeMetrics.RequestMetricBucketsEnabled,
-        LiProtocolBridgeMetrics.RequestChannelWatchdogEnabled)
+        LiProtocolBridgeMetrics.RequestChannelWatchdogEnabled,
+        LiProtocolBridgeMetrics.MinimumLogRollEnabled)
       assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
       assertTrue(updatedValues.filterNot { case (name, _) =>

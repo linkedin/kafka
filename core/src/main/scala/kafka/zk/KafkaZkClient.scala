@@ -65,7 +65,7 @@ class KafkaZkClient private[zk] (
   isSecure: Boolean,
   time: Time,
   enableEntityConfigControllerCheck: Boolean,
-  paginateTopics: Boolean
+  paginateTopics: Boolean = false
 ) extends AutoCloseable with Logging {
 
   private val metricsGroup: KafkaMetricsGroup = new KafkaMetricsGroup(this.getClass) {

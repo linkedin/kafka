@@ -93,6 +93,28 @@ object KafkaConfig {
     "li.protocol.bridge.replica.request.timeout.enable"
   val LiProtocolBridgeOffsetsTopicConfigEnableProp =
     "li.protocol.bridge.offsets.topic.config.enable"
+
+  val LiProtocolBridgeEnableProps: Seq[String] = Seq(
+    LiProtocolBridgeModeEnableProp,
+    LiProtocolBridgeFollowerRecoveryEnableProp,
+    LiProtocolBridgeRecommendedElectionEnableProp,
+    LiProtocolBridgeExcludePartitionsEnableProp,
+    LiProtocolBridgeMoveControllerEnableProp,
+    LiProtocolBridgeShutdownSafetyOverrideEnableProp,
+    LiProtocolBridgePreferredControllerEnableProp,
+    LiProtocolBridgeFederatedTopicsEnableProp,
+    LiProtocolBridgeRackIdMapperEnableProp,
+    LiProtocolBridgeDynamicTopicDeletionEnableProp,
+    LiProtocolBridgeProduceRequestInstrumentationEnableProp,
+    LiProtocolBridgeRequestMetricBucketsEnableProp,
+    LiProtocolBridgeRequestChannelWatchdogEnableProp,
+    LiProtocolBridgeMinimumLogRollEnableProp,
+    LiProtocolBridgeReassignmentCancellationSafetyEnableProp,
+    LiProtocolBridgeListOffsetsInstrumentationEnableProp,
+    LiProtocolBridgeStaticDefaultQuotasEnableProp,
+    LiProtocolBridgeReplicaRequestTimeoutEnableProp,
+    LiProtocolBridgeOffsetsTopicConfigEnableProp)
+
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"

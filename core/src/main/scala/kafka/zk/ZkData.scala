@@ -1133,10 +1133,7 @@ object ZkData {
   // These are persistent ZK paths that should exist on kafka broker startup.
   val PersistentZkPaths: Seq[String] = Seq(
     ConsumerPathZNode.path, // old consumer path
-    DeleteTopicFlagZNode.path,
     BrokerIdsZNode.path,
-    FederatedTopicsZNode.path,
-    PreferredControllersZNode.path,
     TopicsZNode.path,
     ConfigEntityChangeNotificationZNode.path,
     DeleteTopicsZNode.path,

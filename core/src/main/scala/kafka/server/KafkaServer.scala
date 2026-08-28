@@ -29,7 +29,7 @@ import kafka.network.{ControlPlaneAcceptor, DataPlaneAcceptor, RequestChannel, S
 import kafka.raft.KafkaRaftManager
 import kafka.server.metadata.{OffsetTrackingListener, ZkConfigRepository, ZkMetadataCache}
 import kafka.utils._
-import kafka.zk.{AdminZkClient, BrokerInfo, KafkaZkClient}
+import kafka.zk.{AdminZkClient, BrokerInfo, FederatedTopicsZNode, KafkaZkClient, PreferredControllersZNode}
 import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, MetadataRecoveryStrategy, NetworkClient, NetworkClientUtils}
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.internals.Topic
@@ -100,6 +100,12 @@ object KafkaServer {
     // The zk sasl is enabled by default so it can produce false error when broker does not intend to use SASL.
     if (!JaasUtils.isZkSaslEnabled) clientConfig.setProperty(JaasUtils.ZK_SASL_CLIENT, "false")
     clientConfig
+  }
+
+  private[server] def compatibilityZkPaths(config: KafkaConfig): Seq[String] = {
+    val preferred = if (config.liProtocolBridgePreferredControllerActive) Seq(PreferredControllersZNode.path) else Seq.empty
+    val federated = if (config.liProtocolBridgeFederatedTopicsActive) Seq(FederatedTopicsZNode.path) else Seq.empty
+    preferred ++ federated
   }
 
   val MIN_INCREMENTAL_FETCH_SESSION_EVICTION_MS: Long = 120000
@@ -781,6 +787,7 @@ class KafkaServer(
     info(s"Connecting to zookeeper on ${config.zkConnect}")
     _zkClient = KafkaZkClient.createZkClient("Kafka server", time, config, zkClientConfig)
     _zkClient.createTopLevelPaths()
+    KafkaServer.compatibilityZkPaths(config).foreach(path => _zkClient.createRecursive(path))
   }
 
   private def getOrGenerateClusterId(zkClient: KafkaZkClient): String = {

@@ -191,6 +191,7 @@ class KafkaServer(
   private var _clusterId: String = _
   @volatile private var _brokerTopicStats: BrokerTopicStats = _
   private var requestChannelPoisonPill: PoisonPill = _
+  private var healthCheckScheduler: KafkaScheduler = _
 
   private var _featureChangeListener: FinalizedFeatureChangeListener = _
 
@@ -397,7 +398,9 @@ class KafkaServer(
         // so that the Envelope request is exposed. This is only used in testing currently.
         socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager, observer)
         if (config.liProtocolBridgeRequestChannelWatchdogActive) {
-          kafkaScheduler.schedule("halt-broker-if-request-channel-stalls", () => {
+          healthCheckScheduler = new KafkaScheduler(1, true, "kafka-healthcheck-scheduler-")
+          healthCheckScheduler.startup()
+          healthCheckScheduler.schedule("halt-broker-if-request-channel-stalls", () => {
             val lastDequeueMs = socketServer.dataPlaneRequestChannel.lastDequeueTimeMs
             if (lastDequeueMs != Long.MaxValue) {
               val elapsedMs = math.max(0L, time.milliseconds() - lastDequeueMs)
@@ -1049,6 +1052,8 @@ class KafkaServer(
          * not flush the remaining partitions or write the clean shutdown marker. Ultimately, the
          * broker would have to take hours to recover the log during restart.
          */
+        if (healthCheckScheduler != null)
+          CoreUtils.swallow(healthCheckScheduler.shutdown(), this)
         if (kafkaScheduler != null)
           CoreUtils.swallow(kafkaScheduler.shutdown(), this)
 

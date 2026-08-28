@@ -119,7 +119,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   this.logIdent = "[KafkaApi-%d] ".format(brokerId)
   val configHelper = new ConfigHelper(metadataCache, config, configRepository)
   val authHelper = new AuthHelper(authorizer)
-  val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation
+  val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation(
+    config.liProtocolBridgeListOffsetsInstrumentationActive)
   val requestHelper = new RequestHandlerHelper(requestChannel, quotas, time)
   private val produceRequestInstrumentationLogger =
     new ProduceRequestInstrumentationLogger(config, time, new scala.util.Random, replicaManager)

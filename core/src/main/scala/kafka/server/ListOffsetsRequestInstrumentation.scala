@@ -33,7 +33,7 @@ import scala.jdk.CollectionConverters._
  * 1. what are the services/topics using by timestamp.
  * 2. what's the usage size of this
  */
-class ListOffsetsRequestInstrumentation {
+class ListOffsetsRequestInstrumentation(enabled: Boolean = true) {
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
   private val partitionRequestRate = "ListOffsetsPartitionsRequestRate"
   private val partitionsPerRequest = "ListOffsetsPartitionsPerRequest"
@@ -48,30 +48,23 @@ class ListOffsetsRequestInstrumentation {
 
   private def tags(value: String) = Map(listBy -> value).asJava
 
-  private val unknownTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(UNKNOWN))
-  private val unknownTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(UNKNOWN))
-  private val earliestTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(EARLIEST))
-  private val earliestTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(EARLIEST))
-  private val latestTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(LATEST))
-  private val latestTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(LATEST))
-  private val liEarliestLocalTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(LI_EARLIEST_LOCAL))
-  private val liEarliestLocalTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(LI_EARLIEST_LOCAL))
-  private val maxTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(MAX))
-  private val maxTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(MAX))
-  private val byTimestampMeter: Meter =
-    metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(BY_TIMESTAMP))
-  private val byTimestampHist: Histogram =
-    metricsGroup.newHistogram(partitionsPerRequest, true, tags(BY_TIMESTAMP))
+  private def meter(value: String): Option[Meter] = if (enabled)
+    Some(metricsGroup.newMeter(partitionRequestRate, eventType, TimeUnit.SECONDS, tags(value))) else None
+  private def histogram(value: String): Option[Histogram] = if (enabled)
+    Some(metricsGroup.newHistogram(partitionsPerRequest, true, tags(value))) else None
+
+  private val unknownTimestampMeter = meter(UNKNOWN)
+  private val unknownTimestampHist = histogram(UNKNOWN)
+  private val earliestTimestampMeter = meter(EARLIEST)
+  private val earliestTimestampHist = histogram(EARLIEST)
+  private val latestTimestampMeter = meter(LATEST)
+  private val latestTimestampHist = histogram(LATEST)
+  private val liEarliestLocalTimestampMeter = meter(LI_EARLIEST_LOCAL)
+  private val liEarliestLocalTimestampHist = histogram(LI_EARLIEST_LOCAL)
+  private val maxTimestampMeter = meter(MAX)
+  private val maxTimestampHist = histogram(MAX)
+  private val byTimestampMeter = meter(BY_TIMESTAMP)
+  private val byTimestampHist = histogram(BY_TIMESTAMP)
 
 
   // The object would be periodically dumped to log and cleared on kafka-server wrapper
@@ -88,6 +81,8 @@ class ListOffsetsRequestInstrumentation {
   }
 
   def logUsage(principal: KafkaPrincipal, topic: ListOffsetsTopic): Unit = {
+    if (!enabled) return
+
     var earliestCnt = 0;
     var latestCnt = 0;
     var liEarliestLocalCnt = 0;
@@ -107,20 +102,20 @@ class ListOffsetsRequestInstrumentation {
     }
 
     // Mark partitions requested per second for each type
-    earliestTimestampMeter.mark(earliestCnt)
-    latestTimestampMeter.mark(latestCnt)
-    liEarliestLocalTimestampMeter.mark(liEarliestLocalCnt)
-    maxTimestampMeter.mark(maxCnt)
-    unknownTimestampMeter.mark(unknownCnt)
-    byTimestampMeter.mark(byTimestampCnt)
+    earliestTimestampMeter.foreach(_.mark(earliestCnt))
+    latestTimestampMeter.foreach(_.mark(latestCnt))
+    liEarliestLocalTimestampMeter.foreach(_.mark(liEarliestLocalCnt))
+    maxTimestampMeter.foreach(_.mark(maxCnt))
+    unknownTimestampMeter.foreach(_.mark(unknownCnt))
+    byTimestampMeter.foreach(_.mark(byTimestampCnt))
 
     // Also mark the distribution of each type
-    earliestTimestampHist.update(earliestCnt)
-    latestTimestampHist.update(latestCnt)
-    liEarliestLocalTimestampHist.update(liEarliestLocalCnt)
-    maxTimestampHist.update(maxCnt)
-    unknownTimestampHist.update(unknownCnt)
-    byTimestampHist.update(byTimestampCnt)
+    earliestTimestampHist.foreach(_.update(earliestCnt))
+    latestTimestampHist.foreach(_.update(latestCnt))
+    liEarliestLocalTimestampHist.foreach(_.update(liEarliestLocalCnt))
+    maxTimestampHist.foreach(_.update(maxCnt))
+    unknownTimestampHist.foreach(_.update(unknownCnt))
+    byTimestampHist.foreach(_.update(byTimestampCnt))
 
     if (byTimestampCnt > 0) {
       // For by timestamp, we also want to know who are the ones sending

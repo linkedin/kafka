@@ -85,6 +85,8 @@ object KafkaConfig {
     "li.protocol.bridge.minimum.log.roll.enable"
   val LiProtocolBridgeReassignmentCancellationSafetyEnableProp =
     "li.protocol.bridge.reassignment.cancellation.safety.enable"
+  val LiProtocolBridgeListOffsetsInstrumentationEnableProp =
+    "li.protocol.bridge.list.offsets.instrumentation.enable"
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"
@@ -178,6 +180,8 @@ object KafkaConfig {
     "Apply a lower bound to time-based log segment rolling."
   val LiProtocolBridgeReassignmentCancellationSafetyEnableDoc =
     "Require enough original replicas to be alive before cancelling a reassignment."
+  val LiProtocolBridgeListOffsetsInstrumentationEnableDoc =
+    "Track ListOffsets timestamp modes and callers using the 3.0-li metrics."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -251,6 +255,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeMinimumLogRollEnableDoc)
     .define(LiProtocolBridgeReassignmentCancellationSafetyEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeReassignmentCancellationSafetyEnableDoc)
+    .define(LiProtocolBridgeListOffsetsInstrumentationEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeListOffsetsInstrumentationEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -425,6 +431,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeMinimumLogRollEnableProp)
   def liProtocolBridgeReassignmentCancellationSafetyEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp)
+  def liProtocolBridgeListOffsetsInstrumentationEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeListOffsetsInstrumentationEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -453,6 +461,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeMinimumLogRollEnable
   def liProtocolBridgeReassignmentCancellationSafetyActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeReassignmentCancellationSafetyEnable
+  def liProtocolBridgeListOffsetsInstrumentationActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeListOffsetsInstrumentationEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)

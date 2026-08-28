@@ -24,6 +24,7 @@ import kafka.zk.{BrokerInfo, KafkaZkClient}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.server.metrics.KafkaMetricsGroup
 import org.apache.kafka.server.util.MockTime
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
 import org.mockito.ArgumentMatchers
 import org.mockito.ArgumentMatchers.{any, anyString}
@@ -70,6 +71,14 @@ class KafkaControllerTest {
     } finally {
       mockMetricsGroupCtor.close()
     }
+  }
+
+  @Test
+  def testReassignmentCancellationRequiresEnoughLiveOriginalReplicas(): Unit = {
+    assertTrue(KafkaController.validateReassignmentCancellation(
+      Seq(1, 2, 3), Set(1, 4), minimumAliveReplicas = 2).isDefined)
+    assertEquals(None, KafkaController.validateReassignmentCancellation(
+      Seq(1, 2, 3), Set(1, 2, 4), minimumAliveReplicas = 2))
   }
 
 }

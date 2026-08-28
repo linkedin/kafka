@@ -107,6 +107,18 @@ object KafkaController extends Logging {
     MaintenanceBrokerCountMetricName,
     FencedBrokerCountMetricName
   )
+
+  private[controller] def validateReassignmentCancellation(
+    originalReplicas: Seq[Int],
+    liveBrokerIds: Set[Int],
+    minimumAliveReplicas: Int
+  ): Option[ApiError] = {
+    val aliveOriginalReplicas = originalReplicas.toSet.intersect(liveBrokerIds)
+    if (aliveOriginalReplicas.size >= minimumAliveReplicas) None
+    else Some(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
+      s"Replica assignment cancellation requires at least $minimumAliveReplicas live original replicas. " +
+        s"Original replicas: $originalReplicas; live brokers: $liveBrokerIds"))
+  }
 }
 
 class KafkaController(val config: KafkaConfig,
@@ -1998,7 +2010,12 @@ class KafkaController(val config: KafkaConfig,
       val partitionsToReassign = mutable.Map.empty[TopicPartition, ReplicaAssignment]
 
       reassignments.forKeyValue { (tp, targetReplicas) =>
-        val maybeApiError = targetReplicas.flatMap(validateReplicas(tp, _))
+        val maybeApiError = targetReplicas match {
+          case Some(replicas) => validateReplicas(tp, replicas)
+          case None if config.liProtocolBridgeReassignmentCancellationSafetyActive =>
+            validateReassignmentCancellation(tp)
+          case None => None
+        }
         maybeApiError match {
           case None =>
             maybeBuildReassignment(tp, targetReplicas) match {
@@ -2017,6 +2034,13 @@ class KafkaController(val config: KafkaConfig,
       reassignmentResults ++= maybeTriggerPartitionReassignment(partitionsToReassign)
       callback(Left(reassignmentResults))
     }
+  }
+
+  private def validateReassignmentCancellation(topicPartition: TopicPartition): Option[ApiError] = {
+    val assignment = controllerContext.partitionFullReplicaAssignment(topicPartition)
+    if (!assignment.isBeingReassigned) None
+    else KafkaController.validateReassignmentCancellation(
+      assignment.originReplicas, controllerContext.liveBrokerIds, config.liMinOriginalAliveReplicas)
   }
 
   private def validateReplicas(topicPartition: TopicPartition, replicas: Seq[Int]): Option[ApiError] = {

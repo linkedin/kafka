@@ -58,7 +58,8 @@ class LiProtocolBridgeMetricsTest {
         LiProtocolBridgeMetrics.RackIdMapperEnabled, LiProtocolBridgeMetrics.ZookeeperPaginationEnabled,
         LiProtocolBridgeMetrics.DynamicTopicDeletionEnabled, LiProtocolBridgeMetrics.RequestMetricBucketsEnabled,
         LiProtocolBridgeMetrics.RequestChannelWatchdogEnabled,
-        LiProtocolBridgeMetrics.MinimumLogRollEnabled)
+        LiProtocolBridgeMetrics.MinimumLogRollEnabled,
+        LiProtocolBridgeMetrics.ReassignmentCancellationSafetyEnabled)
       assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
       assertTrue(updatedValues.filterNot { case (name, _) =>

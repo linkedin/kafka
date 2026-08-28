@@ -83,6 +83,8 @@ object KafkaConfig {
     "li.protocol.bridge.request.channel.watchdog.enable"
   val LiProtocolBridgeMinimumLogRollEnableProp =
     "li.protocol.bridge.minimum.log.roll.enable"
+  val LiProtocolBridgeReassignmentCancellationSafetyEnableProp =
+    "li.protocol.bridge.reassignment.cancellation.safety.enable"
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"
@@ -174,6 +176,8 @@ object KafkaConfig {
     "Halt a ZooKeeper broker when request handlers stop polling the request channel."
   val LiProtocolBridgeMinimumLogRollEnableDoc =
     "Apply a lower bound to time-based log segment rolling."
+  val LiProtocolBridgeReassignmentCancellationSafetyEnableDoc =
+    "Require enough original replicas to be alive before cancelling a reassignment."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -245,6 +249,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeRequestChannelWatchdogEnableDoc)
     .define(LiProtocolBridgeMinimumLogRollEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeMinimumLogRollEnableDoc)
+    .define(LiProtocolBridgeReassignmentCancellationSafetyEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeReassignmentCancellationSafetyEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -288,6 +294,8 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, "Maximum time to wait for a watchdog heap dump.")
     .define(LiMinLogRollTimeMillisProp, ConfigDef.Type.LONG, 0L, ConfigDef.Range.atLeast(0),
       ConfigDef.Importance.MEDIUM, "Minimum interval before a time-based log segment roll.")
+    .define(LiMinOriginalAliveReplicasProp, ConfigDef.Type.INT, 2, ConfigDef.Range.atLeast(1),
+      ConfigDef.Importance.HIGH, "Minimum live original replicas required to cancel a reassignment.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -415,6 +423,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeRequestChannelWatchdogEnableProp)
   def liProtocolBridgeMinimumLogRollEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeMinimumLogRollEnableProp)
+  def liProtocolBridgeReassignmentCancellationSafetyEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -441,6 +451,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeRequestChannelWatchdogEnable
   def liProtocolBridgeMinimumLogRollActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeMinimumLogRollEnable
+  def liProtocolBridgeReassignmentCancellationSafetyActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeReassignmentCancellationSafetyEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -472,6 +484,7 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def heapDumpFolder: java.io.File = new java.io.File(getString(KafkaConfig.HeapDumpFolderProp))
   def heapDumpTimeout: Long = getLong(KafkaConfig.HeapDumpTimeoutProp)
   def liMinLogRollTimeMillis: Long = getLong(KafkaConfig.LiMinLogRollTimeMillisProp)
+  def liMinOriginalAliveReplicas: Int = getInt(KafkaConfig.LiMinOriginalAliveReplicasProp)
   private def parseIntArray(name: String): Array[Int] =
     getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)

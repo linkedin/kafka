@@ -59,9 +59,9 @@ class AdminZkClient(zkClient: KafkaZkClient,
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced,
                   usesTopicId: Boolean = false): Unit = {
-    val maintenanceBrokerIds = getMaintenanceBrokerList()
+    val excludedBrokerIds = getAssignmentExcludedBrokerIds()
     val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
-      .filterNot(metadata => maintenanceBrokerIds.contains(metadata.id)).asJava
+      .filterNot(metadata => excludedBrokerIds.contains(metadata.id)).asJava
     val replicaAssignment = CoreUtils.replicaToBrokerAssignmentAsScala(
       AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor))
     createTopicWithAssignment(topic, topicConfig, replicaAssignment, usesTopicId = usesTopicId)
@@ -98,6 +98,9 @@ class AdminZkClient(zkClient: KafkaZkClient,
       .getProperty(KafkaConfig.MaintenanceBrokerListProp, "")
     value.split(',').iterator.map(_.trim).filter(_.nonEmpty).map(_.toInt).toSet
   }
+
+  private def getAssignmentExcludedBrokerIds(): Set[Int] =
+    getMaintenanceBrokerList() ++ zkClient.getPreferredControllerList
 
   /**
    * Create topic and optionally validate its parameters. Note that this method is used by the
@@ -235,8 +238,8 @@ class AdminZkClient(zkClient: KafkaZkClient,
 
     val assignmentBrokers = if (replicaAssignment.isDefined) allBrokers
     else {
-      val maintenanceBrokerIds = getMaintenanceBrokerList()
-      allBrokers.filterNot(metadata => maintenanceBrokerIds.contains(metadata.id))
+      val excludedBrokerIds = getAssignmentExcludedBrokerIds()
+      allBrokers.filterNot(metadata => excludedBrokerIds.contains(metadata.id))
     }
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,

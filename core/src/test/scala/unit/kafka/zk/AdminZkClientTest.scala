@@ -59,14 +59,16 @@ class AdminZkClientTest extends QuorumTestHarness with Logging with RackAwareTes
 
   @Test
   def testAutomaticAssignmentExcludesMaintenanceBrokers(): Unit = {
-    createBrokersInZk(zkClient, Seq(0, 1, 2))
+    createBrokersInZk(zkClient, Seq(0, 1, 2, 3))
     val props = new Properties
     props.put(KafkaConfig.MaintenanceBrokerListProp, "1")
     adminZkClient.changeBrokerConfig(None, props)
+    zkClient.createRecursive(PreferredControllersZNode.path)
+    zkClient.registerPreferredControllerId(2)
 
     adminZkClient.createTopic("maintenance-test", partitions = 4, replicationFactor = 2)
     val assignment = zkClient.getReplicaAssignmentForTopics(Set("maintenance-test"))
-    assertTrue(assignment.values.forall(!_.contains(1)))
+    assertTrue(assignment.values.forall(replicas => !replicas.contains(1) && !replicas.contains(2)))
   }
 
   @Test

@@ -153,7 +153,7 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   @volatile
   private var quotaTypesEnabled = clientQuotaCallback match {
     case Some(_) => QuotaTypes.CustomQuotas
-    case None if config.quotaDefault < Long.MaxValue => QuotaTypes.CustomQuotas
+    case None if config.quotaDefault < Long.MaxValue => QuotaTypes.ClientIdQuotaEnabled
     case None => QuotaTypes.NoQuotas
   }
 

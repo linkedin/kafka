@@ -221,6 +221,8 @@ object KafkaConfig {
       ConfigDef.Importance.MEDIUM, ObserverShutdownTimeoutMsDoc)
     .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, ConfigDef.Type.STRING, "",
       ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
+    .define(LiZookeeperPaginationEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, "Use paginated reads for ZooKeeper paths that may exceed the response limit.")
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -370,6 +372,7 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
   def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
   def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
+  def liZookeeperPaginationEnable: Boolean = getBoolean(KafkaConfig.LiZookeeperPaginationEnableProp)
 
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 

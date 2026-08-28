@@ -101,7 +101,9 @@ object RequestChannel extends Logging {
       if (names.isEmpty) None
       else Some(RequestMetrics.getBucketObject(names, (sizeBytes / 1024 / 1024).toInt))
 
-    def apply(metricName: String): RequestMetrics = metricsMap(metricName)
+    def apply(metricName: String): RequestMetrics = metricsMap.synchronized {
+      metricsMap.getOrElseUpdate(metricName, new RequestMetrics(metricName, bucketConfig))
+    }
 
     def close(): Unit = metricsMap.values.foreach(_.removeMetrics())
   }

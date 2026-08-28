@@ -159,11 +159,12 @@ class DefaultApiVersionManager(
   override protected val requestMetricsConfig: Option[KafkaConfig] = None
 ) extends ApiVersionManager {
 
-  val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala
-
   private def isLiApiEnabled(apiKey: ApiKeys): Boolean = {
     if (apiKey == null || apiKey.id < 1000) true else liApiEnabled(apiKey)
   }
+
+  val enabledApis: mutable.Set[ApiKeys] =
+    ApiKeys.apisForListener(listenerType).asScala.filter(isLiApiEnabled)
 
   override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean =
     super.isApiEnabled(apiKey, apiVersion) && isLiApiEnabled(apiKey)

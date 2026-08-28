@@ -43,7 +43,7 @@ import org.apache.kafka.common.requests.{ControlledShutdownRequest, ControlledSh
 import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.security.{JaasContext, JaasUtils}
-import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils}
+import org.apache.kafka.common.utils.{AppInfoParser, LogContext, PoisonPill, Time, Utils}
 import org.apache.kafka.common.{Endpoint, Node, TopicPartition}
 import org.apache.kafka.coordinator.group.GroupCoordinator
 import org.apache.kafka.image.loader.metrics.MetadataLoaderMetrics
@@ -184,6 +184,7 @@ class KafkaServer(
 
   private var _clusterId: String = _
   @volatile private var _brokerTopicStats: BrokerTopicStats = _
+  private var requestChannelPoisonPill: PoisonPill = _
 
   private var _featureChangeListener: FinalizedFeatureChangeListener = _
 
@@ -279,6 +280,8 @@ class KafkaServer(
         kafkaYammerMetrics = KafkaYammerMetrics.INSTANCE
         kafkaYammerMetrics.configure(config.originals)
         metrics = Server.initializeMetrics(config, time, clusterId)
+        if (config.liProtocolBridgeRequestChannelWatchdogActive)
+          requestChannelPoisonPill = new PoisonPill(metrics)
         createCurrentControllerIdMetric()
 
         /* register broker metrics */
@@ -387,6 +390,19 @@ class KafkaServer(
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
         socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager, observer)
+        if (config.liProtocolBridgeRequestChannelWatchdogActive) {
+          kafkaScheduler.schedule("halt-broker-if-request-channel-stalls", () => {
+            val lastDequeueMs = socketServer.dataPlaneRequestChannel.lastDequeueTimeMs
+            if (lastDequeueMs != Long.MaxValue) {
+              val elapsedMs = math.max(0L, time.milliseconds() - lastDequeueMs)
+              requestChannelPoisonPill.recordTimeSinceLastDequeue(elapsedMs)
+              if (elapsedMs > config.requestMaxLocalTimeMs) {
+                fatal(s"No request handler has polled the request channel for $elapsedMs ms; halting broker")
+                requestChannelPoisonPill.die(config.heapDumpFolder, config.heapDumpTimeout)
+              }
+            }
+          }, 10000L, 10000L)
+        }
 
         // Start alter partition manager based on the IBP version
         alterPartitionManager = if (config.interBrokerProtocolVersion.isAlterPartitionSupported) {

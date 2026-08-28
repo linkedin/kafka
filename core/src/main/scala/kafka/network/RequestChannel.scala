@@ -399,7 +399,8 @@ class RequestChannel(val queueSize: Int,
                      val metricNamePrefix: String,
                      time: Time,
                      val metrics: RequestChannel.Metrics,
-                     val observer: Observer = new NoOpObserver) {
+                     val observer: Observer = new NoOpObserver,
+                     enableDequeueWatchdog: Boolean = false) {
   import RequestChannel._
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
@@ -409,6 +410,10 @@ class RequestChannel(val queueSize: Int,
   private val requestQueueSizeMetricName = metricNamePrefix.concat(RequestQueueSizeMetric)
   private val responseQueueSizeMetricName = metricNamePrefix.concat(ResponseQueueSizeMetric)
   private val callbackQueue = new ArrayBlockingQueue[BaseRequest](queueSize)
+  @volatile var lastDequeueTimeMs: Long = Long.MaxValue
+  private val requestDequeuePollIntervalMs = if (enableDequeueWatchdog)
+    Some(metricsGroup.newHistogram("RequestDequeuePollIntervalMs"))
+  else None
 
   metricsGroup.newGauge(requestQueueSizeMetricName, () => requestQueue.size)
 
@@ -522,6 +527,7 @@ class RequestChannel(val queueSize: Int,
    *  Check the callback queue and execute first if present since these
    *  requests have already waited in line. */
   def receiveRequest(timeout: Long): RequestChannel.BaseRequest = {
+    recordRequestDequeuePoll()
     val callbackRequest = callbackQueue.poll()
     if (callbackRequest != null)
       callbackRequest
@@ -535,8 +541,17 @@ class RequestChannel(val queueSize: Int,
   }
 
   /** Get the next request or block until there is one */
-  def receiveRequest(): RequestChannel.BaseRequest =
+  def receiveRequest(): RequestChannel.BaseRequest = {
+    recordRequestDequeuePoll()
     requestQueue.take()
+  }
+
+  private def recordRequestDequeuePoll(): Unit = {
+    val now = time.milliseconds()
+    if (lastDequeueTimeMs != Long.MaxValue)
+      requestDequeuePollIntervalMs.foreach(_.update(math.max(0L, now - lastDequeueTimeMs)))
+    lastDequeueTimeMs = now
+  }
 
   def updateErrorMetrics(apiKey: ApiKeys, errors: collection.Map[Errors, Integer]): Unit = {
     errors.forKeyValue { (error, count) =>
@@ -551,6 +566,7 @@ class RequestChannel(val queueSize: Int,
 
   def shutdown(): Unit = {
     clear()
+    requestDequeuePollIntervalMs.foreach(_ => metricsGroup.removeMetric("RequestDequeuePollIntervalMs"))
     metrics.close()
   }
 

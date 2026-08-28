@@ -79,6 +79,11 @@ object KafkaConfig {
     "li.protocol.bridge.produce.request.instrumentation.enable"
   val LiProtocolBridgeRequestMetricBucketsEnableProp =
     "li.protocol.bridge.request.metric.buckets.enable"
+  val LiProtocolBridgeRequestChannelWatchdogEnableProp =
+    "li.protocol.bridge.request.channel.watchdog.enable"
+  val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
+  val HeapDumpFolderProp = "heap.dump.folder"
+  val HeapDumpTimeoutProp = "heap.dump.timeout"
   val TotalTimeHistogramEnabledMetricsProp = "total.time.histogram.enabled.metrics"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
@@ -159,6 +164,8 @@ object KafkaConfig {
     "Log sampled stage timings for long-tail produce requests using the 3.0-li log format."
   val LiProtocolBridgeRequestMetricBucketsEnableDoc =
     "Expose 3.0-li request size groups and total-time bucket counters."
+  val LiProtocolBridgeRequestChannelWatchdogEnableDoc =
+    "Halt a ZooKeeper broker when request handlers stop polling the request channel."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -226,6 +233,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeProduceRequestInstrumentationEnableDoc)
     .define(LiProtocolBridgeRequestMetricBucketsEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeRequestMetricBucketsEnableDoc)
+    .define(LiProtocolBridgeRequestChannelWatchdogEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeRequestChannelWatchdogEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -260,6 +269,13 @@ object KafkaConfig {
     .define(TotalTimeHistogramEnabledMetricsProp, ConfigDef.Type.LIST,
       java.util.Arrays.asList("Produce0To1MbAcks1", "Produce0To1MbAcksAll", "FetchConsumer0To1Mb"),
       ConfigDef.Importance.LOW, "Request metric groups that expose total-time bucket counters.")
+    .define(RequestMaxLocalTimeMsProp, ConfigDef.Type.LONG, Long.MaxValue,
+      ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH,
+      "Maximum interval without a request-channel poll before the broker halts.")
+    .define(HeapDumpFolderProp, ConfigDef.Type.STRING, System.getProperty("java.io.tmpdir"),
+      ConfigDef.Importance.MEDIUM, "Directory used for a watchdog heap dump before halting.")
+    .define(HeapDumpTimeoutProp, ConfigDef.Type.LONG, 120000L, ConfigDef.Range.atLeast(0),
+      ConfigDef.Importance.MEDIUM, "Maximum time to wait for a watchdog heap dump.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -383,6 +399,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp)
   def liProtocolBridgeRequestMetricBucketsEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeRequestMetricBucketsEnableProp)
+  def liProtocolBridgeRequestChannelWatchdogEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeRequestChannelWatchdogEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -405,6 +423,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeProduceRequestInstrumentationEnable
   def liProtocolBridgeRequestMetricBucketsActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeRequestMetricBucketsEnable
+  def liProtocolBridgeRequestChannelWatchdogActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeRequestChannelWatchdogEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -432,6 +452,9 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def requestMetricsTotalTimeBuckets: Array[Int] = parseIntArray(KafkaConfig.RequestMetricsTotalTimeBucketsProp)
   def totalTimeHistogramEnabledMetrics: Seq[String] =
     getList(KafkaConfig.TotalTimeHistogramEnabledMetricsProp).asScala.toSeq
+  def requestMaxLocalTimeMs: Long = getLong(KafkaConfig.RequestMaxLocalTimeMsProp)
+  def heapDumpFolder: java.io.File = new java.io.File(getString(KafkaConfig.HeapDumpFolderProp))
+  def heapDumpTimeout: Long = getLong(KafkaConfig.HeapDumpTimeoutProp)
   private def parseIntArray(name: String): Array[Int] =
     getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)

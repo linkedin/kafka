@@ -17,7 +17,10 @@
 
 package kafka.server
 
-import org.junit.jupiter.api.Assertions.assertEquals
+import kafka.server.QuotaType.Produce
+import org.apache.kafka.common.metrics.Metrics
+import org.apache.kafka.common.utils.Time
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.util.Properties
@@ -35,7 +38,16 @@ class QuotaFactoryTest {
 
     props.put(KafkaConfig.LiProtocolBridgeStaticDefaultQuotasEnableProp, "true")
     val enabled = KafkaConfig.fromProps(props)
-    assertEquals(1234L, QuotaFactory.clientProduceConfig(enabled).quotaDefault)
+    val produceConfig = QuotaFactory.clientProduceConfig(enabled)
+    assertEquals(1234L, produceConfig.quotaDefault)
     assertEquals(5678L, QuotaFactory.clientFetchConfig(enabled).quotaDefault)
+
+    val metrics = new Metrics
+    val manager = new ClientQuotaManager(produceConfig, metrics, Produce, Time.SYSTEM, "test-")
+    try assertTrue(manager.quotasEnabled)
+    finally {
+      manager.shutdown()
+      metrics.close()
+    }
   }
 }

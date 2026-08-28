@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.typesafe.scalalogging.Logger
 import com.yammer.metrics.core.{Histogram, Meter}
 import kafka.network
-import kafka.server.{KafkaConfig, NoOpObserver, Observer, RequestLocal}
+import kafka.server.{BrokerMetadataStats, KafkaConfig, NoOpObserver, Observer, RequestLocal}
 import kafka.utils.{Logging, Pool}
 import kafka.utils.Implicits._
 import org.apache.kafka.common.config.ConfigResource
@@ -98,6 +98,7 @@ object RequestChannel extends Logging {
     @volatile var messageConversionsTimeNanos: Long = 0L
     @volatile var apiThrottleTimeMs: Long = 0L
     @volatile var temporaryMemoryBytes: Long = 0L
+    @volatile var responseBytes: Long = 0L
     @volatile var recordNetworkThreadTimeCallback: Option[Long => Unit] = None
     @volatile var callbackRequestDequeueTimeNanos: Option[Long] = None
     @volatile var callbackRequestCompleteTimeNanos: Option[Long] = None
@@ -262,6 +263,7 @@ object RequestChannel extends Logging {
         m.responseSendTimeHist.update(Math.round(responseSendTimeMs))
         m.totalTimeHist.update(Math.round(totalTimeMs))
         m.requestBytesHist.update(sizeOfBodyInBytes)
+        m.responseBytesHist.update(responseBytes)
         m.messageConversionsTimeHist.foreach(_.update(Math.round(messageConversionsTimeMs)))
         m.tempMemoryBytesHist.foreach(_.update(temporaryMemoryBytes))
       }
@@ -413,9 +415,12 @@ class RequestChannel(val queueSize: Int,
   ): Unit = {
     observer.observe(request.context, request.body[AbstractRequest], response)
     updateErrorMetrics(request.header.apiKey, response.errorCounts.asScala)
+    val responseSend = request.buildResponseSend(response)
+    request.responseBytes = responseSend.size
+    BrokerMetadataStats.outgoingBytesRate.mark(responseSend.size)
     sendResponse(new RequestChannel.SendResponse(
       request,
-      request.buildResponseSend(response),
+      responseSend,
       request.responseNode(response),
       onComplete
     ))
@@ -529,14 +534,15 @@ object RequestMetrics {
 
   val RequestsPerSec: String = "RequestsPerSec"
   val DeprecatedRequestsPerSec: String = "DeprecatedRequestsPerSec"
-  private val RequestQueueTimeMs = "RequestQueueTimeMs"
-  private val LocalTimeMs = "LocalTimeMs"
-  private val RemoteTimeMs = "RemoteTimeMs"
-  private val ThrottleTimeMs = "ThrottleTimeMs"
-  private val ResponseQueueTimeMs = "ResponseQueueTimeMs"
-  private val ResponseSendTimeMs = "ResponseSendTimeMs"
-  private val TotalTimeMs = "TotalTimeMs"
-  private val RequestBytes = "RequestBytes"
+  val RequestQueueTimeMs = "RequestQueueTimeMs"
+  val LocalTimeMs = "LocalTimeMs"
+  val RemoteTimeMs = "RemoteTimeMs"
+  val ThrottleTimeMs = "ThrottleTimeMs"
+  val ResponseQueueTimeMs = "ResponseQueueTimeMs"
+  val ResponseSendTimeMs = "ResponseSendTimeMs"
+  val TotalTimeMs = "TotalTimeMs"
+  val RequestBytes = "RequestBytes"
+  val ResponseBytes = "ResponseBytes"
   val MessageConversionsTimeMs: String = "MessageConversionsTimeMs"
   val TemporaryMemoryBytes: String = "TemporaryMemoryBytes"
   val ErrorsPerSec: String = "ErrorsPerSec"
@@ -567,8 +573,9 @@ class RequestMetrics(name: String) {
   // time to send the response to the requester
   val responseSendTimeHist: Histogram = metricsGroup.newHistogram(ResponseSendTimeMs, true, tags)
   val totalTimeHist: Histogram = metricsGroup.newHistogram(TotalTimeMs, true, tags)
-  // request size in bytes
+  // request and response sizes in bytes
   val requestBytesHist: Histogram = metricsGroup.newHistogram(RequestBytes, true, tags)
+  val responseBytesHist: Histogram = metricsGroup.newHistogram(ResponseBytes, true, tags)
   // time for message conversions (only relevant to fetch and produce requests)
   val messageConversionsTimeHist: Option[Histogram] =
     if (name == ApiKeys.FETCH.name || name == ApiKeys.PRODUCE.name)
@@ -656,6 +663,7 @@ class RequestMetrics(name: String) {
     metricsGroup.removeMetric(TotalTimeMs, tags)
     metricsGroup.removeMetric(ResponseSendTimeMs, tags)
     metricsGroup.removeMetric(RequestBytes, tags)
+    metricsGroup.removeMetric(ResponseBytes, tags)
     if (name == ApiKeys.FETCH.name || name == ApiKeys.PRODUCE.name) {
       metricsGroup.removeMetric(MessageConversionsTimeMs, tags)
       metricsGroup.removeMetric(TemporaryMemoryBytes, tags)

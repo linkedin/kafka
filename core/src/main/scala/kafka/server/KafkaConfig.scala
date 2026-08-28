@@ -91,6 +91,8 @@ object KafkaConfig {
     "li.protocol.bridge.static.default.quotas.enable"
   val LiProtocolBridgeReplicaRequestTimeoutEnableProp =
     "li.protocol.bridge.replica.request.timeout.enable"
+  val LiProtocolBridgeOffsetsTopicConfigEnableProp =
+    "li.protocol.bridge.offsets.topic.config.enable"
   val LiMinLogRollTimeMillisProp = "li.min.log.roll.ms"
   val RequestMaxLocalTimeMsProp = "request.max.local.time.ms"
   val HeapDumpFolderProp = "heap.dump.folder"
@@ -131,6 +133,9 @@ object KafkaConfig {
   val ListenerSecurityProtocolMapProp = "listener.security.protocol.map"
   val MetricReplaceOnDuplicateProp = "metrics.replace.on.duplicate"
   val ReplicaRequestTimeoutMsProp = "replica.request.timeout.ms"
+  val OffsetsTopicMaxMessageBytesProp = "offsets.topic.max.message.bytes"
+  val OffsetsTopicMinInSyncReplicasProp = "offsets.topic.min.insync.replicas"
+  val OffsetsTopicMinCompactionLagMsProp = "offsets.topic.min.compaction.lag.ms"
   val ZkClientCnxnSocketProp = "zookeeper.clientCnxnSocket"
   val ZkEnableSecureAclsProp = "zookeeper.set.acl"
   val ZkSslClientEnableProp = "zookeeper.ssl.client.enable"
@@ -188,6 +193,8 @@ object KafkaConfig {
     "Use the 3.0-li static producer and consumer quota defaults when no dynamic quota matches."
   val LiProtocolBridgeReplicaRequestTimeoutEnableDoc =
     "Use replica.request.timeout.ms for replica fetcher network requests."
+  val LiProtocolBridgeOffsetsTopicConfigEnableDoc =
+    "Apply the 3.0-li max message, minimum ISR, and compaction lag settings when creating __consumer_offsets."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -267,6 +274,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeStaticDefaultQuotasEnableDoc)
     .define(LiProtocolBridgeReplicaRequestTimeoutEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeReplicaRequestTimeoutEnableDoc)
+    .define(LiProtocolBridgeOffsetsTopicConfigEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeOffsetsTopicConfigEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -318,6 +327,12 @@ object KafkaConfig {
       ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH, "Static default consumer quota in bytes per second.")
     .define(ReplicaRequestTimeoutMsProp, ConfigDef.Type.INT, 30000, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Timeout for replica fetcher network requests.")
+    .define(OffsetsTopicMaxMessageBytesProp, ConfigDef.Type.INT, 20 * 1024 * 1024,
+      ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH, "Maximum message bytes for __consumer_offsets.")
+    .define(OffsetsTopicMinInSyncReplicasProp, ConfigDef.Type.INT, 1,
+      ConfigDef.Range.atLeast(1), ConfigDef.Importance.HIGH, "Minimum ISR for __consumer_offsets.")
+    .define(OffsetsTopicMinCompactionLagMsProp, ConfigDef.Type.LONG, 0L,
+      ConfigDef.Range.atLeast(0), ConfigDef.Importance.HIGH, "Minimum compaction lag for __consumer_offsets.")
     .define(LiNumControllerInitThreadsProp, ConfigDef.Type.INT, 1, ConfigDef.Range.atLeast(1),
       ConfigDef.Importance.HIGH, "Number of ZooKeeper clients used to load controller state in parallel.")
 
@@ -453,6 +468,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeStaticDefaultQuotasEnableProp)
   def liProtocolBridgeReplicaRequestTimeoutEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeReplicaRequestTimeoutEnableProp)
+  def liProtocolBridgeOffsetsTopicConfigEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeOffsetsTopicConfigEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -487,6 +504,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeStaticDefaultQuotasEnable
   def liProtocolBridgeReplicaRequestTimeoutActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeReplicaRequestTimeoutEnable
+  def liProtocolBridgeOffsetsTopicConfigActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeOffsetsTopicConfigEnable
 
   lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
     val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
@@ -524,6 +543,9 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   def replicaRequestTimeoutMs: Int = getInt(KafkaConfig.ReplicaRequestTimeoutMsProp)
   def effectiveReplicaRequestTimeoutMs: Int =
     if (liProtocolBridgeReplicaRequestTimeoutActive) replicaRequestTimeoutMs else requestTimeoutMs
+  def offsetsTopicMaxMessageBytes: Int = getInt(KafkaConfig.OffsetsTopicMaxMessageBytesProp)
+  def offsetsTopicMinInSyncReplicas: Int = getInt(KafkaConfig.OffsetsTopicMinInSyncReplicasProp)
+  def offsetsTopicMinCompactionLagMs: Long = getLong(KafkaConfig.OffsetsTopicMinCompactionLagMsProp)
   private def parseIntArray(name: String): Array[Int] =
     getString(name).split(',').map(_.trim).filter(_.nonEmpty).map(_.toInt)
   def liNumControllerInitThreads: Int = getInt(KafkaConfig.LiNumControllerInitThreadsProp)

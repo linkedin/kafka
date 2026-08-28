@@ -20,7 +20,7 @@ package kafka.server
 import kafka.api.ElectLeadersRequestOps
 import kafka.controller.ReplicaAssignment
 import kafka.coordinator.transaction.{InitProducerIdResult, TransactionCoordinator}
-import kafka.network.RequestChannel
+import kafka.network.{DataPlaneAcceptor, RequestChannel}
 import kafka.server.QuotaFactory.{QuotaManagers, UnboundedQuota}
 import kafka.server.handlers.DescribeTopicPartitionsRequestHandler
 import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
@@ -120,7 +120,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   val configHelper = new ConfigHelper(metadataCache, config, configRepository)
   val authHelper = new AuthHelper(authorizer)
   val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation(
-    config.liProtocolBridgeListOffsetsInstrumentationActive)
+    config.liProtocolBridgeListOffsetsInstrumentationActive &&
+      requestChannel.metricNamePrefix == DataPlaneAcceptor.MetricPrefix)
   val requestHelper = new RequestHandlerHelper(requestChannel, quotas, time)
   private val produceRequestInstrumentationLogger =
     new ProduceRequestInstrumentationLogger(config, time, new scala.util.Random, replicaManager)

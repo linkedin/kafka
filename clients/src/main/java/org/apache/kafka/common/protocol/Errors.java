@@ -420,6 +420,10 @@ public enum Errors {
 
     static final short LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE = 1107;
 
+    public static short liOffsetMovedToTieredStorageCode() {
+        return LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE;
+    }
+
     private static final Map<Class<?>, Errors> CLASS_TO_ERROR = new HashMap<>();
     private static final Map<Short, Errors> CODE_TO_ERROR = new HashMap<>();
 

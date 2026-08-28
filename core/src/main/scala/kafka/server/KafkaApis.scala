@@ -1272,6 +1272,12 @@ class KafkaApis(val requestChannel: RequestChannel,
                   s"partition $topicPartition failed due to ${e.getMessage}")
               buildErrorResponse(Errors.forException(e), partition)
 
+            case e: OffsetMovedToTieredStorageException =>
+              val response = buildErrorResponse(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, partition)
+              response.setErrorCode(KafkaApis.offsetMovedErrorCode(
+                config.liProtocolBridgeFollowerRecoveryActive, partition.timestamp))
+              response
+
             // Only V5 and newer ListOffset calls should get OFFSET_NOT_AVAILABLE
             case e: OffsetNotAvailableException =>
               if (request.header.apiVersion >= 5) {
@@ -4314,6 +4320,12 @@ class KafkaApis(val requestChannel: RequestChannel,
 }
 
 object KafkaApis {
+  private[server] def offsetMovedErrorCode(liFollowerRecovery: Boolean, timestamp: Long): Short =
+    if (liFollowerRecovery && timestamp == ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP)
+      Errors.liOffsetMovedToTieredStorageCode()
+    else
+      Errors.OFFSET_MOVED_TO_TIERED_STORAGE.code
+
   // Traffic from both in-sync and out of sync replicas are accounted for in replication quota to ensure total replication
   // traffic doesn't exceed quota.
   // TODO: remove resolvedResponseData method when sizeOf can take a data object.

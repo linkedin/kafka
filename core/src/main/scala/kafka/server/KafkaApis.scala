@@ -234,6 +234,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.ELECT_LEADERS => maybeForwardToController(request, handleElectLeaders)
         case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiShutdownSafetyOverride(request)
         case ApiKeys.LI_MOVE_CONTROLLER => handleLiMoveController(request)
+        case ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES => handleLiCreateFederatedTopics(request)
+        case ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES => handleLiDeleteFederatedTopics(request)
+        case ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES => handleLiListFederatedTopics(request)
         case ApiKeys.INCREMENTAL_ALTER_CONFIGS => handleIncrementalAlterConfigsRequest(request)
         case ApiKeys.ALTER_PARTITION_REASSIGNMENTS => maybeForwardToController(request, handleAlterPartitionReassignmentsRequest)
         case ApiKeys.LIST_PARTITION_REASSIGNMENTS => maybeForwardToController(request, handleListPartitionReassignmentsRequest)
@@ -3417,6 +3420,84 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
         requestHelper.sendResponseExemptThrottle(request, response)
       })
+  }
+
+  private def federatedTopicsDisabled(request: RequestChannel.Request, body: AbstractRequest): Boolean = {
+    if (config.liProtocolBridgeFederatedTopicsActive) {
+      false
+    } else {
+      requestHelper.sendResponseExemptThrottle(request,
+        body.getErrorResponse(new UnsupportedVersionException("LI federated-topic compatibility is disabled")))
+      true
+    }
+  }
+
+  def handleLiCreateFederatedTopics(request: RequestChannel.Request): Unit = {
+    val createRequest = request.body[LiCreateFederatedTopicZnodesRequest]
+    if (federatedTopicsDisabled(request, createRequest)) return
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    if (!zkSupport.controller.isActive) {
+      requestHelper.sendResponseExemptThrottle(request,
+        LiCreateFederatedTopicZnodesResponse.prepareResponse(Errors.NOT_CONTROLLER, 0, createRequest.version))
+      return
+    }
+    val topics = createRequest.data.topics.asScala.map(topic => topic.name -> topic.namespace).toMap
+    val authorized = authHelper.filterByAuthorized(request.context, CREATE, TOPIC, topics.keys)(identity)
+    if (authorized.size != topics.size) {
+      requestHelper.sendResponseExemptThrottle(request,
+        LiCreateFederatedTopicZnodesResponse.prepareResponse(
+          Errors.TOPIC_AUTHORIZATION_FAILED, 0, createRequest.version))
+      return
+    }
+    topics.foreach { case (topic, namespace) => zkSupport.zkClient.createFederatedTopicZNode(topic, namespace) }
+    requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+      LiCreateFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, throttleMs, createRequest.version))
+  }
+
+  def handleLiDeleteFederatedTopics(request: RequestChannel.Request): Unit = {
+    val deleteRequest = request.body[LiDeleteFederatedTopicZnodesRequest]
+    if (federatedTopicsDisabled(request, deleteRequest)) return
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    if (!zkSupport.controller.isActive) {
+      requestHelper.sendResponseExemptThrottle(request,
+        LiDeleteFederatedTopicZnodesResponse.prepareResponse(Errors.NOT_CONTROLLER, 0, deleteRequest.version))
+      return
+    }
+    val topics = deleteRequest.data.topics.asScala.map(topic => topic.name -> topic.namespace).toMap
+    val authorized = authHelper.filterByAuthorized(request.context, DELETE, TOPIC, topics.keys)(identity)
+    if (authorized.size != topics.size) {
+      requestHelper.sendResponseExemptThrottle(request,
+        LiDeleteFederatedTopicZnodesResponse.prepareResponse(
+          Errors.TOPIC_AUTHORIZATION_FAILED, 0, deleteRequest.version))
+      return
+    }
+    topics.foreach { case (topic, namespace) => zkSupport.zkClient.deleteFederatedTopicZNode(topic, namespace) }
+    requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+      LiDeleteFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, throttleMs, deleteRequest.version))
+  }
+
+  def handleLiListFederatedTopics(request: RequestChannel.Request): Unit = {
+    val listRequest = request.body[LiListFederatedTopicZnodesRequest]
+    if (federatedTopicsDisabled(request, listRequest)) return
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    if (!authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME)) {
+      requestHelper.sendResponseExemptThrottle(request,
+        LiListFederatedTopicZnodesResponse.prepareResponse(
+          Errors.CLUSTER_AUTHORIZATION_FAILED, 0, listRequest.version))
+      return
+    }
+    val topics = if (listRequest.data.topics.isEmpty) {
+      zkSupport.zkClient.getAllFederatedTopics()
+    } else {
+      listRequest.data.topics.asScala.flatMap { topic =>
+        zkSupport.zkClient.getFederatedTopic(topic.name, topic.namespace)
+      }.toSet
+    }
+    requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+      new LiListFederatedTopicZnodesResponse(
+        new LiListFederatedTopicZnodesResponseData()
+          .setTopics(topics.toList.asJava)
+          .setThrottleTimeMs(throttleMs), listRequest.version))
   }
 
   def handleLiMoveController(request: RequestChannel.Request): Unit = {

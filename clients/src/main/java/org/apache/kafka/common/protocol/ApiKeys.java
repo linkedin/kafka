@@ -135,7 +135,10 @@ public enum ApiKeys {
     // Private 3.0-li APIs retained while ZooKeeper operational tooling is migrated.
     LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK(
             ApiMessageType.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, true, true),
-    LI_MOVE_CONTROLLER(ApiMessageType.LI_MOVE_CONTROLLER, true);
+    LI_MOVE_CONTROLLER(ApiMessageType.LI_MOVE_CONTROLLER, true),
+    LI_CREATE_FEDERATED_TOPIC_ZNODES(ApiMessageType.LI_CREATE_FEDERATED_TOPIC_ZNODES, false, true),
+    LI_DELETE_FEDERATED_TOPIC_ZNODES(ApiMessageType.LI_DELETE_FEDERATED_TOPIC_ZNODES, false, true),
+    LI_LIST_FEDERATED_TOPIC_ZNODES(ApiMessageType.LI_LIST_FEDERATED_TOPIC_ZNODES);
 
     private static final Map<ApiMessageType.ListenerType, EnumSet<ApiKeys>> APIS_BY_LISTENER =
         new EnumMap<>(ApiMessageType.ListenerType.class);

@@ -68,6 +68,8 @@ object KafkaConfig {
     "li.protocol.bridge.shutdown.safety.override.enable"
   val LiProtocolBridgePreferredControllerEnableProp =
     "li.protocol.bridge.preferred.controller.enable"
+  val LiProtocolBridgeFederatedTopicsEnableProp =
+    "li.protocol.bridge.federated.topics.enable"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
   val PreferredControllerProp = "preferred.controller"
@@ -92,6 +94,8 @@ object KafkaConfig {
     "Accept the 3.0-li private API that bypasses controlled shutdown safety for one broker epoch."
   val LiProtocolBridgePreferredControllerEnableDoc =
     "Enable 3.0-li preferred-controller election and shutdown behavior on ZooKeeper brokers."
+  val LiProtocolBridgeFederatedTopicsEnableDoc =
+    "Enable the 3.0-li federated-topic APIs and ZooKeeper metadata used by the LinkedIn authorizer."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -146,6 +150,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeShutdownSafetyOverrideEnableDoc)
     .define(LiProtocolBridgePreferredControllerEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgePreferredControllerEnableDoc)
+    .define(LiProtocolBridgeFederatedTopicsEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeFederatedTopicsEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -267,6 +273,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp)
   def liProtocolBridgePreferredControllerEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp)
+  def liProtocolBridgeFederatedTopicsEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -279,6 +287,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeShutdownSafetyOverrideEnable
   def liProtocolBridgePreferredControllerActive: Boolean =
     processRoles.isEmpty && liProtocolBridgePreferredControllerEnable
+  def liProtocolBridgeFederatedTopicsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeFederatedTopicsEnable
 
   def preferredController: Boolean = getBoolean(KafkaConfig.PreferredControllerProp)
   def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)

@@ -287,6 +287,8 @@ public abstract class AbstractResponse implements AbstractRequestResponse {
                 return DeleteShareGroupStateResponse.parse(responseBuffer, version);
             case READ_SHARE_GROUP_STATE_SUMMARY:
                 return ReadShareGroupStateSummaryResponse.parse(responseBuffer, version);
+            case LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK:
+                return LiControlledShutdownSkipSafetyCheckResponse.parse(responseBuffer, version);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerResponse.parse(responseBuffer, version);
             default:

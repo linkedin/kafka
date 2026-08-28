@@ -64,6 +64,18 @@ object KafkaConfig {
   val LiProtocolBridgeRecommendedElectionEnableProp = "li.protocol.bridge.recommended.leader.election.enable"
   val LiProtocolBridgeExcludePartitionsEnableProp = "li.protocol.bridge.metadata.exclude.partitions.enable"
   val LiProtocolBridgeMoveControllerEnableProp = "li.protocol.bridge.move.controller.enable"
+  val LiProtocolBridgeShutdownSafetyOverrideEnableProp =
+    "li.protocol.bridge.shutdown.safety.override.enable"
+  val LiProtocolBridgePreferredControllerEnableProp =
+    "li.protocol.bridge.preferred.controller.enable"
+
+  // 3.0-li operational settings consumed by the LinkedIn server wrapper.
+  val PreferredControllerProp = "preferred.controller"
+  val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
+  val LiMinPreferredControllerCountProp = "li.min.preferred.controller.count"
+  val ControlledShutdownSafetyCheckEnableProp = "controlled.shutdown.safety.check.enable"
+  val ControlledShutdownSafetyCheckRedundancyFactorProp =
+    "controlled.shutdown.safety.check.redundancy.factor"
 
   val LiProtocolBridgeModeEnableDoc =
     "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +
@@ -76,6 +88,19 @@ object KafkaConfig {
     "Honor the 3.0-li Metadata request tag that omits partition metadata from the response."
   val LiProtocolBridgeMoveControllerEnableDoc =
     "Accept the 3.0-li private API that forces a ZooKeeper controller election."
+  val LiProtocolBridgeShutdownSafetyOverrideEnableDoc =
+    "Accept the 3.0-li private API that bypasses controlled shutdown safety for one broker epoch."
+  val LiProtocolBridgePreferredControllerEnableDoc =
+    "Enable 3.0-li preferred-controller election and shutdown behavior on ZooKeeper brokers."
+  val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
+  val AllowPreferredControllerFallbackDoc =
+    "Allow a non-preferred broker to become controller when no preferred controller is available."
+  val LiMinPreferredControllerCountDoc =
+    "Reject a preferred controller shutdown when it would leave fewer than this many preferred controllers."
+  val ControlledShutdownSafetyCheckEnableDoc =
+    "Reject controlled shutdown when the remaining live ISR would be below min ISR plus the configured redundancy."
+  val ControlledShutdownSafetyCheckRedundancyFactorDoc =
+    "Additional live ISR replicas required by the controlled shutdown safety check."
 
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
@@ -117,6 +142,20 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgeExcludePartitionsEnableDoc)
     .define(LiProtocolBridgeMoveControllerEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeMoveControllerEnableDoc)
+    .define(LiProtocolBridgeShutdownSafetyOverrideEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeShutdownSafetyOverrideEnableDoc)
+    .define(LiProtocolBridgePreferredControllerEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgePreferredControllerEnableDoc)
+    .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, PreferredControllerDoc)
+    .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
+      ConfigDef.Importance.HIGH, AllowPreferredControllerFallbackDoc)
+    .define(LiMinPreferredControllerCountProp, ConfigDef.Type.INT, 0, ConfigDef.Range.atLeast(0),
+      ConfigDef.Importance.HIGH, LiMinPreferredControllerCountDoc)
+    .define(ControlledShutdownSafetyCheckEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckEnableDoc)
+    .define(ControlledShutdownSafetyCheckRedundancyFactorProp, ConfigDef.Type.INT, 0,
+      ConfigDef.Range.atLeast(0), ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckRedundancyFactorDoc)
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -224,6 +263,10 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp)
   def liProtocolBridgeMoveControllerEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeMoveControllerEnableProp)
+  def liProtocolBridgeShutdownSafetyOverrideEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp)
+  def liProtocolBridgePreferredControllerEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -232,6 +275,18 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgeRecommendedElectionEnable
   def liProtocolBridgeMoveControllerActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeMoveControllerEnable
+  def liProtocolBridgeShutdownSafetyOverrideActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeShutdownSafetyOverrideEnable
+  def liProtocolBridgePreferredControllerActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgePreferredControllerEnable
+
+  def preferredController: Boolean = getBoolean(KafkaConfig.PreferredControllerProp)
+  def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)
+  def liMinPreferredControllerCount: Int = getInt(KafkaConfig.LiMinPreferredControllerCountProp)
+  def controlledShutdownSafetyCheckEnable: Boolean =
+    getBoolean(KafkaConfig.ControlledShutdownSafetyCheckEnableProp)
+  def controlledShutdownSafetyCheckRedundancyFactor: Int =
+    getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
 
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 

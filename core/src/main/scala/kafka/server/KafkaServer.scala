@@ -406,6 +406,8 @@ class KafkaServer(
         replicaManager.startup()
 
         val brokerInfo = createBrokerInfo
+        if (config.liProtocolBridgePreferredControllerActive && config.preferredController)
+          zkClient.registerPreferredControllerId(brokerInfo.broker.id)
         val brokerEpoch = zkClient.registerBroker(brokerInfo)
 
         /* start token manager */

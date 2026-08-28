@@ -307,7 +307,8 @@ class DynamicBrokerConfigTest {
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
       KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
       KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
-      KafkaConfig.LiProtocolBridgeMoveControllerEnableProp
+      KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
+      KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp
     )
     bridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))
 

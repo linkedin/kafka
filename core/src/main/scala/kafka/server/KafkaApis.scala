@@ -232,6 +232,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.DESCRIBE_DELEGATION_TOKEN => handleDescribeTokensRequest(request)
         case ApiKeys.DELETE_GROUPS => handleDeleteGroupsRequest(request, requestLocal).exceptionally(handleError)
         case ApiKeys.ELECT_LEADERS => maybeForwardToController(request, handleElectLeaders)
+        case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => handleLiShutdownSafetyOverride(request)
         case ApiKeys.LI_MOVE_CONTROLLER => handleLiMoveController(request)
         case ApiKeys.INCREMENTAL_ALTER_CONFIGS => handleIncrementalAlterConfigsRequest(request)
         case ApiKeys.ALTER_PARTITION_REASSIGNMENTS => maybeForwardToController(request, handleAlterPartitionReassignmentsRequest)
@@ -3394,6 +3395,28 @@ class KafkaApis(val requestChannel: RequestChannel,
       false
     else
       true
+  }
+
+  def handleLiShutdownSafetyOverride(request: RequestChannel.Request): Unit = {
+    authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
+    val overrideRequest = request.body[LiControlledShutdownSkipSafetyCheckRequest]
+    if (!config.liProtocolBridgeShutdownSafetyOverrideActive) {
+      requestHelper.sendResponseExemptThrottle(request,
+        overrideRequest.getErrorResponse(new UnsupportedVersionException(
+          "LI controlled-shutdown safety override is disabled")))
+      return
+    }
+    val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldNeverReceive(request))
+    zkSupport.controller.skipControlledShutdownSafetyCheck(
+      overrideRequest.data.brokerId,
+      overrideRequest.data.brokerEpoch,
+      result => {
+        val response = result match {
+          case Success(_) => LiControlledShutdownSkipSafetyCheckResponse.prepareResponse(Errors.NONE)
+          case Failure(error) => overrideRequest.getErrorResponse(error)
+        }
+        requestHelper.sendResponseExemptThrottle(request, response)
+      })
   }
 
   def handleLiMoveController(request: RequestChannel.Request): Unit = {

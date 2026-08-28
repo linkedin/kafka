@@ -42,12 +42,16 @@ class LiProtocolBridgeMetricsTest {
         KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
         KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
         KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
-        KafkaConfig.LiProtocolBridgeMoveControllerEnableProp
+        KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
+        KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp
       ).foreach(props.put(_, "true"))
       config.dynamicConfig.updateDefaultConfig(props)
 
-      assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, metricValues(brokerId).keySet)
-      assertTrue(metricValues(brokerId).values.forall(_ == 1))
+      val updatedValues = metricValues(brokerId)
+      assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, updatedValues.keySet)
+      assertEquals(0, updatedValues(LiProtocolBridgeMetrics.PreferredControllerEnabled))
+      assertTrue(updatedValues.filterNot(_._1 == LiProtocolBridgeMetrics.PreferredControllerEnabled)
+        .values.forall(_ == 1))
     } finally {
       metrics.close()
     }

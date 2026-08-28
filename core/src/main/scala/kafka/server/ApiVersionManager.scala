@@ -61,7 +61,8 @@ object ApiVersionManager {
       config.unstableApiVersionsEnabled,
       config.migrationEnabled,
       clientMetricsManager,
-      () => config.liProtocolBridgeMoveControllerActive
+      () => config.liProtocolBridgeMoveControllerActive,
+      () => config.liProtocolBridgeShutdownSafetyOverrideActive
     )
   }
 }
@@ -144,15 +145,20 @@ class DefaultApiVersionManager(
   val enableUnstableLastVersion: Boolean,
   val zkMigrationEnabled: Boolean = false,
   val clientMetricsManager: Option[ClientMetricsManager] = None,
-  liMoveControllerEnabled: () => Boolean = () => false
+  liMoveControllerEnabled: () => Boolean = () => false,
+  liShutdownSafetyOverrideEnabled: () => Boolean = () => false
 ) extends ApiVersionManager {
 
   val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala
 
-  override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean = {
-    super.isApiEnabled(apiKey, apiVersion) &&
-      (apiKey != ApiKeys.LI_MOVE_CONTROLLER || liMoveControllerEnabled())
+  private def isLiApiEnabled(apiKey: ApiKeys): Boolean = apiKey match {
+    case ApiKeys.LI_MOVE_CONTROLLER => liMoveControllerEnabled()
+    case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => liShutdownSafetyOverrideEnabled()
+    case _ => true
   }
+
+  override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean =
+    super.isApiEnabled(apiKey, apiVersion) && isLiApiEnabled(apiKey)
 
   override def apiVersionResponse(
     throttleTimeMs: Int,
@@ -180,7 +186,7 @@ class DefaultApiVersionManager(
     }
     val apiVersions = new ApiVersionsResponseData.ApiVersionCollection(
       unfilteredApiVersions.iterator.asScala.filter { apiVersion =>
-        apiVersion.apiKey != ApiKeys.LI_MOVE_CONTROLLER.id || liMoveControllerEnabled()
+        isLiApiEnabled(ApiKeys.forId(apiVersion.apiKey))
       }.asJava)
     new ApiVersionsResponse.Builder().
       setThrottleTimeMs(throttleTimeMs).

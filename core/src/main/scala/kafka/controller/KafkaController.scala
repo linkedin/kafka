@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 import kafka.api._
 import kafka.common._
 import kafka.cluster.Broker
-import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName}
+import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, ActivePreferredControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName, StandbyPreferredControllerCountMetricName}
 import kafka.coordinator.transaction.ZkProducerIdManager
 import kafka.server._
 import kafka.server.metadata.ZkFinalizedFeatureCache
@@ -37,7 +37,7 @@ import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.Uuid
-import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, StaleBrokerEpochException}
+import org.apache.kafka.common.errors.{BrokerNotAvailableException, ControllerMovedException, NotEnoughPreferredControllersException, StaleBrokerEpochException}
 import org.apache.kafka.common.message.{AllocateProducerIdsRequestData, AllocateProducerIdsResponseData, AlterPartitionRequestData, AlterPartitionResponseData}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.Errors
@@ -46,6 +46,7 @@ import org.apache.kafka.common.utils.{Time, Utils}
 import org.apache.kafka.metadata.LeaderRecoveryState
 import org.apache.kafka.metadata.migration.ZkMigrationState
 import org.apache.kafka.server.common.{AdminOperationException, ProducerIdsBlock}
+import org.apache.kafka.server.config.{ConfigType, ServerLogConfigs}
 import org.apache.kafka.server.metrics.KafkaMetricsGroup
 import org.apache.kafka.server.util.KafkaScheduler
 import org.apache.zookeeper.KeeperException
@@ -71,6 +72,8 @@ object KafkaController extends Logging {
   type UpdateFeaturesCallback = Either[ApiError, Map[String, ApiError]] => Unit
 
   private val ActiveControllerCountMetricName = "ActiveControllerCount"
+  private val ActivePreferredControllerCountMetricName = "ActivePreferredControllerCount"
+  private val StandbyPreferredControllerCountMetricName = "StandbyPreferredControllerCount"
   private val OfflinePartitionsCountMetricName = "OfflinePartitionsCount"
   private val PreferredReplicaImbalanceCountMetricName = "PreferredReplicaImbalanceCount"
   private val ControllerStateMetricName = "ControllerState"
@@ -88,6 +91,8 @@ object KafkaController extends Logging {
   private[controller] val MetricNames = Set(
     ZkMigrationStateMetricName,
     ActiveControllerCountMetricName,
+    ActivePreferredControllerCountMetricName,
+    StandbyPreferredControllerCountMetricName,
     OfflinePartitionsCountMetricName,
     PreferredReplicaImbalanceCountMetricName,
     ControllerStateMetricName,
@@ -152,6 +157,7 @@ class KafkaController(val config: KafkaConfig,
 
   private val controllerChangeHandler = new ControllerChangeHandler(eventManager)
   private val brokerChangeHandler = new BrokerChangeHandler(eventManager)
+  private val preferredControllerChangeHandler = new PreferredControllerChangeHandler(eventManager)
   private val brokerModificationsHandlers: mutable.Map[Int, BrokerModificationsHandler] = mutable.Map.empty
   private val topicChangeHandler = new TopicChangeHandler(eventManager)
   private val topicDeletionHandler = new TopicDeletionHandler(eventManager)
@@ -177,6 +183,10 @@ class KafkaController(val config: KafkaConfig,
 
   metricsGroup.newGauge(ZkMigrationStateMetricName, () => ZkMigrationState.ZK.value().intValue())
   metricsGroup.newGauge(ActiveControllerCountMetricName, () => if (isActive) 1 else 0)
+  metricsGroup.newGauge(ActivePreferredControllerCountMetricName,
+    () => if (isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
+  metricsGroup.newGauge(StandbyPreferredControllerCountMetricName,
+    () => if (!isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
   metricsGroup.newGauge(OfflinePartitionsCountMetricName, () => offlinePartitionCount)
   metricsGroup.newGauge(PreferredReplicaImbalanceCountMetricName, () => preferredReplicaImbalanceCount)
   metricsGroup.newGauge(ControllerStateMetricName, () => state.value)
@@ -248,6 +258,11 @@ class KafkaController(val config: KafkaConfig,
   def controlledShutdown(id: Int, brokerEpoch: Long, controlledShutdownCallback: Try[Set[TopicPartition]] => Unit): Unit = {
     val controlledShutdownEvent = ControlledShutdown(id, brokerEpoch, controlledShutdownCallback)
     eventManager.put(controlledShutdownEvent)
+  }
+
+  def skipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long,
+                                        callback: Try[Unit] => Unit): Unit = {
+    eventManager.put(SkipControlledShutdownSafetyCheck(id, brokerEpoch, callback))
   }
 
   private[kafka] def updateBrokerInfo(newBrokerInfo: BrokerInfo): Unit = {
@@ -1362,6 +1377,41 @@ class KafkaController(val config: KafkaConfig,
     controlledShutdownCallback(controlledShutdownResult)
   }
 
+  private def processSkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long,
+                                                        callback: Try[Unit] => Unit): Unit = {
+    callback(Try(doSkipControlledShutdownSafetyCheck(id, brokerEpoch)))
+  }
+
+  private def doSkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long): Unit = {
+    if (!isActive)
+      throw new ControllerMovedException("Controller moved while handling the shutdown safety override")
+    if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
+      throw new BrokerNotAvailableException(s"Broker id $id does not exist")
+
+    val currentBrokerEpoch = controllerContext.liveBrokerIdAndEpochs(id)
+    if (brokerEpoch < currentBrokerEpoch)
+      throw new StaleBrokerEpochException(
+        s"Broker $id has epoch $currentBrokerEpoch, which is newer than requested epoch $brokerEpoch")
+    controllerContext.skipShutdownSafetyCheck.put(id, brokerEpoch)
+  }
+
+  private def safeToShutdown(id: Int): Boolean = {
+    val liveBrokerIds = controllerContext.liveBrokerIds
+    controllerContext.partitionsOnBroker(id).forall { partition =>
+      if (topicDeletionManager.isTopicQueuedUpForDeletion(partition.topic)) {
+        true
+      } else {
+        val topicConfig = zkClient.getEntityConfigs(ConfigType.TOPIC, partition.topic)
+        val minIsr: Int = Option(topicConfig.getProperty(ServerLogConfigs.MIN_IN_SYNC_REPLICAS_CONFIG))
+          .map(_.toInt)
+          .getOrElse(config.minInSyncReplicas.intValue())
+        val isr = controllerContext.partitionLeadershipInfo(partition).map(_.leaderAndIsr.isr).getOrElse(List.empty)
+        val remainingLiveIsr = isr.count(replica => replica != id && liveBrokerIds.contains(replica))
+        remainingLiveIsr >= minIsr + config.controlledShutdownSafetyCheckRedundancyFactor
+      }
+    }
+  }
+
   private def doControlledShutdown(id: Int, brokerEpoch: Long): Set[TopicPartition] = {
     if (!isActive) {
       throw new ControllerMovedException("Controller moved to another broker. Aborting controlled shutdown")
@@ -1383,6 +1433,18 @@ class KafkaController(val config: KafkaConfig,
 
     if (!controllerContext.liveOrShuttingDownBrokerIds.contains(id))
       throw new BrokerNotAvailableException(s"Broker id $id does not exist.")
+
+    val currentBrokerEpoch = controllerContext.liveBrokerIdAndEpochs(id)
+    val safetyCheckSkipped = controllerContext.skipShutdownSafetyCheck.get(id).exists(_ >= currentBrokerEpoch)
+    if (config.controlledShutdownSafetyCheckEnable && !safetyCheckSkipped && !safeToShutdown(id))
+      throw new org.apache.kafka.common.errors.NotEnoughReplicasException(
+        s"Shutting down broker $id would leave too few live ISR replicas")
+
+    if (config.liProtocolBridgePreferredControllerActive && config.preferredController &&
+      controllerContext.getLivePreferredControllerIds.contains(id) &&
+      controllerContext.getLivePreferredControllerIds.size <= config.liMinPreferredControllerCount)
+      throw new NotEnoughPreferredControllersException(
+        s"Shutting down broker $id would leave fewer than ${config.liMinPreferredControllerCount} preferred controllers")
 
     controllerContext.shuttingDownBrokerIds.add(id)
     debug(s"All shutting down brokers: ${controllerContext.shuttingDownBrokerIds.mkString(",")}")
@@ -1477,6 +1539,8 @@ class KafkaController(val config: KafkaConfig,
 
   private def processStartup(): Unit = {
     zkClient.registerZNodeChangeHandlerAndCheckExistence(controllerChangeHandler)
+    if (config.liProtocolBridgePreferredControllerActive)
+      zkClient.registerZNodeChildChangeHandler(preferredControllerChangeHandler)
     elect()
   }
 
@@ -1550,6 +1614,10 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def elect(): Unit = {
+    if (config.liProtocolBridgePreferredControllerActive)
+      controllerContext.setLivePreferredControllerIds(zkClient.getPreferredControllerList.toSet)
+    else
+      controllerContext.setLivePreferredControllerIds(Set.empty)
     activeControllerId = zkClient.getControllerId.getOrElse(-1)
     /*
      * We can get here during the initial startup and the handleDeleted ZK callback. Because of the potential race condition,
@@ -1558,6 +1626,12 @@ class KafkaController(val config: KafkaConfig,
      */
     if (activeControllerId != -1) {
       debug(s"Broker $activeControllerId has been elected as the controller, so stopping the election process.")
+      return
+    }
+
+    if (config.liProtocolBridgePreferredControllerActive && !config.preferredController &&
+      (!config.allowPreferredControllerFallback || controllerContext.getLivePreferredControllerIds.nonEmpty)) {
+      debug("Skipping controller election because this broker is not a preferred controller")
       return
     }
 
@@ -1667,6 +1741,18 @@ class KafkaController(val config: KafkaConfig,
 
     if (newBrokerIds.nonEmpty || deadBrokerIds.nonEmpty || bouncedBrokerIds.nonEmpty) {
       info(s"Updated broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
+    }
+  }
+
+  private def processPreferredControllerChange(): Unit = {
+    if (!config.liProtocolBridgePreferredControllerActive)
+      return
+    controllerContext.setLivePreferredControllerIds(zkClient.getPreferredControllerList.toSet)
+    if (isActive && !config.preferredController && controllerContext.getLivePreferredControllerIds.nonEmpty) {
+      info("Resigning because a preferred controller is available")
+      triggerControllerMove()
+    } else if (!isActive && controllerContext.getLivePreferredControllerIds.isEmpty) {
+      processReelect()
     }
   }
 
@@ -2606,6 +2692,8 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def processRegisterBrokerAndReelect(): Unit = {
+    if (config.liProtocolBridgePreferredControllerActive && config.preferredController)
+      zkClient.registerPreferredControllerId(brokerInfo.broker.id)
     _brokerEpoch = zkClient.registerBroker(brokerInfo)
     processReelect()
   }
@@ -2634,6 +2722,8 @@ class KafkaController(val config: KafkaConfig,
           processTopicUncleanLeaderElectionEnable(topic)
         case ControlledShutdown(id, brokerEpoch, callback) =>
           processControlledShutdown(id, brokerEpoch, callback)
+        case SkipControlledShutdownSafetyCheck(id, brokerEpoch, callback) =>
+          processSkipControlledShutdownSafetyCheck(id, brokerEpoch, callback)
         case LeaderAndIsrResponseReceived(response, brokerId) =>
           processLeaderAndIsrResponseReceived(response, brokerId)
         case UpdateMetadataResponseReceived(response, brokerId) =>
@@ -2642,6 +2732,8 @@ class KafkaController(val config: KafkaConfig,
           processTopicDeletionStopReplicaResponseReceived(replicaId, requestError, partitionErrors)
         case BrokerChange =>
           processBrokerChange()
+        case PreferredControllerChange =>
+          processPreferredControllerChange()
         case BrokerModifications(brokerId) =>
           processBrokerModification(brokerId)
         case ControllerChange =>
@@ -2701,6 +2793,11 @@ class BrokerChangeHandler(eventManager: ControllerEventManager) extends ZNodeChi
   override def handleChildChange(): Unit = {
     eventManager.put(BrokerChange)
   }
+}
+
+class PreferredControllerChangeHandler(eventManager: ControllerEventManager) extends ZNodeChildChangeHandler {
+  override val path: String = PreferredControllersZNode.path
+  override def handleChildChange(): Unit = eventManager.put(PreferredControllerChange)
 }
 
 class BrokerModificationsHandler(eventManager: ControllerEventManager, brokerId: Int) extends ZNodeChangeHandler {
@@ -2894,6 +2991,17 @@ case object Startup extends ControllerEvent {
 case object BrokerChange extends ControllerEvent {
   override def state: ControllerState = ControllerState.BrokerChange
   override def preempt(): Unit = {}
+}
+
+case object PreferredControllerChange extends ControllerEvent {
+  override def state: ControllerState = ControllerState.ControllerChange
+  override def preempt(): Unit = {}
+}
+
+case class SkipControlledShutdownSafetyCheck(id: Int, brokerEpoch: Long, callback: Try[Unit] => Unit)
+  extends ControllerEvent {
+  override def state: ControllerState = ControllerState.ControlledShutdown
+  override def preempt(): Unit = callback(Failure(new ControllerMovedException("Controller moved")))
 }
 
 case class BrokerModifications(brokerId: Int) extends ControllerEvent {

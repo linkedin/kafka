@@ -42,7 +42,8 @@ class ApiVersionManagerTest {
       brokerFeatures = brokerFeatures,
       metadataCache = metadataCache,
       enableUnstableLastVersion = true,
-      liMoveControllerEnabled = () => true
+      liMoveControllerEnabled = () => true,
+      liShutdownSafetyOverrideEnabled = () => true
     )
     assertEquals(ApiKeys.apisForListener(apiScope).asScala, versionManager.enabledApis)
     assertTrue(ApiKeys.apisForListener(apiScope).asScala.forall { apiKey =>
@@ -72,25 +73,26 @@ class ApiVersionManagerTest {
   }
 
   @Test
-  def testMoveControllerApiFeatureFlag(): Unit = {
+  def testPrivateApiFeatureFlags(): Unit = {
     def versionManager(enabled: Boolean) = new DefaultApiVersionManager(
       listenerType = ListenerType.ZK_BROKER,
       forwardingManager = None,
       brokerFeatures = brokerFeatures,
       metadataCache = metadataCache,
       enableUnstableLastVersion = true,
-      liMoveControllerEnabled = () => enabled
+      liMoveControllerEnabled = () => enabled,
+      liShutdownSafetyOverrideEnabled = () => enabled
     )
 
-    val disabledManager = versionManager(enabled = false)
-    assertFalse(disabledManager.isApiEnabled(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_MOVE_CONTROLLER.latestVersion))
-    assertNull(disabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys
-      .find(ApiKeys.LI_MOVE_CONTROLLER.id))
+    Seq(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK).foreach { apiKey =>
+      val disabledManager = versionManager(enabled = false)
+      assertFalse(disabledManager.isApiEnabled(apiKey, apiKey.latestVersion))
+      assertNull(disabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys.find(apiKey.id))
 
-    val enabledManager = versionManager(enabled = true)
-    assertTrue(enabledManager.isApiEnabled(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_MOVE_CONTROLLER.latestVersion))
-    assertNotNull(enabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys
-      .find(ApiKeys.LI_MOVE_CONTROLLER.id))
+      val enabledManager = versionManager(enabled = true)
+      assertTrue(enabledManager.isApiEnabled(apiKey, apiKey.latestVersion))
+      assertNotNull(enabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys.find(apiKey.id))
+    }
   }
 
   @Test

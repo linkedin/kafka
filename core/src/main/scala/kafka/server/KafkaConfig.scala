@@ -78,6 +78,50 @@ object KafkaConfig {
   val ControlledShutdownSafetyCheckEnableProp = "controlled.shutdown.safety.check.enable"
   val ControlledShutdownSafetyCheckRedundancyFactorProp =
     "controlled.shutdown.safety.check.redundancy.factor"
+  val ObserverClassNameProp = "observer.class.name"
+  val ObserverShutdownTimeoutMsProp = "observer.shutdown.timeout"
+
+  // Source-compatible names used by the LinkedIn KafkaServer wrapper. Apache 3.9 moved most of
+  // these definitions into Java config classes, but the wrapper still calls KafkaConfig.*Prop().
+  val BrokerIdProp = "broker.id"
+  val ConsumerQuotaBytesPerSecondDefaultProp = "quota.consumer.default"
+  val DefaultReplicationFactorProp = "default.replication.factor"
+  val DeleteTopicEnableProp = "delete.topic.enable"
+  val LogRetentionTimeHoursProp = "log.retention.hours"
+  val LogRetentionTimeMillisProp = "log.retention.ms"
+  val LogRetentionTimeMinutesProp = "log.retention.minutes"
+  val LogRollTimeHoursProp = "log.roll.hours"
+  val LogRollTimeJitterHoursProp = "log.roll.jitter.hours"
+  val LogRollTimeJitterMillisProp = "log.roll.jitter.ms"
+  val LogRollTimeMillisProp = "log.roll.ms"
+  val NumPartitionsProp = "num.partitions"
+  val ProducerQuotaBytesPerSecondDefaultProp = "quota.producer.default"
+  val ListenerSecurityProtocolMapProp = "listener.security.protocol.map"
+  val MetricReplaceOnDuplicateProp = "metrics.replace.on.duplicate"
+  val ReplicaRequestTimeoutMsProp = "replica.request.timeout.ms"
+  val ZkClientCnxnSocketProp = "zookeeper.clientCnxnSocket"
+  val ZkEnableSecureAclsProp = "zookeeper.set.acl"
+  val ZkSslClientEnableProp = "zookeeper.ssl.client.enable"
+  val ZkSslEndpointIdentificationAlgorithmProp = "zookeeper.ssl.endpoint.identification.algorithm"
+  val ZkSslKeyStoreLocationProp = "zookeeper.ssl.keystore.location"
+  val ZkSslKeyStorePasswordProp = "zookeeper.ssl.keystore.password"
+  val ZkSslTrustStoreLocationProp = "zookeeper.ssl.truststore.location"
+  val ZkSslTrustStorePasswordProp = "zookeeper.ssl.truststore.password"
+  val ZkSslTrustStoreTypeProp = "zookeeper.ssl.truststore.type"
+
+  val LiAsyncFetcherEnableProp = "li.async.fetcher.enable"
+  val LiCombinedControlRequestEnableProp = "li.combined.control.request.enable"
+  val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
+  val LiLeaderElectionOnCorruptionWaitMsProp = "li.leader.election.on.corruption.wait.ms"
+  val LiLongTailProduceRequestLogRatioProp = "li.instrumentation.requests.produce.long.tail.log.ratio"
+  val LiLongTailProduceRequestLogThresholdMsProp = "li.instrumentation.requests.produce.long.tail.log.threshold.ms"
+  val LiMinOriginalAliveReplicasProp = "li.min.original.alive.replicas"
+  val LiNumControllerInitThreadsProp = "li.num.controller.init.threads"
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp =
+    "li.rack.aware.assignment.rack.id.mapper.class"
+  val LiZookeeperPaginationEnableProp = "li.zookeeper.pagination.enable"
+  val RequestMetricsSizeBucketsProp = "request.metrics.size.buckets"
+  val RequestMetricsTotalTimeBucketsProp = "request.metrics.total.time.buckets"
 
   val LiProtocolBridgeModeEnableDoc =
     "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +

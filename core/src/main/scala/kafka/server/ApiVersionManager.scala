@@ -193,10 +193,13 @@ class DefaultApiVersionManager(
         enableUnstableLastVersion,
         clientTelemetryEnabled)
     }
-    val apiVersions = new ApiVersionsResponseData.ApiVersionCollection(
-      unfilteredApiVersions.iterator.asScala.filter { apiVersion =>
-        isLiApiEnabled(ApiKeys.forId(apiVersion.apiKey))
-      }.asJava)
+    // Generated message collections are intrusive: an element cannot belong to both the
+    // collection returned above and the filtered response collection. Duplicate each retained
+    // element rather than attempting to insert the already-linked instance.
+    val apiVersions = new ApiVersionsResponseData.ApiVersionCollection(unfilteredApiVersions.size)
+    unfilteredApiVersions.iterator.asScala
+      .filter(apiVersion => isLiApiEnabled(ApiKeys.forId(apiVersion.apiKey)))
+      .foreach(apiVersion => apiVersions.add(apiVersion.duplicate()))
     new ApiVersionsResponse.Builder().
       setThrottleTimeMs(throttleTimeMs).
       setApiVersions(apiVersions).

@@ -1307,6 +1307,12 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
       } else {
         require(brokerId >= 0, "broker.id must be greater than or equal to 0")
       }
+      // LeaderAndIsr v2 cannot encode the non-default leader recovery state introduced in 3.2.
+      // The rolling upgrade keeps the cluster on its existing 3.0 IBP until bridge mode is disabled.
+      if (liProtocolBridgeModeActive && interBrokerProtocolVersion.isAtLeast(IBP_3_2_IV0)) {
+        throw new ConfigException(s"${KafkaConfig.LiProtocolBridgeModeEnableProp}=true requires " +
+          s"${ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG} to be older than 3.2")
+      }
     } else {
       // KRaft-based metadata quorum
       if (nodeId < 0) {

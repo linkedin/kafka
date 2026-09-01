@@ -14,28 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.kafka.clients.consumer.internals;
 
-package org.apache.kafka.clients.admin;
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.common.TopicPartition;
 
-import java.util.Map;
-import org.apache.kafka.common.KafkaFuture;
-import org.apache.kafka.common.annotation.InterfaceStability;
+import java.util.Collection;
 
 /**
- * The result of {@link Admin#createFederatedTopicZnodes(Map)} or
- * {@link Admin#deleteFederatedTopicZnodes(Map)}.
- *
- * The API of this class is evolving, see {@link Admin} for details.
+ * Binary-compatibility adapter for LinkedIn client test utilities built against 3.0-li.
+ * New code should use an application-local no-op listener rather than this internal class.
  */
-@InterfaceStability.Evolving
-public class CreateOrDeleteFederatedTopicZnodesResult {
-    private final Map<String, KafkaFuture<Void>> future;
-
-    CreateOrDeleteFederatedTopicZnodesResult(Map<String, KafkaFuture<Void>> future) {
-        this.future = future;
+public class NoOpConsumerRebalanceListener implements ConsumerRebalanceListener {
+    @Override
+    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
     }
 
-    public Map<String, KafkaFuture<Void>> all() {
-        return future;
+    @Override
+    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
     }
 }

@@ -123,6 +123,24 @@ class KafkaServer(
   kafkaActions: KafkaActions = NoOpKafkaActions
 ) extends KafkaBroker with Server {
 
+  // Binary-compatible constructors retained for LinkedIn client test harnesses built against
+  // 3.0-li. The reporter argument was already ignored by the old implementation, which creates
+  // reporters from KafkaConfig below.
+  @deprecated("Use the primary KafkaServer constructor", "3.9-li")
+  def this(config: KafkaConfig,
+           time: Time,
+           threadNamePrefix: Option[String],
+           kafkaMetricsReporters: Seq[KafkaMetricsReporter],
+           kafkaActions: KafkaActions) =
+    this(config, time, threadNamePrefix, enableForwarding = false, kafkaActions = kafkaActions)
+
+  @deprecated("Use the primary KafkaServer constructor", "3.9-li")
+  def this(config: KafkaConfig,
+           time: Time,
+           threadNamePrefix: Option[String],
+           kafkaMetricsReporters: Seq[KafkaMetricsReporter]) =
+    this(config, time, threadNamePrefix, enableForwarding = false, kafkaActions = NoOpKafkaActions)
+
   private val startupComplete = new AtomicBoolean(false)
   private val liProtocolBridgeMetrics = new LiProtocolBridgeMetrics(config)
   private val isShuttingDown = new AtomicBoolean(false)
@@ -802,7 +820,8 @@ class KafkaServer(
     info(s"Connecting to zookeeper on ${config.zkConnect}")
     _zkClient = KafkaZkClient.createZkClient("Kafka server", time, config, zkClientConfig)
     _zkClient.createTopLevelPaths()
-    KafkaServer.compatibilityZkPaths(config).foreach(path => _zkClient.createRecursive(path))
+    KafkaServer.compatibilityZkPaths(config).foreach(path =>
+      _zkClient.createRecursive(path, throwIfPathExists = false))
   }
 
   private def getOrGenerateClusterId(zkClient: KafkaZkClient): String = {

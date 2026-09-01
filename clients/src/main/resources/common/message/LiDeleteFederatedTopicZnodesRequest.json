@@ -16,7 +16,7 @@
 {
   "apiKey": 1004,
   "type": "request",
-  "listeners": ["zkBroker", "broker", "controller"],
+  "listeners": ["zkBroker"],
   "name": "LiDeleteFederatedTopicZnodesRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",

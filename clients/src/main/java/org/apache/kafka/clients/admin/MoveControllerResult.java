@@ -20,7 +20,7 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.annotation.InterfaceStability;
 
 /**
- * The result of {@link Admin#moveController()}.
+ * The result of {@link Admin#moveController(MoveControllerOptions)}.
  *
  * The API of this class is evolving, see {@link Admin} for details.
  */

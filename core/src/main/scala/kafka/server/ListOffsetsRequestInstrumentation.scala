@@ -74,11 +74,12 @@ class ListOffsetsRequestInstrumentation(enabled: Boolean = true) {
   /**
    * A helper method for the external wrapper to obtain the tracked requesters and refresh the tracking map
    */
-  def snapshotAndResetListOffsetByTimeStampApiUsers(): mutable.Map[String, concurrent.Map[String, AtomicInteger]] = {
-    val old = listOffsetsByTimestampApiClientUsers
-    listOffsetsByTimestampApiClientUsers = mutable.Map()
-    old
-  }
+  def snapshotAndResetListOffsetByTimeStampApiUsers(): mutable.Map[String, concurrent.Map[String, AtomicInteger]] =
+    synchronized {
+      val old = listOffsetsByTimestampApiClientUsers
+      listOffsetsByTimestampApiClientUsers = mutable.Map()
+      old
+    }
 
   def close(): Unit = {
     if (enabled) {
@@ -126,24 +127,15 @@ class ListOffsetsRequestInstrumentation(enabled: Boolean = true) {
     unknownTimestampHist.foreach(_.update(unknownCnt))
     byTimestampHist.foreach(_.update(byTimestampCnt))
 
-    if (byTimestampCnt > 0) {
-      // For by timestamp, we also want to know who are the ones sending
-      val principalAssociatedTopicCounts = listOffsetsByTimestampApiClientUsers.get(principal.getName) match {
-        case Some(v) => v
-        case None =>
-          val newMap: concurrent.Map[String, AtomicInteger] = new ConcurrentHashMap[String, AtomicInteger]().asScala
-          listOffsetsByTimestampApiClientUsers(principal.getName) = newMap
-          newMap
-      }
-
-      val associatedTopicCounter = principalAssociatedTopicCounts.get(topic.name) match {
-        case Some(v) => v
-        case None =>
-          val newCounter = new AtomicInteger(0)
-          principalAssociatedTopicCounts(topic.name) = newCounter
-          newCounter
-      }
-
+    if (byTimestampCnt > 0) synchronized {
+      // Keep the outer mutable map and its snapshot operation under the same lock. The inner maps
+      // remain concurrent because the wrapper consumes a detached snapshot without holding this lock.
+      val principalAssociatedTopicCounts = listOffsetsByTimestampApiClientUsers.getOrElseUpdate(
+        principal.getName,
+        new ConcurrentHashMap[String, AtomicInteger]().asScala)
+      val associatedTopicCounter = principalAssociatedTopicCounts.getOrElseUpdate(
+        topic.name,
+        new AtomicInteger(0))
       associatedTopicCounter.incrementAndGet()
     }
   }

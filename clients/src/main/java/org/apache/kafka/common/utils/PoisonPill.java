@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.common.utils;
 
-import com.sun.management.HotSpotDiagnosticMXBean;
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
@@ -24,6 +23,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.management.MBeanServer;
+import javax.management.ObjectName;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.Max;
@@ -152,10 +152,11 @@ public class PoisonPill {
         }
 
         MBeanServer server = ManagementFactory.getPlatformMBeanServer();
-        HotSpotDiagnosticMXBean diagnosticMBean =
-            ManagementFactory.newPlatformMXBeanProxy(server, "com.sun.management:type=HotSpotDiagnostic",
-                HotSpotDiagnosticMXBean.class);
-        diagnosticMBean.dumpHeap(inProgress.getCanonicalPath(), false /* disable only live - dump all objects */);
+        server.invoke(
+            new ObjectName("com.sun.management:type=HotSpotDiagnostic"),
+            "dumpHeap",
+            new Object[] {inProgress.getCanonicalPath(), false},
+            new String[] {String.class.getName(), boolean.class.getName()});
         Files.move(inProgress.toPath(), complete.toPath(), StandardCopyOption.ATOMIC_MOVE,
             StandardCopyOption.REPLACE_EXISTING);
     }

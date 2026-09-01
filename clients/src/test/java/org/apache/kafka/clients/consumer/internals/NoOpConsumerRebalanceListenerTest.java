@@ -14,25 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.kafka.clients.consumer.internals;
 
-package kafka.server
+import org.junit.jupiter.api.Test;
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.apache.kafka.server.config.ZkConfigs
-import org.junit.jupiter.api.Test
+import java.util.Collections;
 
-import java.util.Properties
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-class ReplicaRequestTimeoutConfigTest {
-  @Test
-  def testCompatibilityGateSelectsReplicaSpecificTimeout(): Unit = {
-    val props = new Properties
-    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
-    props.put("request.timeout.ms", "30000")
-    props.put(KafkaConfig.ReplicaRequestTimeoutMsProp, "10000")
-    assertEquals(30000, KafkaConfig.fromProps(props).effectiveReplicaRequestTimeoutMs)
+class NoOpConsumerRebalanceListenerTest {
+    private static final class LegacySubclass extends NoOpConsumerRebalanceListener {
+    }
 
-    props.put(KafkaConfig.LiProtocolBridgeReplicaRequestTimeoutEnableProp, "true")
-    assertEquals(10000, KafkaConfig.fromProps(props).effectiveReplicaRequestTimeoutMs)
-  }
+    @Test
+    void testLegacyConstructionCallbacksAndSubclassing() {
+        NoOpConsumerRebalanceListener listener = new LegacySubclass();
+        assertDoesNotThrow(() -> listener.onPartitionsAssigned(Collections.emptyList()));
+        assertDoesNotThrow(() -> listener.onPartitionsRevoked(Collections.emptyList()));
+    }
 }

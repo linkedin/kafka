@@ -17,10 +17,13 @@
 
 package kafka.server
 
+import org.apache.kafka.common.message.ListOffsetsRequestData.{ListOffsetsPartition, ListOffsetsTopic}
+import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
 
+import java.util.concurrent.{Callable, CountDownLatch, Executors}
 import scala.jdk.CollectionConverters._
 
 class ListOffsetsRequestInstrumentationTest {
@@ -39,6 +42,38 @@ class ListOffsetsRequestInstrumentationTest {
     assertTrue(instrumentationMetricNames.size > before.size)
     instrumentation.close()
     assertEquals(before, instrumentationMetricNames)
+  }
+
+  @Test
+  def testConcurrentUsageTrackingDoesNotLoseRequests(): Unit = {
+    val instrumentation = new ListOffsetsRequestInstrumentation(enabled = true)
+    val executor = Executors.newFixedThreadPool(8)
+    val start = new CountDownLatch(1)
+    val requestsPerThread = 1000
+    val topic = new ListOffsetsTopic()
+      .setName("topic")
+      .setPartitions(Seq(new ListOffsetsPartition().setTimestamp(1L)).asJava)
+    try {
+      val tasks = (1 to 8).map { _ =>
+        executor.submit(new Callable[Unit] {
+          override def call(): Unit = {
+            start.await()
+            (1 to requestsPerThread).foreach(_ =>
+              instrumentation.logUsage(KafkaPrincipal.ANONYMOUS, topic))
+          }
+        })
+      }
+      start.countDown()
+      tasks.foreach(_.get())
+
+      val snapshot = instrumentation.snapshotAndResetListOffsetByTimeStampApiUsers()
+      assertEquals(8 * requestsPerThread,
+        snapshot(KafkaPrincipal.ANONYMOUS.getName)("topic").get())
+      assertTrue(instrumentation.snapshotAndResetListOffsetByTimeStampApiUsers().isEmpty)
+    } finally {
+      executor.shutdownNow()
+      instrumentation.close()
+    }
   }
 
   private def instrumentationMetricNames: Set[String] =

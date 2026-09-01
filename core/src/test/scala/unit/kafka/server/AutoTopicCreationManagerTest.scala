@@ -39,7 +39,7 @@ import org.apache.kafka.common.security.auth.{KafkaPrincipal, KafkaPrincipalSerd
 import org.apache.kafka.common.utils.{SecurityUtils, Utils}
 import org.apache.kafka.coordinator.transaction.TransactionLogConfigs
 import org.apache.kafka.coordinator.group.{GroupCoordinator, GroupCoordinatorConfig}
-import org.apache.kafka.server.config.ServerConfigs
+import org.apache.kafka.server.config.{ServerConfigs, ZkConfigs}
 import org.apache.kafka.server.{ControllerRequestCompletionHandler, NodeToControllerChannelManager}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
@@ -54,6 +54,7 @@ class AutoTopicCreationManagerTest {
   @Test
   def testOffsetsTopicCompatibilityConfigsRequireGate(): Unit = {
     val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
     props.put(KafkaConfig.OffsetsTopicMaxMessageBytesProp, "20971520")
     props.put(KafkaConfig.OffsetsTopicMinInSyncReplicasProp, "2")
     props.put(KafkaConfig.OffsetsTopicMinCompactionLagMsProp, "1000")

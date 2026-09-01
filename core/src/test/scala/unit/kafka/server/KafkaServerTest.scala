@@ -35,9 +35,12 @@ class KafkaServerTest extends QuorumTestHarness {
 
   @Test
   def testCompatibilityZkPathsRequireFeatureFlags(): Unit = {
-    assertEquals(Seq.empty, KafkaServer.compatibilityZkPaths(KafkaConfig.fromProps(new Properties)))
+    val defaultProps = new Properties
+    defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, TestUtils.MockZkConnect)
+    assertEquals(Seq.empty, KafkaServer.compatibilityZkPaths(KafkaConfig.fromProps(defaultProps)))
 
     val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, TestUtils.MockZkConnect)
     props.put(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp, "true")
     props.put(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp, "true")
     assertEquals(Set(PreferredControllersZNode.path, FederatedTopicsZNode.path),

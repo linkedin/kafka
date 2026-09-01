@@ -20,6 +20,7 @@ package kafka.server
 import kafka.server.QuotaType.Produce
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.utils.Time
+import org.apache.kafka.server.config.ZkConfigs
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
 
@@ -29,6 +30,7 @@ class QuotaFactoryTest {
   @Test
   def testStaticQuotaDefaultsRequireCompatibilityGate(): Unit = {
     val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
     props.put(KafkaConfig.ProducerQuotaBytesPerSecondDefaultProp, "1234")
     props.put(KafkaConfig.ConsumerQuotaBytesPerSecondDefaultProp, "5678")
 

@@ -20,6 +20,7 @@ package kafka.server
 import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
 import kafka.server.instrumentation.{ProduceRequestInstrumentation, ProduceRequestInstrumentationLogger}
 import org.apache.kafka.common.utils.MockTime
+import org.apache.kafka.server.config.ZkConfigs
 
 import java.util.Properties
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -37,8 +38,10 @@ class ProduceRequestInstrumentationTest {
     instrumentation.markStage(Stage.AppendToLocalLog)
     time.sleep(300)
 
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
     val logger = new ProduceRequestInstrumentationLogger(
-      KafkaConfig.fromProps(new Properties), time, new scala.util.Random(1), mock(classOf[ReplicaManager]))
+      KafkaConfig.fromProps(props), time, new scala.util.Random(1), mock(classOf[ReplicaManager]))
 
     assertEquals(
       "{\"Init\":100, \"Authorization\":200, \"AppendToLocalLog\":300}",

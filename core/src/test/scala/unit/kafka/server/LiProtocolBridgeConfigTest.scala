@@ -17,7 +17,9 @@
 
 package kafka.server
 
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}
+import org.apache.kafka.common.config.ConfigException
+import org.apache.kafka.server.config.{ReplicationConfigs, ZkConfigs}
 import org.apache.kafka.storage.internals.log.LogConfig
 import org.junit.jupiter.api.Test
 
@@ -26,7 +28,9 @@ import java.util.Properties
 class LiProtocolBridgeConfigTest {
   @Test
   def testEveryCompatibilityGateDefaultsToFalseAndCanBeEnabled(): Unit = {
-    val defaults = KafkaConfig.fromProps(new Properties)
+    val defaultProps = new Properties
+    defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    val defaults = KafkaConfig.fromProps(defaultProps)
     assertEquals(22, KafkaConfig.LiProtocolBridgeEnableProps.distinct.size)
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
       assertFalse(defaults.getBoolean(name), s"$name must default to false")
@@ -34,11 +38,23 @@ class LiProtocolBridgeConfigTest {
     assertEquals(false, defaults.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
 
     val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    props.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
     KafkaConfig.LiProtocolBridgeEnableProps.foreach(props.put(_, "true"))
     val enabled = KafkaConfig.fromProps(props)
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
       assertTrue(enabled.getBoolean(name), s"$name was not enabled")
     }
     assertEquals(true, enabled.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
+  }
+
+  @Test
+  def testBridgeModeRejectsMetadataThatLeaderAndIsrV2CannotRepresent(): Unit = {
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    props.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.9")
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+
+    assertThrows(classOf[ConfigException], () => KafkaConfig.fromProps(props))
   }
 }

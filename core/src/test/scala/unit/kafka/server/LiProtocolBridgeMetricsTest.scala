@@ -18,6 +18,7 @@ package kafka.server
 
 import com.yammer.metrics.core.Gauge
 import kafka.utils.TestUtils
+import org.apache.kafka.server.config.ReplicationConfigs
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
@@ -29,8 +30,11 @@ class LiProtocolBridgeMetricsTest {
 
   @Test
   def testMetricsFollowDynamicFlags(): Unit = {
-    val brokerId = 987654
-    val config = KafkaConfig(TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect))
+    val brokerId = 987
+    val brokerProps = TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect)
+    brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
+    val config = KafkaConfig(brokerProps)
+    config.dynamicConfig.initialize(None, None)
     val metrics = new LiProtocolBridgeMetrics(config)
 
     try {
@@ -69,9 +73,10 @@ class LiProtocolBridgeMetricsTest {
         LiProtocolBridgeMetrics.LogTruncationMetricsEnabled)
       assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
-      assertTrue(updatedValues.filterNot { case (name, _) =>
+      val dynamicValues = updatedValues.filterNot { case (name, _) =>
         staticMetrics.contains(name) || name == LiProtocolBridgeMetrics.ControllerInitializationThreads
-      }.values.forall(_ == 1))
+      }
+      assertTrue(dynamicValues.values.forall(_ == 1), s"Expected dynamic bridge metrics to be enabled: $dynamicValues")
     } finally {
       metrics.close()
     }

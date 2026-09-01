@@ -20,6 +20,7 @@ package kafka.network
 import com.yammer.metrics.core.Counter
 import kafka.server.KafkaConfig
 import org.apache.kafka.common.protocol.ApiKeys
+import org.apache.kafka.server.config.ZkConfigs
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
@@ -31,6 +32,7 @@ class RequestMetricBucketsTest {
   @Test
   def testSizeMetricAndTotalTimeBucketNames(): Unit = {
     val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
     props.put(KafkaConfig.LiProtocolBridgeRequestMetricBucketsEnableProp, "true")
     props.put(KafkaConfig.RequestMetricsSizeBucketsProp, "0,1")
     props.put(KafkaConfig.RequestMetricsTotalTimeBucketsProp, "0,5")

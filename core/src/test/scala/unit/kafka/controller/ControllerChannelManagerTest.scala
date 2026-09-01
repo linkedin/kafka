@@ -849,12 +849,15 @@ class ControllerChannelManagerTest {
         ControllerChannelManager.stopReplicaRequestVersion(version, bridgeMode = true))
     }
 
-    val latestVersion = MetadataVersion.latestTesting
-    testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(latestVersion,
+    // The migration remains on the existing 3.0 IBP while bridge mode is active. Newer metadata
+    // may contain leader recovery state which LeaderAndIsr v2 cannot represent, and KafkaConfig
+    // rejects that combination.
+    val migrationVersion = MetadataVersion.IBP_3_0_IV1
+    testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(migrationVersion,
       ControllerChannelManager.BridgeLeaderAndIsrRequestVersion, bridgeMode = true)
-    testUpdateMetadataFollowsInterBrokerProtocolVersion(latestVersion,
+    testUpdateMetadataFollowsInterBrokerProtocolVersion(migrationVersion,
       ControllerChannelManager.BridgeUpdateMetadataRequestVersion, bridgeMode = true)
-    testStopReplicaFollowsInterBrokerProtocolVersion(latestVersion,
+    testStopReplicaFollowsInterBrokerProtocolVersion(migrationVersion,
       ControllerChannelManager.BridgeStopReplicaRequestVersion, bridgeMode = true)
   }
 

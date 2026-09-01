@@ -301,7 +301,10 @@ class DynamicBrokerConfigTest {
 
   @Test
   def testProtocolBridgeFlagsAreDisabledByDefaultAndClusterWide(): Unit = {
-    val config = KafkaConfig(TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181))
+    val brokerProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
+    val config = KafkaConfig(brokerProps)
+    config.dynamicConfig.initialize(None, None)
     val bridgeFlags = Seq(
       KafkaConfig.LiProtocolBridgeModeEnableProp,
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,

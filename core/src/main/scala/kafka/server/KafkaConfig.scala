@@ -59,6 +59,11 @@ import scala.collection.{Map, Seq}
 
 object KafkaConfig {
 
+  val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
+  val LiProtocolBridgeModeEnableDoc =
+    "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +
+    "In ZooKeeper mode, bridge controllers send LeaderAndIsr v2, UpdateMetadata v5, and StopReplica v1."
+
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
       DynamicBrokerConfig.dynamicConfigUpdateModes))
@@ -88,7 +93,9 @@ object KafkaConfig {
       zooKeeperClientProperty(zkClientConfig, ZkConfigs.ZK_SSL_KEY_STORE_LOCATION_CONFIG).isDefined
   }
 
-  val configDef = AbstractKafkaConfig.CONFIG_DEF
+  val configDef = new ConfigDef(AbstractKafkaConfig.CONFIG_DEF)
+    .define(LiProtocolBridgeModeEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeModeEnableDoc)
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -187,6 +194,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   // Cache the current config to avoid acquiring read lock to access from dynamicConfig
   @volatile private var currentConfig = this
   val processRoles: Set[ProcessRole] = parseProcessRoles()
+  def liProtocolBridgeModeEnable: Boolean = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
+  def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 
   private[server] def updateCurrentConfig(newConfig: KafkaConfig): Unit = {
@@ -882,6 +891,12 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
         require(brokerId >= -1 && brokerId <= maxReservedBrokerId, "broker.id must be greater than or equal to -1 and not greater than reserved.broker.max.id")
       } else {
         require(brokerId >= 0, "broker.id must be greater than or equal to 0")
+      }
+      // LeaderAndIsr v2 cannot encode the non-default leader recovery state introduced in 3.2.
+      // The rolling upgrade keeps the cluster on its existing 3.0 IBP until bridge mode is disabled.
+      if (liProtocolBridgeModeActive && interBrokerProtocolVersion.isAtLeast(IBP_3_2_IV0)) {
+        throw new ConfigException(s"${KafkaConfig.LiProtocolBridgeModeEnableProp}=true requires " +
+          s"${ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG} to be older than 3.2")
       }
     } else {
       // KRaft-based metadata quorum

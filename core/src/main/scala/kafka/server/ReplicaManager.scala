@@ -760,16 +760,40 @@ class ReplicaManager(val config: KafkaConfig,
                     requestLocal: RequestLocal = RequestLocal.NoCaching,
                     actionQueue: ActionQueue = this.defaultActionQueue,
                     verificationGuards: Map[TopicPartition, VerificationGuard] = Map.empty): Unit = {
+    appendRecordsWithInstrumentation(timeout, requiredAcks, internalTopicsAllowed, origin,
+      entriesPerPartition, responseCallback, delayedProduceLock, recordValidationStatsCallback,
+      requestLocal, actionQueue, verificationGuards,
+      kafka.server.instrumentation.ProduceRequestInstrumentation.Disabled)
+  }
+
+  private def appendRecordsWithInstrumentation(
+    timeout: Long,
+    requiredAcks: Short,
+    internalTopicsAllowed: Boolean,
+    origin: AppendOrigin,
+    entriesPerPartition: Map[TopicPartition, MemoryRecords],
+    responseCallback: Map[TopicPartition, PartitionResponse] => Unit,
+    delayedProduceLock: Option[Lock],
+    recordValidationStatsCallback: Map[TopicPartition, RecordValidationStats] => Unit,
+    requestLocal: RequestLocal,
+    actionQueue: ActionQueue,
+    verificationGuards: Map[TopicPartition, VerificationGuard],
+    instrumentation: kafka.server.instrumentation.ProduceRequestInstrumentation
+  ): Unit = {
+    import kafka.server.instrumentation.ProduceRequestInstrumentation.Stage
+
     if (!isValidRequiredAcks(requiredAcks)) {
       sendInvalidRequiredAcksResponse(entriesPerPartition, responseCallback)
       return
     }
 
     val sTime = time.milliseconds
+    instrumentation.markStage(Stage.AppendToLocalLog)
     val localProduceResults = appendToLocalLog(internalTopicsAllowed = internalTopicsAllowed,
       origin, entriesPerPartition, requiredAcks, requestLocal, verificationGuards.toMap)
     debug("Produce to local log in %d ms".format(time.milliseconds - sTime))
 
+    instrumentation.markStage(Stage.ProcessAppendToLocalLogStatus)
     val produceStatus = buildProducePartitionStatus(localProduceResults)
 
     addCompletePurgatoryAction(actionQueue, localProduceResults)
@@ -777,6 +801,7 @@ class ReplicaManager(val config: KafkaConfig,
       k -> v.info.recordValidationStats
     })
 
+    instrumentation.markStage(Stage.PrepareDelayedProduce)
     maybeAddDelayedProduce(
       requiredAcks,
       delayedProduceLock,
@@ -786,6 +811,7 @@ class ReplicaManager(val config: KafkaConfig,
       produceStatus,
       responseCallback
     )
+    instrumentation.markStage(Stage.EnqueueDelayedProduce)
   }
 
   /**
@@ -815,7 +841,9 @@ class ReplicaManager(val config: KafkaConfig,
                           recordValidationStatsCallback: Map[TopicPartition, RecordValidationStats] => Unit = _ => (),
                           requestLocal: RequestLocal = RequestLocal.NoCaching,
                           actionQueue: ActionQueue = this.defaultActionQueue,
-                          transactionSupportedOperation: TransactionSupportedOperation): Unit = {
+                          transactionSupportedOperation: TransactionSupportedOperation,
+                          produceRequestInstrumentation: kafka.server.instrumentation.ProduceRequestInstrumentation =
+                            kafka.server.instrumentation.ProduceRequestInstrumentation.Disabled): Unit = {
 
     val transactionalProducerInfo = mutable.HashSet[(Long, Short)]()
     val topicPartitionBatchInfo = mutable.Map[TopicPartition, Int]()
@@ -864,17 +892,19 @@ class ReplicaManager(val config: KafkaConfig,
         responseCallback(preAppendPartitionResponses ++ responses)
       }
 
-      appendRecords(
+      appendRecordsWithInstrumentation(
         timeout = timeout,
         requiredAcks = requiredAcks,
         internalTopicsAllowed = internalTopicsAllowed,
         origin = AppendOrigin.CLIENT,
         entriesPerPartition = entriesWithoutErrorsPerPartition,
         responseCallback = newResponseCallback,
+        delayedProduceLock = None,
         recordValidationStatsCallback = recordValidationStatsCallback,
         requestLocal = newRequestLocal,
         actionQueue = actionQueue,
-        verificationGuards = verificationGuards
+        verificationGuards = verificationGuards,
+        instrumentation = produceRequestInstrumentation
       )
     }
 
@@ -2426,6 +2456,9 @@ class ReplicaManager(val config: KafkaConfig,
       }
     }
   }
+
+  def numOfPartitionOfIsrState(stateClass: Class[_]): Int =
+    leaderPartitionsIterator.count(_.isrStateClass == stateClass)
 
   private def leaderPartitionsIterator: Iterator[Partition] =
     onlinePartitionsIterator.filter(_.leaderLogIfLocal.isDefined)

@@ -122,6 +122,26 @@ class KafkaZkClient private[zk] (
   def getPreferredControllerList: Seq[Int] =
     getChildren(PreferredControllersZNode.path).map(_.toInt)
 
+  private[kafka] def getFederatedTopic(topic: String, namespace: String): Option[String] = {
+    if (pathExists(FederatedTopicZNode.path(topic, namespace))) Some(s"/$namespace/$topic") else None
+  }
+
+  def getAllFederatedTopics(registerWatch: Boolean = false): Set[String] = {
+    getChildren(FederatedTopicsZNode.path).flatMap { namespace =>
+      getAllFederatedTopicsInNamespace(namespace, registerWatch).map(topic => s"/$namespace/$topic")
+    }.toSet
+  }
+
+  def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = false): Set[String] = {
+    val response = retryRequestUntilConnected(
+      GetChildrenRequest(FederatedTopicZNode.namespacePath(namespace), registerWatch))
+    response.resultCode match {
+      case Code.OK => response.children.toSet
+      case Code.NONODE => Set.empty
+      case _ => throw response.resultException.get
+    }
+  }
+
   /**
    * Registers a given broker in zookeeper as the controller and increments controller epoch.
    * @param controllerId the id of the broker that is to be registered as the controller.
@@ -1304,6 +1324,12 @@ class KafkaZkClient private[zk] (
     val deleteRequest = DeleteRequest(ControllerZNode.path, ZkVersion.MatchAnyVersion)
     retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
   }
+
+  def createFederatedTopicZNode(topic: String, namespace: String): Unit =
+    createRecursive(FederatedTopicZNode.path(topic, namespace))
+
+  def deleteFederatedTopicZNode(topic: String, namespace: String): Unit =
+    deletePath(FederatedTopicZNode.path(topic, namespace), ZkVersion.MatchAnyVersion, false)
 
   /** Delete the controller znode without an epoch check so operational tooling can force a new election. */
   def deleteControllerRaw(): Unit = {

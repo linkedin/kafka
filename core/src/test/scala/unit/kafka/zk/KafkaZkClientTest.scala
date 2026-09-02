@@ -102,6 +102,19 @@ class KafkaZkClientTest extends QuorumTestHarness {
   private val topicPartition = new TopicPartition("topic", 0)
 
   @Test
+  def testFederatedTopicLifecycle(): Unit = {
+    zkClient.createFederatedTopicZNode("orders", "west")
+    zkClient.createFederatedTopicZNode("payments", "east")
+
+    assertEquals(Set("/west/orders", "/east/payments"), zkClient.getAllFederatedTopics())
+    assertEquals(Some("/west/orders"), zkClient.getFederatedTopic("orders", "west"))
+    assertEquals(None, zkClient.getFederatedTopic("orders", "east"))
+
+    zkClient.deleteFederatedTopicZNode("orders", "west")
+    assertEquals(Set("/east/payments"), zkClient.getAllFederatedTopics())
+  }
+
+  @Test
   def testConnectionViaNettyClient(): Unit = {
     // Confirm that we can explicitly set client connection configuration, which is necessary for TLS.
     // TLS connectivity itself is tested in system tests rather than here to avoid having to add TLS support

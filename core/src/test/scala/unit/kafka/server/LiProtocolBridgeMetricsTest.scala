@@ -54,9 +54,10 @@ class LiProtocolBridgeMetricsTest {
 
       val updatedValues = metricValues(brokerId)
       assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, updatedValues.keySet)
-      assertEquals(0, updatedValues(LiProtocolBridgeMetrics.PreferredControllerEnabled))
-      assertTrue(updatedValues.filterNot(_._1 == LiProtocolBridgeMetrics.PreferredControllerEnabled)
-        .values.forall(_ == 1))
+      val staticMetrics = Set(LiProtocolBridgeMetrics.PreferredControllerEnabled,
+        LiProtocolBridgeMetrics.RackIdMapperEnabled)
+      staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
+      assertTrue(updatedValues.filterNot { case (name, _) => staticMetrics.contains(name) }.values.forall(_ == 1))
     } finally {
       metrics.close()
     }

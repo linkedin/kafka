@@ -610,6 +610,7 @@ class KafkaApis(val requestChannel: RequestChannel,
    */
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val produceRequest = request.body[ProduceRequest]
+    requestChannel.observer.observeProduceRequest(request.context, produceRequest)
 
     if (RequestUtils.hasTransactionalRecords(produceRequest)) {
       val isAuthorizedTransactional = produceRequest.transactionalId != null &&
@@ -2018,6 +2019,11 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def handleApiVersionsRequest(request: RequestChannel.Request): Unit = {
+    val clientSoftwareName = request.body[ApiVersionsRequest].data.clientSoftwareName
+    requestChannel.observer.trackClientLibrary(
+      clientSoftwareName != null && clientSoftwareName.toLowerCase.contains("xinfra"),
+      request.context.clientId)
+
     // Note that broker returns its full list of supported ApiKeys and versions regardless of current
     // authentication state (e.g., before SASL authentication on an SASL listener, do note that no
     // Kafka protocol requests may take place on an SSL listener before the SSL handshake is finished).

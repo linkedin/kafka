@@ -29,7 +29,7 @@ import kafka.cluster.{BrokerEndPoint, EndPoint}
 import kafka.network.Processor._
 import kafka.network.RequestChannel.{CloseConnectionResponse, EndThrottlingResponse, NoOpResponse, SendResponse, StartThrottlingResponse}
 import kafka.network.SocketServer._
-import kafka.server.{ApiVersionManager, BrokerReconfigurable, KafkaConfig}
+import kafka.server.{ApiVersionManager, BrokerReconfigurable, KafkaConfig, NoOpObserver, Observer}
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
 import kafka.utils._
 import org.apache.kafka.common.config.ConfigException
@@ -78,7 +78,8 @@ class SocketServer(val config: KafkaConfig,
                    val metrics: Metrics,
                    val time: Time,
                    val credentialProvider: CredentialProvider,
-                   val apiVersionManager: ApiVersionManager)
+                   val apiVersionManager: ApiVersionManager,
+                   val observer: Observer = new NoOpObserver)
   extends Logging with BrokerReconfigurable {
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
@@ -98,11 +99,12 @@ class SocketServer(val config: KafkaConfig,
   private val memoryPool = if (config.queuedMaxBytes > 0) new SimpleMemoryPool(config.queuedMaxBytes, config.socketRequestMaxBytes, false, memoryPoolSensor) else MemoryPool.NONE
   // data-plane
   private[network] val dataPlaneAcceptors = new ConcurrentHashMap[EndPoint, DataPlaneAcceptor]()
-  val dataPlaneRequestChannel = new RequestChannel(maxQueuedRequests, DataPlaneAcceptor.MetricPrefix, time, apiVersionManager.newRequestMetrics)
+  val dataPlaneRequestChannel = new RequestChannel(maxQueuedRequests, DataPlaneAcceptor.MetricPrefix, time,
+    apiVersionManager.newRequestMetrics, observer)
   // control-plane
   private[network] var controlPlaneAcceptorOpt: Option[ControlPlaneAcceptor] = None
   val controlPlaneRequestChannelOpt: Option[RequestChannel] = config.controlPlaneListenerName.map(_ =>
-    new RequestChannel(20, ControlPlaneAcceptor.MetricPrefix, time, apiVersionManager.newRequestMetrics))
+    new RequestChannel(20, ControlPlaneAcceptor.MetricPrefix, time, apiVersionManager.newRequestMetrics, observer))
 
   private[this] val nextProcessorId: AtomicInteger = new AtomicInteger(0)
   val connectionQuotas = new ConnectionQuotas(config, time, metrics)

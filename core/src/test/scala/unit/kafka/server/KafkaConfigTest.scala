@@ -1146,6 +1146,8 @@ class KafkaConfigTest {
         case ShareGroupConfig.SHARE_GROUP_MAX_GROUPS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", 0, -1)
         case GroupCoordinatorConfig.SHARE_GROUP_MAX_SIZE_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", 0, -1)
 
+        case KafkaConfig.ObserverClassNameProp |
+             KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp => // ignore string values
 
         case _ => assertPropertyInvalid(baseProperties, name, "not_a_number", "-1")
       }

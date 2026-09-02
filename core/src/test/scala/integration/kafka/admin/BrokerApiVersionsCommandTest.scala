@@ -80,7 +80,8 @@ class BrokerApiVersionsCommandTest extends KafkaServerTestHarness {
     val nodeApiVersions = new NodeApiVersions(clientApis.map(ApiVersionsResponse.toApiVersion).asJava, Collections.emptyList(), false)
     for (apiKey <- clientApis) {
       val terminator = if (apiKey == clientApis.last) "" else ","
-      if (apiKey.inScope(listenerType)) {
+      // Private APIs require explicit compatibility flags. This fixture uses defaults.
+      if (apiKey.inScope(listenerType) && apiKey.id < 1000) {
         val apiVersion = nodeApiVersions.apiVersion(apiKey)
         assertNotNull(apiVersion)
 

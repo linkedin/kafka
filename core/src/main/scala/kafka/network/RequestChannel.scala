@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.typesafe.scalalogging.Logger
 import com.yammer.metrics.core.{Histogram, Meter}
 import kafka.network
-import kafka.server.{KafkaConfig, RequestLocal}
+import kafka.server.{KafkaConfig, NoOpObserver, Observer, RequestLocal}
 import kafka.utils.{Logging, Pool}
 import kafka.utils.Implicits._
 import org.apache.kafka.common.config.ConfigResource
@@ -41,6 +41,7 @@ import java.util
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
+import scala.util.control.NonFatal
 
 object RequestChannel extends Logging {
   private val requestLogger = Logger("kafka.request.logger")
@@ -358,7 +359,11 @@ object RequestChannel extends Logging {
 class RequestChannel(val queueSize: Int,
                      val metricNamePrefix: String,
                      time: Time,
-                     val metrics: RequestChannel.Metrics) {
+                     val metrics: RequestChannel.Metrics,
+                     val observer: Observer = new NoOpObserver) {
+  def this(queueSize: Int, metricNamePrefix: String, time: Time, metrics: RequestChannel.Metrics) =
+    this(queueSize, metricNamePrefix, time, metrics, new NoOpObserver)
+
   import RequestChannel._
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
@@ -410,6 +415,10 @@ class RequestChannel(val queueSize: Int,
     response: AbstractResponse,
     onComplete: Option[Send => Unit]
   ): Unit = {
+    try observer.observe(request.context, request.body[AbstractRequest], response)
+    catch {
+      case NonFatal(e) => warn("Request observer failed while observing a response", e)
+    }
     updateErrorMetrics(request.header.apiKey, response.errorCounts.asScala)
     sendResponse(new RequestChannel.SendResponse(
       request,

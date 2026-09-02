@@ -81,11 +81,12 @@ import java.time.Duration
 import java.util
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
-import java.util.{Collections, Optional, OptionalInt}
+import java.util.{Collections, Locale, Optional, OptionalInt}
 import scala.annotation.nowarn
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.{Map, Seq, Set, immutable, mutable}
 import scala.jdk.CollectionConverters._
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -610,6 +611,10 @@ class KafkaApis(val requestChannel: RequestChannel,
    */
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val produceRequest = request.body[ProduceRequest]
+    try requestChannel.observer.observeProduceRequest(request.context, produceRequest)
+    catch {
+      case NonFatal(e) => warn("Request observer failed while observing a Produce request", e)
+    }
 
     if (RequestUtils.hasTransactionalRecords(produceRequest)) {
       val isAuthorizedTransactional = produceRequest.transactionalId != null &&
@@ -2018,6 +2023,15 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def handleApiVersionsRequest(request: RequestChannel.Request): Unit = {
+    val clientSoftwareName = request.body[ApiVersionsRequest].data.clientSoftwareName
+    try {
+      requestChannel.observer.trackClientLibrary(
+        clientSoftwareName != null && clientSoftwareName.toLowerCase(Locale.ROOT).contains("xinfra"),
+        request.context.clientId)
+    } catch {
+      case NonFatal(e) => warn("Request observer failed while tracking a client library", e)
+    }
+
     // Note that broker returns its full list of supported ApiKeys and versions regardless of current
     // authentication state (e.g., before SASL authentication on an SASL listener, do note that no
     // Kafka protocol requests may take place on an SSL listener before the SSL handshake is finished).

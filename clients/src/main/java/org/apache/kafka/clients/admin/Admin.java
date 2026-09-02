@@ -203,6 +203,32 @@ public interface Admin extends AutoCloseable {
      */
     CreateTopicsResult createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options);
 
+    default CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(
+        Map<String, String> federatedTopics) {
+        return createFederatedTopicZnodes(federatedTopics, new CreateFederatedTopicZnodesOptions());
+    }
+
+    CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(
+        Map<String, String> federatedTopics,
+        CreateFederatedTopicZnodesOptions options);
+
+    default CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(
+        Map<String, String> federatedTopics) {
+        return deleteFederatedTopicZnodes(federatedTopics, new DeleteFederatedTopicZnodesOptions());
+    }
+
+    CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(
+        Map<String, String> federatedTopics,
+        DeleteFederatedTopicZnodesOptions options);
+
+    default ListFederatedTopicZnodesResult listFederatedTopicZnodes() {
+        return listFederatedTopicZnodes(Collections.emptyMap(), new ListFederatedTopicZnodesOptions());
+    }
+
+    ListFederatedTopicZnodesResult listFederatedTopicZnodes(
+        Map<String, String> federatedTopics,
+        ListFederatedTopicZnodesOptions options);
+
     /**
      * This is a convenience method for {@link #deleteTopics(TopicCollection, DeleteTopicsOptions)}
      * with default options. See the overload for more details.
@@ -1085,6 +1111,9 @@ public interface Admin extends AutoCloseable {
         Set<TopicPartition> partitions,
         ElectLeadersOptions options);
 
+    MoveControllerResult moveController(MoveControllerOptions options);
+
+    SkipShutdownSafetyCheckResult skipShutdownSafetyCheck(SkipShutdownSafetyCheckOptions options);
 
     /**
      * Change the reassignments for one or more partitions.

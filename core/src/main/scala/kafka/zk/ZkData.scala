@@ -92,6 +92,16 @@ object ConfigZNode {
   def path = "/config"
 }
 
+object DeleteTopicFlagZNode {
+  def path = "/topic_deletion_flag"
+  def encode(value: Boolean): Array[Byte] = value.toString.getBytes(UTF_8)
+  def decode(bytes: Array[Byte]): Option[Boolean] =
+    Option(bytes).map(new String(_, UTF_8).trim.toLowerCase).collect {
+      case "true" => true
+      case "false" => false
+    }
+}
+
 object BrokersZNode {
   def path = "/brokers"
 }
@@ -1124,8 +1134,6 @@ object ZkData {
   val PersistentZkPaths: Seq[String] = Seq(
     ConsumerPathZNode.path, // old consumer path
     BrokerIdsZNode.path,
-    FederatedTopicsZNode.path,
-    PreferredControllersZNode.path,
     TopicsZNode.path,
     ConfigEntityChangeNotificationZNode.path,
     DeleteTopicsZNode.path,

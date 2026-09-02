@@ -272,7 +272,8 @@ class ReplicaManager(val config: KafkaConfig,
                      threadNamePrefix: Option[String] = None,
                      val brokerEpochSupplier: () => Long = () => -1,
                      addPartitionsToTxnManager: Option[AddPartitionsToTxnManager] = None,
-                     val directoryEventHandler: DirectoryEventHandler = DirectoryEventHandler.NOOP
+                     val directoryEventHandler: DirectoryEventHandler = DirectoryEventHandler.NOOP,
+                     val leaderTransferManager: LeaderTransferManager = LeaderTransferManager.NoOp
                      ) extends Logging {
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
 
@@ -2418,6 +2419,11 @@ class ReplicaManager(val config: KafkaConfig,
     // Shrink ISRs for non offline partitions
     allPartitions.keys.foreach { topicPartition =>
       onlinePartition(topicPartition).foreach(_.maybeShrinkIsr())
+    }
+    if (config.liProtocolBridgeLeaderTransferActive) {
+      allPartitions.keys.foreach { topicPartition =>
+        onlinePartition(topicPartition).foreach(_.maybeTransferToNewLeader())
+      }
     }
   }
 

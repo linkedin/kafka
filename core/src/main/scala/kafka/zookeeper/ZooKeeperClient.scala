@@ -80,6 +80,7 @@ class ZooKeeperClient(connectString: String,
   private val inFlightRequests = new Semaphore(maxInFlightRequests)
   private val stateChangeHandlers = new ConcurrentHashMap[String, StateChangeHandler]().asScala
   private[zookeeper] val reinitializeScheduler = new KafkaScheduler(1, true, s"zk-client-${threadPrefix}reinit-")
+  private val paginationExecutor = Executors.newFixedThreadPool(10)
   private var isFirstConnectionEstablished = false
 
   private val metricNames = mutable.Set[String]()
@@ -201,6 +202,23 @@ class ZooKeeperClient(connectString: String,
             callback(GetChildrenResponse(Code.get(rc), path, Option(ctx), Option(children).map(_.asScala).getOrElse(Seq.empty),
               stat, responseMetadata(sendTimeMs)))
         }, ctx.orNull)
+      case GetChildrenPaginatedRequest(path, _, ctx) =>
+        CompletableFuture.supplyAsync[GetChildrenResponse](() => {
+          try {
+            val method = zooKeeper.getClass.getMethod("getAllChildrenPaginated", classOf[String], java.lang.Boolean.TYPE)
+            val children = method.invoke(zooKeeper, path, Boolean.box(shouldWatch(request)))
+              .asInstanceOf[JList[String]].asScala.toSeq
+            GetChildrenResponse(Code.OK, path, ctx, children, new Stat, responseMetadata(sendTimeMs))
+          } catch {
+            case e: java.lang.reflect.InvocationTargetException if e.getCause.isInstanceOf[KeeperException] =>
+              GetChildrenResponse(e.getCause.asInstanceOf[KeeperException].code, path, ctx, Seq.empty,
+                new Stat, responseMetadata(sendTimeMs))
+            case e: Throwable =>
+              error("ZooKeeper pagination failed. The client must provide getAllChildrenPaginated when " +
+                "li.zookeeper.pagination.enable is true.", e)
+              GetChildrenResponse(Code.SYSTEMERROR, path, ctx, Seq.empty, new Stat, responseMetadata(sendTimeMs))
+          }
+        }, paginationExecutor).thenAccept(response => callback(response))
       case CreateRequest(path, data, acl, createMode, ctx) =>
         zooKeeper.create(path, data, acl.asJava, createMode,
           (rc, path, ctx, name) =>
@@ -273,6 +291,8 @@ class ZooKeeperClient(connectString: String,
   // may need to be updated.
   private def shouldWatch(request: AsyncRequest): Boolean = request match {
     case GetChildrenRequest(_, registerWatch, _) => registerWatch && zNodeChildChangeHandlers.contains(request.path)
+    case GetChildrenPaginatedRequest(_, registerWatch, _) =>
+      registerWatch && zNodeChildChangeHandlers.contains(request.path)
     case _: ExistsRequest | _: GetDataRequest => zNodeChangeHandlers.contains(request.path)
     case _ => throw new IllegalArgumentException(s"Request $request is not watchable")
   }
@@ -341,6 +361,7 @@ class ZooKeeperClient(connectString: String,
     // is waiting for lock to process session expiry. Close expiry thread
     // first to ensure that new clients are not created during close().
     reinitializeScheduler.shutdown()
+    paginationExecutor.shutdownNow()
 
     inWriteLock(initializationLock) {
       zNodeChangeHandlers.clear()
@@ -542,6 +563,11 @@ case class SetAclRequest(path: String, acl: Seq[ACL], version: Int, ctx: Option[
 }
 
 case class GetChildrenRequest(path: String, registerWatch: Boolean, ctx: Option[Any] = None) extends AsyncRequest {
+  type Response = GetChildrenResponse
+}
+
+case class GetChildrenPaginatedRequest(path: String, registerWatch: Boolean, ctx: Option[Any] = None)
+  extends AsyncRequest {
   type Response = GetChildrenResponse
 }
 

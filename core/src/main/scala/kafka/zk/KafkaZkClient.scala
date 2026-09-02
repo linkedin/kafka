@@ -64,7 +64,8 @@ class KafkaZkClient private[zk] (
   zooKeeperClient: ZooKeeperClient,
   isSecure: Boolean,
   time: Time,
-  enableEntityConfigControllerCheck: Boolean
+  enableEntityConfigControllerCheck: Boolean,
+  paginateTopics: Boolean = false
 ) extends AutoCloseable with Logging {
 
   private val metricsGroup: KafkaMetricsGroup = new KafkaMetricsGroup(this.getClass) {
@@ -133,8 +134,12 @@ class KafkaZkClient private[zk] (
   }
 
   def getAllFederatedTopicsInNamespace(namespace: String, registerWatch: Boolean = false): Set[String] = {
-    val response = retryRequestUntilConnected(
-      GetChildrenRequest(FederatedTopicZNode.namespacePath(namespace), registerWatch))
+    val path = FederatedTopicZNode.namespacePath(namespace)
+    val request = if (paginateTopics)
+      GetChildrenPaginatedRequest(path, registerWatch)
+    else
+      GetChildrenRequest(path, registerWatch)
+    val response = retryRequestUntilConnected(request)
     response.resultCode match {
       case Code.OK => response.children.toSet
       case Code.NONODE => Set.empty
@@ -576,7 +581,11 @@ class KafkaZkClient private[zk] (
    * @return List of all entity names
    */
   def getAllEntitiesWithConfig(entityType: String): Seq[String] = {
-    getChildren(ConfigEntityTypeZNode.path(entityType))
+    val path = ConfigEntityTypeZNode.path(entityType)
+    if (paginateTopics && entityType == ConfigType.TOPIC)
+      retryRequestUntilConnected(GetChildrenPaginatedRequest(path, registerWatch = false)).children
+    else
+      getChildren(path)
   }
 
   /**
@@ -656,8 +665,11 @@ class KafkaZkClient private[zk] (
    * @return sequence of topics in the cluster.
    */
   def getAllTopicsInCluster(registerWatch: Boolean = false): Set[String] = {
-    val getChildrenResponse = retryRequestUntilConnected(
-      GetChildrenRequest(TopicsZNode.path, registerWatch))
+    val request = if (paginateTopics)
+      GetChildrenPaginatedRequest(TopicsZNode.path, registerWatch)
+    else
+      GetChildrenRequest(TopicsZNode.path, registerWatch)
+    val getChildrenResponse = retryRequestUntilConnected(request)
     getChildrenResponse.resultCode match {
       case Code.OK => getChildrenResponse.children.toSet
       case Code.NONODE => Set.empty
@@ -1323,6 +1335,21 @@ class KafkaZkClient private[zk] (
   def deleteController(expectedControllerEpochZkVersion: Int): Unit = {
     val deleteRequest = DeleteRequest(ControllerZNode.path, ZkVersion.MatchAnyVersion)
     retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
+  }
+
+  def getTopicDeletionFlag: Option[Boolean] = {
+    val response = retryRequestUntilConnected(GetDataRequest(DeleteTopicFlagZNode.path))
+    response.resultCode match {
+      case Code.OK => DeleteTopicFlagZNode.decode(response.data)
+      case Code.NONODE => None
+      case _ => throw response.resultException.get
+    }
+  }
+
+  def setTopicDeletionFlag(enabled: Boolean): Unit = {
+    val response = retryRequestUntilConnected(
+      SetDataRequest(DeleteTopicFlagZNode.path, DeleteTopicFlagZNode.encode(enabled), ZkVersion.MatchAnyVersion))
+    response.maybeThrow()
   }
 
   def createFederatedTopicZNode(topic: String, namespace: String): Unit =
@@ -2332,7 +2359,8 @@ object KafkaZkClient {
             metricGroup: String = "kafka.server",
             metricType: String = "SessionExpireListener",
             createChrootIfNecessary: Boolean = false,
-            enableEntityConfigControllerCheck: Boolean = true
+            enableEntityConfigControllerCheck: Boolean = true,
+            paginateTopics: Boolean = false
   ): KafkaZkClient = {
 
     /* ZooKeeper 3.6.0 changed the default configuration for JUTE_MAXBUFFER from 4 MB to 1 MB.
@@ -2367,7 +2395,7 @@ object KafkaZkClient {
     }
     val zooKeeperClient = new ZooKeeperClient(connectString, sessionTimeoutMs, connectionTimeoutMs, maxInFlightRequests,
       time, metricGroup, metricType, zkClientConfig, name)
-    new KafkaZkClient(zooKeeperClient, isSecure, time, enableEntityConfigControllerCheck)
+    new KafkaZkClient(zooKeeperClient, isSecure, time, enableEntityConfigControllerCheck, paginateTopics)
   }
 
   // A helper function to transform a regular request into a MultiRequest
@@ -2458,6 +2486,6 @@ object KafkaZkClient {
 
     KafkaZkClient(config.zkConnect, secureAclsEnabled, config.zkSessionTimeoutMs, config.zkConnectionTimeoutMs,
       config.zkMaxInFlightRequests, time, name = name, zkClientConfig = zkClientConfig,
-      createChrootIfNecessary = true)
+      createChrootIfNecessary = true, paginateTopics = config.liZookeeperPaginationEnable)
   }
 }

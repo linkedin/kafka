@@ -18,11 +18,11 @@ package kafka.controller
 
 import com.yammer.metrics.core.{Meter, Timer}
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{CompletableFuture, Executors, TimeUnit}
 import kafka.api._
 import kafka.common._
 import kafka.cluster.Broker
-import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, ActivePreferredControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName, StandbyPreferredControllerCountMetricName}
+import kafka.controller.KafkaController.{ActiveBrokerCountMetricName, ActiveControllerCountMetricName, ActivePreferredControllerCountMetricName, AlterReassignmentsCallback, ControllerStateMetricName, ElectLeadersCallback, FencedBrokerCountMetricName, GlobalPartitionCountMetricName, GlobalTopicCountMetricName, ListReassignmentsCallback, MaintenanceBrokerCountMetricName, OfflinePartitionsCountMetricName, PreferredReplicaImbalanceCountMetricName, ReplicasIneligibleToDeleteCountMetricName, ReplicasToDeleteCountMetricName, TopicsIneligibleToDeleteCountMetricName, TopicsToDeleteCountMetricName, UpdateFeaturesCallback, ZkMigrationStateMetricName, StandbyPreferredControllerCountMetricName}
 import kafka.coordinator.transaction.ZkProducerIdManager
 import kafka.server._
 import kafka.server.metadata.ZkFinalizedFeatureCache
@@ -84,6 +84,7 @@ object KafkaController extends Logging {
   private val TopicsIneligibleToDeleteCountMetricName = "TopicsIneligibleToDeleteCount"
   private val ReplicasIneligibleToDeleteCountMetricName = "ReplicasIneligibleToDeleteCount"
   private val ActiveBrokerCountMetricName = "ActiveBrokerCount"
+  private val MaintenanceBrokerCountMetricName = "MaintenanceBrokerCount"
   private val FencedBrokerCountMetricName = "FencedBrokerCount"
   private val ZkMigrationStateMetricName = "ZkMigrationState"
 
@@ -103,8 +104,22 @@ object KafkaController extends Logging {
     TopicsIneligibleToDeleteCountMetricName,
     ReplicasIneligibleToDeleteCountMetricName,
     ActiveBrokerCountMetricName,
+    MaintenanceBrokerCountMetricName,
     FencedBrokerCountMetricName
   )
+
+  private[controller] def validateReassignmentCancellation(
+    originalReplicas: Seq[Int],
+    liveBrokerIds: Set[Int],
+    minimumAliveReplicas: Int
+  ): Option[ApiError] = {
+    val originalReplicaSet = originalReplicas.toSet
+    val aliveOriginalReplicas = originalReplicaSet.intersect(liveBrokerIds)
+    if (originalReplicaSet.subsetOf(liveBrokerIds) || aliveOriginalReplicas.size >= minimumAliveReplicas) None
+    else Some(new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
+      s"Replica assignment cancellation requires at least $minimumAliveReplicas live original replicas. " +
+        s"Original replicas: $originalReplicas; live brokers: $liveBrokerIds"))
+  }
 }
 
 class KafkaController(val config: KafkaConfig,
@@ -116,12 +131,15 @@ class KafkaController(val config: KafkaConfig,
                       tokenManager: DelegationTokenManager,
                       brokerFeatures: BrokerFeatures,
                       featureCache: ZkFinalizedFeatureCache,
-                      threadNamePrefix: Option[String] = None)
+                      threadNamePrefix: Option[String] = None,
+                      additionalZkClients: Seq[KafkaZkClient] = Seq.empty)
   extends ControllerEventProcessor with Logging {
 
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
 
   this.logIdent = s"[Controller id=${config.brokerId}] "
+
+  private val controllerInitZkClients = zkClient +: additionalZkClients
 
   @volatile private var brokerInfo = initialBrokerInfo
   @volatile private var _brokerEpoch = initialBrokerEpoch
@@ -166,6 +184,7 @@ class KafkaController(val config: KafkaConfig,
   private val preferredReplicaElectionHandler = new PreferredReplicaElectionHandler(eventManager)
   private val isrChangeNotificationHandler = new IsrChangeNotificationHandler(eventManager)
   private val logDirEventNotificationHandler = new LogDirEventNotificationHandler(eventManager)
+  private val topicDeletionFlagHandler = new TopicDeletionFlagHandler(eventManager)
 
   @volatile var activeControllerId = -1
   @volatile private var offlinePartitionCount = 0
@@ -197,6 +216,8 @@ class KafkaController(val config: KafkaConfig,
   metricsGroup.newGauge(TopicsIneligibleToDeleteCountMetricName, () => ineligibleTopicsToDeleteCount)
   metricsGroup.newGauge(ReplicasIneligibleToDeleteCountMetricName, () => ineligibleReplicasToDeleteCount)
   metricsGroup.newGauge(ActiveBrokerCountMetricName, () => activeBrokerCount)
+  metricsGroup.newGauge(MaintenanceBrokerCountMetricName,
+    () => if (isActive) config.maintenanceBrokerList.size else 0)
   // FencedBrokerCount metric is always 0 in the ZK controller.
   metricsGroup.newGauge(FencedBrokerCountMetricName, () => 0)
 
@@ -309,6 +330,8 @@ class KafkaController(val config: KafkaConfig,
 
     val nodeChangeHandlers = Seq(preferredReplicaElectionHandler, partitionReassignmentHandler)
     nodeChangeHandlers.foreach(zkClient.registerZNodeChangeHandlerAndCheckExistence)
+    if (config.liProtocolBridgeDynamicTopicDeletionActive)
+      zkClient.registerZNodeChangeHandlerAndCheckExistence(topicDeletionFlagHandler)
 
     info("Deleting log dir event notifications")
     zkClient.deleteLogDirEventNotifications(controllerContext.epochZkVersion)
@@ -316,6 +339,8 @@ class KafkaController(val config: KafkaConfig,
     zkClient.deleteIsrChangeNotifications(controllerContext.epochZkVersion)
     info("Initializing controller context")
     initializeControllerContext()
+    if (config.liProtocolBridgeDynamicTopicDeletionActive)
+      processTopicDeletionFlagChange(reset = false)
     info("Fetching topic deletions in progress")
     val (topicsToBeDeleted, topicsIneligibleForDeletion) = fetchTopicDeletionsInProgress()
     info("Initializing topic deletion manager")
@@ -980,7 +1005,7 @@ class KafkaController(val config: KafkaConfig,
     info(s"Initialized broker epochs cache: ${controllerContext.liveBrokerIdAndEpochs}")
     controllerContext.setAllTopics(zkClient.getAllTopicsInCluster(true))
     registerPartitionModificationsHandlers(controllerContext.allTopics.toSeq)
-    val replicaAssignmentAndTopicIds = zkClient.getReplicaAssignmentAndTopicIdForTopics(controllerContext.allTopics.toSet)
+    val replicaAssignmentAndTopicIds = loadReplicaAssignments(controllerContext.allTopics.toSet)
     processTopicIds(replicaAssignmentAndTopicIds)
 
     replicaAssignmentAndTopicIds.foreach { case TopicIdReplicaAssignment(_, _, assignments) =>
@@ -1001,6 +1026,26 @@ class KafkaController(val config: KafkaConfig,
     info(s"Currently active brokers in the cluster: ${controllerContext.liveBrokerIds}")
     info(s"Currently shutting brokers in the cluster: ${controllerContext.shuttingDownBrokerIds}")
     info(s"Current list of topics in the cluster: ${controllerContext.allTopics}")
+  }
+
+  private[controller] def loadReplicaAssignments(
+    topics: scala.collection.immutable.Set[String]
+  ): scala.collection.immutable.Set[TopicIdReplicaAssignment] = {
+    if (controllerInitZkClients.size <= 1 || topics.size <= 1) {
+      zkClient.getReplicaAssignmentAndTopicIdForTopics(topics)
+    } else {
+      val executor = Executors.newFixedThreadPool(controllerInitZkClients.size)
+      try {
+        val chunkSize = math.max(1, math.ceil(topics.size.toDouble / controllerInitZkClients.size).toInt)
+        val futures = topics.grouped(chunkSize).zipWithIndex.map { case (topicChunk, index) =>
+          CompletableFuture.supplyAsync(
+            () => controllerInitZkClients(index).getReplicaAssignmentAndTopicIdForTopics(topicChunk.toSet), executor)
+        }.toSeq
+        futures.flatMap(_.join()).toSet
+      } finally {
+        executor.shutdown()
+      }
+    }
   }
 
   private def fetchPendingPreferredReplicaElections(): Set[TopicPartition] = {
@@ -1050,9 +1095,29 @@ class KafkaController(val config: KafkaConfig,
   }
 
   private def updateLeaderAndIsrCache(partitions: Seq[TopicPartition] = controllerContext.allPartitions.toSeq): Unit = {
-    val leaderIsrAndControllerEpochs = zkClient.getTopicPartitionStates(partitions)
+    val leaderIsrAndControllerEpochs = loadPartitionStates(partitions)
     leaderIsrAndControllerEpochs.forKeyValue { (partition, leaderIsrAndControllerEpoch) =>
       controllerContext.putPartitionLeadershipInfo(partition, leaderIsrAndControllerEpoch)
+    }
+  }
+
+  private[controller] def loadPartitionStates(
+    partitions: Seq[TopicPartition]
+  ): scala.collection.immutable.Map[TopicPartition, LeaderIsrAndControllerEpoch] = {
+    if (controllerInitZkClients.size <= 1 || partitions.size <= 1) {
+      zkClient.getTopicPartitionStates(partitions).toMap
+    } else {
+      val executor = Executors.newFixedThreadPool(controllerInitZkClients.size)
+      try {
+        val chunkSize = math.max(1, math.ceil(partitions.size.toDouble / controllerInitZkClients.size).toInt)
+        val futures = partitions.grouped(chunkSize).zipWithIndex.map { case (partitionChunk, index) =>
+          CompletableFuture.supplyAsync(
+            () => controllerInitZkClients(index).getTopicPartitionStates(partitionChunk), executor)
+        }.toSeq
+        futures.flatMap(_.join()).toMap
+      } finally {
+        executor.shutdown()
+      }
     }
   }
 
@@ -1906,6 +1971,21 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
+  private def processTopicDeletionFlagChange(reset: Boolean): Unit = {
+    if (!isActive || !config.liProtocolBridgeDynamicTopicDeletionActive)
+      return
+    if (reset) {
+      topicDeletionManager.resetDeleteTopicEnabled()
+    } else {
+      zkClient.getTopicDeletionFlag match {
+        case Some(enabled) => topicDeletionManager.isDeleteTopicEnabled = enabled
+        case None =>
+          topicDeletionManager.resetDeleteTopicEnabled()
+          zkClient.setTopicDeletionFlag(topicDeletionManager.isDeleteTopicEnabled)
+      }
+    }
+  }
+
   private def processZkPartitionReassignment(): Set[TopicPartition] = {
     // We need to register the watcher if the path doesn't exist in order to detect future
     // reassignments and we get the `path exists` check for free
@@ -1951,7 +2031,12 @@ class KafkaController(val config: KafkaConfig,
       val partitionsToReassign = mutable.Map.empty[TopicPartition, ReplicaAssignment]
 
       reassignments.forKeyValue { (tp, targetReplicas) =>
-        val maybeApiError = targetReplicas.flatMap(validateReplicas(tp, _))
+        val maybeApiError = targetReplicas match {
+          case Some(replicas) => validateReplicas(tp, replicas)
+          case None if config.liProtocolBridgeReassignmentCancellationSafetyActive =>
+            validateReassignmentCancellation(tp)
+          case None => None
+        }
         maybeApiError match {
           case None =>
             maybeBuildReassignment(tp, targetReplicas) match {
@@ -1970,6 +2055,13 @@ class KafkaController(val config: KafkaConfig,
       reassignmentResults ++= maybeTriggerPartitionReassignment(partitionsToReassign)
       callback(Left(reassignmentResults))
     }
+  }
+
+  private def validateReassignmentCancellation(topicPartition: TopicPartition): Option[ApiError] = {
+    val assignment = controllerContext.partitionFullReplicaAssignment(topicPartition)
+    if (!assignment.isBeingReassigned) None
+    else KafkaController.validateReassignmentCancellation(
+      assignment.originReplicas, controllerContext.liveBrokerIds, config.liMinOriginalAliveReplicas)
   }
 
   private def validateReplicas(topicPartition: TopicPartition, replicas: Seq[Int]): Option[ApiError] = {
@@ -2752,6 +2844,8 @@ class KafkaController(val config: KafkaConfig,
           processPartitionModifications(topic)
         case TopicDeletion =>
           processTopicDeletion()
+        case TopicDeletionFlagChange(reset) =>
+          processTopicDeletionFlagChange(reset)
         case ApiPartitionReassignment(reassignments, callback) =>
           processApiPartitionReassignment(reassignments, callback)
         case ZkPartitionReassignment =>
@@ -2834,6 +2928,12 @@ class TopicDeletionHandler(eventManager: ControllerEventManager) extends ZNodeCh
   override val path: String = DeleteTopicsZNode.path
 
   override def handleChildChange(): Unit = eventManager.put(TopicDeletion)
+}
+
+class TopicDeletionFlagHandler(eventManager: ControllerEventManager) extends ZNodeChangeHandler {
+  override val path: String = DeleteTopicFlagZNode.path
+  override def handleDataChange(): Unit = eventManager.put(TopicDeletionFlagChange(reset = false))
+  override def handleDeletion(): Unit = eventManager.put(TopicDeletionFlagChange(reset = true))
 }
 
 class PartitionReassignmentHandler(eventManager: ControllerEventManager) extends ZNodeChangeHandler {
@@ -3025,6 +3125,11 @@ case class PartitionModifications(topic: String) extends ControllerEvent {
 }
 
 case object TopicDeletion extends ControllerEvent {
+  override def state: ControllerState = ControllerState.TopicDeletion
+  override def preempt(): Unit = {}
+}
+
+case class TopicDeletionFlagChange(reset: Boolean) extends ControllerEvent {
   override def state: ControllerState = ControllerState.TopicDeletion
   override def preempt(): Unit = {}
 }

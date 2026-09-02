@@ -29,7 +29,7 @@ import kafka.network.{ControlPlaneAcceptor, DataPlaneAcceptor, RequestChannel, S
 import kafka.raft.KafkaRaftManager
 import kafka.server.metadata.{OffsetTrackingListener, ZkConfigRepository, ZkMetadataCache}
 import kafka.utils._
-import kafka.zk.{AdminZkClient, BrokerInfo, KafkaZkClient}
+import kafka.zk.{AdminZkClient, BrokerInfo, FederatedTopicsZNode, KafkaZkClient, PreferredControllersZNode}
 import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, MetadataRecoveryStrategy, NetworkClient, NetworkClientUtils}
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.common.internals.Topic
@@ -100,6 +100,12 @@ object KafkaServer {
     // The zk sasl is enabled by default so it can produce false error when broker does not intend to use SASL.
     if (!JaasUtils.isZkSaslEnabled) clientConfig.setProperty(JaasUtils.ZK_SASL_CLIENT, "false")
     clientConfig
+  }
+
+  private[server] def compatibilityZkPaths(config: KafkaConfig): Seq[String] = {
+    val preferred = if (config.liProtocolBridgePreferredControllerActive) Seq(PreferredControllersZNode.path) else Seq.empty
+    val federated = if (config.liProtocolBridgeFederatedTopicsActive) Seq(FederatedTopicsZNode.path) else Seq.empty
+    preferred ++ federated
   }
 
   val MIN_INCREMENTAL_FETCH_SESSION_EVICTION_MS: Long = 120000
@@ -183,6 +189,7 @@ class KafkaServer(
   var clientToControllerChannelManager: NodeToControllerChannelManager = _
 
   var alterPartitionManager: AlterPartitionManager = _
+  var leaderTransferManager: LeaderTransferManager = LeaderTransferManager.NoOp
 
   var kafkaScheduler: KafkaScheduler = _
 
@@ -194,6 +201,7 @@ class KafkaServer(
 
   val zkClientConfig: ZKClientConfig = KafkaServer.zkClientConfigFromKafkaConfig(config)
   private var _zkClient: KafkaZkClient = _
+  private var additionalControllerZkClients: Seq[KafkaZkClient] = Seq.empty
   private var configRepository: ZkConfigRepository = _
 
   val correlationId: AtomicInteger = new AtomicInteger(0)
@@ -421,6 +429,13 @@ class KafkaServer(
         }
         alterPartitionManager.start()
 
+        leaderTransferManager = if (config.liProtocolBridgeLeaderTransferActive)
+          LeaderTransferManager(config, controllerNodeProvider, kafkaScheduler, time, metrics,
+            s"zk-broker-${config.nodeId}-", brokerEpochSupplier)
+        else
+          LeaderTransferManager.NoOp
+        leaderTransferManager.start()
+
         // Start replica manager
         _replicaManager = createReplicaManager(isShuttingDown)
         replicaManager.startup()
@@ -435,7 +450,11 @@ class KafkaServer(
         tokenManager.startup()
 
         /* start kafka controller */
-        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch, tokenManager, brokerFeatures, metadataCache, threadNamePrefix)
+        additionalControllerZkClients = (1 until config.liNumControllerInitThreads).map { index =>
+          KafkaZkClient.createZkClient(s"Kafka controller init ${index + 1}", time, config, zkClientConfig)
+        }
+        _kafkaController = new KafkaController(config, zkClient, time, metrics, brokerInfo, brokerEpoch,
+          tokenManager, brokerFeatures, metadataCache, threadNamePrefix, additionalControllerZkClients)
         kafkaController.startup()
 
         if (config.migrationEnabled) {
@@ -770,13 +789,16 @@ class KafkaServer(
       delayedRemoteFetchPurgatoryParam = None,
       threadNamePrefix = threadNamePrefix,
       brokerEpochSupplier = brokerEpochSupplier,
-      addPartitionsToTxnManager = Some(addPartitionsToTxnManager))
+      addPartitionsToTxnManager = Some(addPartitionsToTxnManager),
+      leaderTransferManager = leaderTransferManager)
   }
 
   private def initZkClient(time: Time): Unit = {
     info(s"Connecting to zookeeper on ${config.zkConnect}")
     _zkClient = KafkaZkClient.createZkClient("Kafka server", time, config, zkClientConfig)
     _zkClient.createTopLevelPaths()
+    KafkaServer.compatibilityZkPaths(config).foreach(path =>
+      _zkClient.createRecursive(path, throwIfPathExists = false))
   }
 
   private def getOrGenerateClusterId(zkClient: KafkaZkClient): String = {
@@ -1062,6 +1084,8 @@ class KafkaServer(
         if (replicaManager != null)
           CoreUtils.swallow(replicaManager.shutdown(), this)
 
+        if (leaderTransferManager != null)
+          CoreUtils.swallow(leaderTransferManager.shutdown(), this)
         if (alterPartitionManager != null)
           CoreUtils.swallow(alterPartitionManager.shutdown(), this)
 
@@ -1085,6 +1109,8 @@ class KafkaServer(
         if (featureChangeListener != null)
           CoreUtils.swallow(featureChangeListener.close(), this)
 
+        additionalControllerZkClients.foreach(client => CoreUtils.swallow(client.close(), this))
+        additionalControllerZkClients = Seq.empty
         if (zkClient != null)
           CoreUtils.swallow(zkClient.close(), this)
 

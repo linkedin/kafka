@@ -28,6 +28,21 @@ import org.mockito.Mockito._
 
 class TopicDeletionManagerTest {
 
+  @Test
+  def testDynamicDeleteTopicFlagCanBeResetToBrokerConfig(): Unit = {
+    val disabledProps = TestUtils.createBrokerConfig(1, "zkConnect")
+    disabledProps.put("delete.topic.enable", "false")
+    val disabledConfig = KafkaConfig.fromProps(disabledProps)
+    val manager = new TopicDeletionManager(disabledConfig, new ControllerContext,
+      mock(classOf[ReplicaStateMachine]), mock(classOf[PartitionStateMachine]), deletionClient)
+
+    assertFalse(manager.isDeleteTopicEnabled)
+    manager.isDeleteTopicEnabled = true
+    assertTrue(manager.isDeleteTopicEnabled)
+    manager.resetDeleteTopicEnabled()
+    assertFalse(manager.isDeleteTopicEnabled)
+  }
+
   private val brokerId = 1
   private val config = KafkaConfig.fromProps(TestUtils.createBrokerConfig(brokerId, "zkConnect"))
   private val deletionClient = mock(classOf[DeletionClient])

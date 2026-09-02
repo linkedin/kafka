@@ -107,7 +107,7 @@ class SocketServer(val config: KafkaConfig,
   // data-plane
   private[network] val dataPlaneAcceptors = new ConcurrentHashMap[EndPoint, DataPlaneAcceptor]()
   val dataPlaneRequestChannel = new RequestChannel(maxQueuedRequests, DataPlaneAcceptor.MetricPrefix, time,
-    apiVersionManager.newRequestMetrics, observer)
+    apiVersionManager.newRequestMetrics, observer, config.liProtocolBridgeRequestChannelWatchdogActive)
   // control-plane
   private[network] var controlPlaneAcceptorOpt: Option[ControlPlaneAcceptor] = None
   val controlPlaneRequestChannelOpt: Option[RequestChannel] = config.controlPlaneListenerName.map(_ =>

@@ -17,25 +17,38 @@
 
 package kafka.server
 
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}
 import org.apache.kafka.common.config.ConfigException
 import org.apache.kafka.server.config.{ReplicationConfigs, ZkConfigs}
-import org.junit.jupiter.api.Assertions.{assertFalse, assertThrows, assertTrue}
+import org.apache.kafka.storage.internals.log.LogConfig
 import org.junit.jupiter.api.Test
 
 import java.util.Properties
 
 class LiProtocolBridgeConfigTest {
   @Test
-  def testBridgeModeDefaultsToFalseAndCanBeEnabledAt30Ibp(): Unit = {
+  def testEveryCompatibilityGateDefaultsToFalseAndCanBeEnabled(): Unit = {
     val defaultProps = new Properties
     defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
-    assertFalse(KafkaConfig.fromProps(defaultProps).liProtocolBridgeModeEnable)
+    val defaults = KafkaConfig.fromProps(defaultProps)
+    // The wrapper and preflight manifest must be updated deliberately when this contract changes.
+    assertEquals(22, KafkaConfig.LiProtocolBridgeEnableProps.size)
+    assertEquals(KafkaConfig.LiProtocolBridgeEnableProps.size,
+      KafkaConfig.LiProtocolBridgeEnableProps.distinct.size, "compatibility settings must be unique")
+    KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
+      assertFalse(defaults.getBoolean(name), s"$name must default to false")
+    }
+    assertEquals(false, defaults.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
 
-    val enabledProps = new Properties
-    enabledProps.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
-    enabledProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
-    enabledProps.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
-    assertTrue(KafkaConfig.fromProps(enabledProps).liProtocolBridgeModeActive)
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    props.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
+    KafkaConfig.LiProtocolBridgeEnableProps.foreach(props.put(_, "true"))
+    val enabled = KafkaConfig.fromProps(props)
+    KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>
+      assertTrue(enabled.getBoolean(name), s"$name was not enabled")
+    }
+    assertEquals(true, enabled.extractLogConfigMap.get(LogConfig.LI_LOG_TRUNCATION_METRICS_CONFIG))
   }
 
   @Test

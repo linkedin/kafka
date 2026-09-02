@@ -204,6 +204,7 @@ class KafkaApisTest extends Logging {
       () => new FinalizedFeatures(MetadataVersion.latestTesting(), Collections.emptyMap[String, java.lang.Short], 0, raftSupport))
 
     val clientMetricsManagerOpt = if (raftSupport) Some(clientMetricsManager) else None
+    when(requestChannel.observer).thenReturn(new NoOpObserver)
 
     new KafkaApis(
       requestChannel = requestChannel,
@@ -2530,6 +2531,7 @@ class KafkaApisTest extends Logging {
         any(),
         any(),
         any(),
+        any(),
         any()
       )).thenAnswer(_ => responseCallback.getValue.apply(Map(tp -> new PartitionResponse(Errors.INVALID_PRODUCER_EPOCH))))
 
@@ -2589,6 +2591,7 @@ class KafkaApisTest extends Logging {
         any(),
         any(),
         responseCallback.capture(),
+        any(),
         any(),
         any(),
         any(),
@@ -2657,6 +2660,7 @@ class KafkaApisTest extends Logging {
         any(),
         any(),
         any(),
+        any(),
         any())
       ).thenAnswer(_ => responseCallback.getValue.apply(Map(tp -> new PartitionResponse(Errors.NOT_LEADER_OR_FOLLOWER))))
 
@@ -2718,6 +2722,7 @@ class KafkaApisTest extends Logging {
         any(),
         any(),
         responseCallback.capture(),
+        any(),
         any(),
         any(),
         any(),
@@ -2784,6 +2789,7 @@ class KafkaApisTest extends Logging {
           anyShort,
           ArgumentMatchers.eq(false),
           ArgumentMatchers.eq(transactionalId),
+          any(),
           any(),
           any(),
           any(),

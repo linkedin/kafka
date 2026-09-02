@@ -62,6 +62,35 @@ class KafkaConfigTest {
   }
 
   @Test
+  def testInvalidRequestMetricBuckets(): Unit = {
+    val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    props.setProperty(KafkaConfig.RequestMetricsSizeBucketsProp, "1,not-a-number")
+    val config = KafkaConfig.fromProps(props)
+    assertThrows(classOf[ConfigException], () => config.requestMetricsSizeBuckets)
+  }
+
+  @Test
+  def testEmptyRequestMetricBuckets(): Unit = {
+    val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    props.setProperty(KafkaConfig.RequestMetricsTotalTimeBucketsProp, ", ,")
+    val config = KafkaConfig.fromProps(props)
+    assertThrows(classOf[ConfigException], () => config.requestMetricsTotalTimeBuckets)
+  }
+
+  @Test
+  def testRequestMetricBucketsMustBeOrderedAndNonNegative(): Unit = {
+    Seq("-1,5", "5,5", "10,5").foreach { value =>
+      val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+      props.setProperty(KafkaConfig.RequestMetricsSizeBucketsProp, value)
+      val config = KafkaConfig.fromProps(props)
+      assertThrows(classOf[ConfigException], () => {
+        config.requestMetricsSizeBuckets
+        ()
+      }, s"$value should not be accepted as request metric boundaries")
+    }
+  }
+
+  @Test
   def testLogRetentionTimeHoursProvided(): Unit = {
     val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
     props.setProperty(ServerLogConfigs.LOG_RETENTION_TIME_HOURS_CONFIG, "1")
@@ -1154,9 +1183,14 @@ class KafkaConfigTest {
         case ShareGroupConfig.SHARE_GROUP_MAX_GROUPS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", 0, -1)
         case GroupCoordinatorConfig.SHARE_GROUP_MAX_SIZE_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", 0, -1)
 
+        // LinkedIn compatibility settings whose schema intentionally accepts arbitrary strings or lists.
         case KafkaConfig.ObserverClassNameProp |
              KafkaConfig.MaintenanceBrokerListProp |
-             KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp => // ignore string values
+             KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp |
+             KafkaConfig.RequestMetricsSizeBucketsProp |
+             KafkaConfig.RequestMetricsTotalTimeBucketsProp |
+             KafkaConfig.TotalTimeHistogramEnabledMetricsProp |
+             KafkaConfig.HeapDumpFolderProp => // ignore string and list values
 
         case _ => assertPropertyInvalid(baseProperties, name, "not_a_number", "-1")
       }

@@ -47,7 +47,6 @@ import scala.jdk.CollectionConverters._
 object ControllerChannelManager {
   private val QueueSizeMetricName = "QueueSize"
   private val RequestRateAndQueueTimeMetricName = "RequestRateAndQueueTimeMs"
-  private val ProtocolBridgeModeMetricName = "LiProtocolBridgeModeEnabled"
 
   // Commit 74dca03f5bf3561c3694605fd15dc7b7c6502de8 added MaxBrokerEpoch to LeaderAndIsr v3,
   // UpdateMetadata v6, and StopReplica v2 in 3.0-li. Apache later used those version numbers for
@@ -118,8 +117,6 @@ class ControllerChannelManager(controllerEpoch: () => Int,
       brokerStateInfo.values.iterator.map(_.messageQueue.size).sum
     }
   )
-  metricsGroup.newGauge(ProtocolBridgeModeMetricName,
-    () => if (config.liProtocolBridgeModeActive) 1 else 0)
 
   def startup(initialBrokers: Set[Broker]):Unit = {
     initialBrokers.foreach(addNewBroker)

@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.storage.internals.log;
 
+import org.apache.kafka.server.metrics.KafkaMetricsGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,10 +40,29 @@ public class LogDirFailureChannel {
     private static final Logger log = LoggerFactory.getLogger(LogDirFailureChannel.class);
     private final ConcurrentMap<String, String> offlineLogDirs;
     private final BlockingQueue<String> offlineLogDirQueue;
+    private final KafkaMetricsGroup metricsGroup;
 
     public LogDirFailureChannel(int logDirNum) {
+        this(logDirNum, false);
+    }
+
+    public LogDirFailureChannel(int logDirNum, boolean legacyMetricsEnabled) {
         this.offlineLogDirs = new ConcurrentHashMap<>();
         this.offlineLogDirQueue = new ArrayBlockingQueue<>(logDirNum);
+        if (legacyMetricsEnabled) {
+            this.metricsGroup = new KafkaMetricsGroup("kafka.server", "LogDirFailureChannel");
+            this.metricsGroup.newGauge("NumOfflineLogDirsDetected", this::numOfflineLogDirsDetected);
+        } else {
+            this.metricsGroup = null;
+        }
+    }
+
+    public void close() {
+        if (metricsGroup != null) metricsGroup.removeMetric("NumOfflineLogDirsDetected");
+    }
+
+    public int numOfflineLogDirsDetected() {
+        return offlineLogDirs.size();
     }
 
     public boolean hasOfflineLogDir(String logDir) {

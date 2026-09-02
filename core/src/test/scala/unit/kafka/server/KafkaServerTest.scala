@@ -34,6 +34,14 @@ import scala.jdk.CollectionConverters._
 class KafkaServerTest extends QuorumTestHarness {
 
   @Test
+  def testRequestChannelWatchdogIntervalTracksConfiguredTimeout(): Unit = {
+    assertEquals(1L, KafkaServer.requestChannelWatchdogIntervalMs(1L))
+    assertEquals(500L, KafkaServer.requestChannelWatchdogIntervalMs(1000L))
+    assertEquals(10000L, KafkaServer.requestChannelWatchdogIntervalMs(60000L))
+    assertEquals(10000L, KafkaServer.requestChannelWatchdogIntervalMs(Long.MaxValue))
+  }
+
+  @Test
   def testCompatibilityZkPathsRequireFeatureFlags(): Unit = {
     val defaultProps = new Properties
     defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, TestUtils.MockZkConnect)

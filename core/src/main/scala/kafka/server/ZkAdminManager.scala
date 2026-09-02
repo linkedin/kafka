@@ -180,7 +180,8 @@ class ZkAdminManager(val config: KafkaConfig,
       zkClient.getPreferredControllerList.toSet
     else
       Set.empty[Int]
-    val brokers = mapRackIds(liveBrokers.filterNot(broker => preferredControllerIds.contains(broker.id)))
+    val excludedBrokerIds = preferredControllerIds ++ config.maintenanceBrokerList
+    val brokers = mapRackIds(liveBrokers.filterNot(broker => excludedBrokerIds.contains(broker.id)))
     val metadata = toCreate.values.map(topic =>
       try {
         if (metadataCache.contains(topic.name))
@@ -330,7 +331,8 @@ class ZkAdminManager(val config: KafkaConfig,
       zkClient.getPreferredControllerList.toSet
     else
       Set.empty[Int]
-    val allBrokers = mapRackIds(brokerMetadatas.filterNot(broker => preferredControllerIds.contains(broker.id)))
+    val excludedBrokerIds = preferredControllerIds ++ config.maintenanceBrokerList
+    val allBrokers = mapRackIds(brokerMetadatas.filterNot(broker => excludedBrokerIds.contains(broker.id)))
     val allBrokerIds = allBrokers.map(_.id)
 
     // 1. map over topics creating assignment and calling AdminUtils

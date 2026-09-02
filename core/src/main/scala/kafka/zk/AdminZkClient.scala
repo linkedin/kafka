@@ -59,8 +59,11 @@ class AdminZkClient(zkClient: KafkaZkClient,
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced,
                   usesTopicId: Boolean = false): Unit = {
-    val brokerMetadatas = getBrokerMetadatas(rackAwareMode).asJava
-    val replicaAssignment = CoreUtils.replicaToBrokerAssignmentAsScala(AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor))
+    val excludedBrokerIds = getAssignmentExcludedBrokerIds()
+    val brokerMetadatas = getBrokerMetadatas(rackAwareMode)
+      .filterNot(metadata => excludedBrokerIds.contains(metadata.id)).asJava
+    val replicaAssignment = CoreUtils.replicaToBrokerAssignmentAsScala(
+      AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor))
     createTopicWithAssignment(topic, topicConfig, replicaAssignment, usesTopicId = usesTopicId)
   }
 
@@ -88,6 +91,21 @@ class AdminZkClient(zkClient: KafkaZkClient,
     }
     brokerMetadatas.sortBy(_.id)
   }
+
+  /** Return broker IDs excluded from automatic assignment by the cluster-level maintenance setting. */
+  def getMaintenanceBrokerList(): Set[Int] = {
+    val value = fetchEntityConfig(ConfigType.BROKER, "<default>")
+      .getProperty(KafkaConfig.MaintenanceBrokerListProp, "")
+    try value.split(',').iterator.map(_.trim).filter(_.nonEmpty).map(_.toInt).toSet
+    catch {
+      case _: NumberFormatException =>
+        throw new AdminOperationException(
+          s"${KafkaConfig.MaintenanceBrokerListProp} must be a comma-separated list of broker IDs: $value")
+    }
+  }
+
+  private def getAssignmentExcludedBrokerIds(): Set[Int] =
+    getMaintenanceBrokerList() ++ zkClient.getPreferredControllerList
 
   /**
    * Create topic and optionally validate its parameters. Note that this method is used by the
@@ -223,10 +241,15 @@ class AdminZkClient(zkClient: KafkaZkClient,
                     replicaAssignment: Option[Map[Int, Seq[Int]]] = None,
                     validateOnly: Boolean = false): Map[Int, Seq[Int]] = {
 
+    val assignmentBrokers = if (replicaAssignment.isDefined) allBrokers
+    else {
+      val excludedBrokerIds = getAssignmentExcludedBrokerIds()
+      allBrokers.filterNot(metadata => excludedBrokerIds.contains(metadata.id))
+    }
     val proposedAssignmentForNewPartitions = createNewPartitionsAssignment(
       topic,
       existingAssignment,
-      allBrokers,
+      assignmentBrokers,
       numPartitions,
       replicaAssignment
     )

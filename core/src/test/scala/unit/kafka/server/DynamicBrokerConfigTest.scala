@@ -300,28 +300,35 @@ class DynamicBrokerConfigTest {
   }
 
   @Test
-  def testProtocolBridgeFlagsAreDisabledByDefaultAndClusterWide(): Unit = {
+  def testProtocolBridgeFlagDefaultsAndDynamicScope(): Unit = {
     val brokerProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
     brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
     val config = KafkaConfig(brokerProps)
     config.dynamicConfig.initialize(None, None)
-    val bridgeFlags = Seq(
+    val dynamicBridgeFlags = Seq(
       KafkaConfig.LiProtocolBridgeModeEnableProp,
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
       KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
       KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
       KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
       KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp,
-      KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp
+      KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp,
+      KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp
     )
-    bridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))
+    val allBridgeFlags = dynamicBridgeFlags :+ KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp
+    allBridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))
 
-    val props = new Properties
-    bridgeFlags.foreach(props.put(_, "true"))
-    config.dynamicConfig.validate(props, perBrokerConfig = false)
-    config.dynamicConfig.updateDefaultConfig(props)
-    bridgeFlags.foreach(flag => assertTrue(config.getBoolean(flag), s"$flag should be enabled dynamically"))
-    assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(props, perBrokerConfig = true))
+    val dynamicProps = new Properties
+    dynamicBridgeFlags.foreach(dynamicProps.put(_, "true"))
+    config.dynamicConfig.validate(dynamicProps, perBrokerConfig = false)
+    config.dynamicConfig.updateDefaultConfig(dynamicProps)
+    dynamicBridgeFlags.foreach(flag => assertTrue(config.getBoolean(flag), s"$flag should be enabled dynamically"))
+    assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(dynamicProps, perBrokerConfig = true))
+
+    val startupOnlyProps = new Properties
+    startupOnlyProps.put(KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp, "true")
+    assertThrows(classOf[ConfigException],
+      () => config.dynamicConfig.validate(startupOnlyProps, perBrokerConfig = false))
   }
 
   @Test

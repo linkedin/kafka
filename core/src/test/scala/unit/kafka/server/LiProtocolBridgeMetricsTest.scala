@@ -38,7 +38,10 @@ class LiProtocolBridgeMetricsTest {
     val metrics = new LiProtocolBridgeMetrics(config)
 
     try {
-      assertTrue(metricValues(brokerId).values.forall(_ == 0))
+      val initialValues = metricValues(brokerId)
+      assertEquals(1, initialValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
+      assertTrue(initialValues.filterNot(_._1 == LiProtocolBridgeMetrics.ControllerInitializationThreads)
+        .values.forall(_ == 0))
 
       val props = new Properties
       Seq(
@@ -48,16 +51,22 @@ class LiProtocolBridgeMetricsTest {
         KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
         KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
         KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp,
-        KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp
+        KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp,
+        KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp,
+        KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp
       ).foreach(props.put(_, "true"))
       config.dynamicConfig.updateDefaultConfig(props)
 
       val updatedValues = metricValues(brokerId)
       assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, updatedValues.keySet)
       val staticMetrics = Set(LiProtocolBridgeMetrics.PreferredControllerEnabled,
-        LiProtocolBridgeMetrics.RackIdMapperEnabled)
+        LiProtocolBridgeMetrics.RackIdMapperEnabled, LiProtocolBridgeMetrics.ZookeeperPaginationEnabled,
+        LiProtocolBridgeMetrics.DynamicTopicDeletionEnabled)
+      assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
-      assertTrue(updatedValues.filterNot { case (name, _) => staticMetrics.contains(name) }.values.forall(_ == 1))
+      assertTrue(updatedValues.filterNot { case (name, _) =>
+        staticMetrics.contains(name) || name == LiProtocolBridgeMetrics.ControllerInitializationThreads
+      }.values.forall(_ == 1))
     } finally {
       metrics.close()
     }

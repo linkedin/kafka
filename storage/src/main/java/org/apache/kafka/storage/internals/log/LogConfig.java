@@ -193,6 +193,7 @@ public class LogConfig extends AbstractConfig {
      * Keep DEFAULT_MESSAGE_FORMAT_VERSION as a way to handle the deprecated value */
     @Deprecated
     public static final String DEFAULT_MESSAGE_FORMAT_VERSION = ServerLogConfigs.LOG_MESSAGE_FORMAT_VERSION_DEFAULT;
+    public static final String LI_MIN_SEGMENT_MS_CONFIG = "li.min.log.roll.ms";
 
     /* See `TopicConfig.MESSAGE_FORMAT_VERSION_CONFIG` for details */
     @SuppressWarnings("deprecation")
@@ -210,7 +211,8 @@ public class LogConfig extends AbstractConfig {
             TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_CONFIG,
             TopicConfig.REMOTE_LOG_COPY_DISABLE_CONFIG,
             QuotaConfigs.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG,
-            QuotaConfigs.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG
+            QuotaConfigs.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG,
+            LI_MIN_SEGMENT_MS_CONFIG
     ));
 
     @SuppressWarnings("deprecation")
@@ -331,7 +333,9 @@ public class LogConfig extends AbstractConfig {
                 .define(TopicConfig.LOCAL_LOG_RETENTION_BYTES_CONFIG, LONG, DEFAULT_LOCAL_RETENTION_BYTES, atLeast(-2), MEDIUM,
                         TopicConfig.LOCAL_LOG_RETENTION_BYTES_DOC)
                 .define(TopicConfig.REMOTE_LOG_COPY_DISABLE_CONFIG, BOOLEAN, false, MEDIUM, TopicConfig.REMOTE_LOG_COPY_DISABLE_DOC)
-                .define(TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_CONFIG, BOOLEAN, false, MEDIUM, TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_DOC);
+                .define(TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_CONFIG, BOOLEAN, false, MEDIUM, TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_DOC)
+                .define(LI_MIN_SEGMENT_MS_CONFIG, LONG, 0L, atLeast(0), MEDIUM,
+                        "Minimum interval before a time-based log segment roll.");
     }
 
     public final Set<String> overriddenConfigs;
@@ -343,6 +347,7 @@ public class LogConfig extends AbstractConfig {
     public final int segmentSize;
     public final long segmentMs;
     public final long segmentJitterMs;
+    public final long liMinSegmentMs;
     public final int maxIndexSize;
     public final long flushInterval;
     public final long flushMs;
@@ -394,6 +399,7 @@ public class LogConfig extends AbstractConfig {
         this.segmentSize = getInt(TopicConfig.SEGMENT_BYTES_CONFIG);
         this.segmentMs = getLong(TopicConfig.SEGMENT_MS_CONFIG);
         this.segmentJitterMs = getLong(TopicConfig.SEGMENT_JITTER_MS_CONFIG);
+        this.liMinSegmentMs = getLong(LI_MIN_SEGMENT_MS_CONFIG);
         this.maxIndexSize = getInt(TopicConfig.SEGMENT_INDEX_BYTES_CONFIG);
         this.flushInterval = getLong(TopicConfig.FLUSH_MESSAGES_INTERVAL_CONFIG);
         this.flushMs = getLong(TopicConfig.FLUSH_MS_CONFIG);

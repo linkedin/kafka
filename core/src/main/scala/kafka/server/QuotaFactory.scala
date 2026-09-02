@@ -79,8 +79,8 @@ object QuotaFactory extends Logging {
     val clientQuotaCallback = Option(cfg.getConfiguredInstance(QuotaConfigs.CLIENT_QUOTA_CALLBACK_CLASS_CONFIG,
       classOf[ClientQuotaCallback]))
     QuotaManagers(
-      new ClientQuotaManager(clientConfig(cfg), metrics, Fetch, time, threadNamePrefix, clientQuotaCallback),
-      new ClientQuotaManager(clientConfig(cfg), metrics, Produce, time, threadNamePrefix, clientQuotaCallback),
+      new ClientQuotaManager(clientFetchConfig(cfg), metrics, Fetch, time, threadNamePrefix, clientQuotaCallback),
+      new ClientQuotaManager(clientProduceConfig(cfg), metrics, Produce, time, threadNamePrefix, clientQuotaCallback),
       new ClientRequestQuotaManager(clientConfig(cfg), metrics, time, threadNamePrefix, clientQuotaCallback),
       new ControllerMutationQuotaManager(clientControllerMutationConfig(cfg), metrics, time,
         threadNamePrefix, clientQuotaCallback),
@@ -91,12 +91,16 @@ object QuotaFactory extends Logging {
     )
   }
 
-  def clientConfig(cfg: KafkaConfig): ClientQuotaManagerConfig = {
-    new ClientQuotaManagerConfig(
-      cfg.numQuotaSamples,
-      cfg.quotaWindowSizeSeconds
-    )
-  }
+  def clientConfig(cfg: KafkaConfig): ClientQuotaManagerConfig =
+    new ClientQuotaManagerConfig(cfg.numQuotaSamples, cfg.quotaWindowSizeSeconds)
+
+  def clientProduceConfig(cfg: KafkaConfig): ClientQuotaManagerConfig =
+    new ClientQuotaManagerConfig(cfg.numQuotaSamples, cfg.quotaWindowSizeSeconds,
+      if (cfg.liProtocolBridgeStaticDefaultQuotasActive) cfg.producerQuotaBytesPerSecondDefault else Long.MaxValue)
+
+  def clientFetchConfig(cfg: KafkaConfig): ClientQuotaManagerConfig =
+    new ClientQuotaManagerConfig(cfg.numQuotaSamples, cfg.quotaWindowSizeSeconds,
+      if (cfg.liProtocolBridgeStaticDefaultQuotasActive) cfg.consumerQuotaBytesPerSecondDefault else Long.MaxValue)
 
   private def clientControllerMutationConfig(cfg: KafkaConfig): ClientQuotaManagerConfig = {
     new ClientQuotaManagerConfig(

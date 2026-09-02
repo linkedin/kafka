@@ -124,6 +124,26 @@ class ApiVersionManagerTest {
   }
 
   @Test
+  def testDisabledLiApisAreNotPreallocatedAsEnabledApis(): Unit = {
+    val disabled = new DefaultApiVersionManager(
+      listenerType = ListenerType.ZK_BROKER,
+      forwardingManager = None,
+      brokerFeatures = brokerFeatures,
+      metadataCache = metadataCache,
+      enableUnstableLastVersion = true)
+    assertFalse(disabled.enabledApis.exists(_.id >= 1000))
+
+    val enabled = new DefaultApiVersionManager(
+      listenerType = ListenerType.ZK_BROKER,
+      forwardingManager = None,
+      brokerFeatures = brokerFeatures,
+      metadataCache = metadataCache,
+      enableUnstableLastVersion = true,
+      liApiEnabled = _ => true)
+    assertTrue(enabled.enabledApis.exists(_.id >= 1000))
+  }
+
+  @Test
   def testEnvelopeDisabledForKRaftBroker(): Unit = {
     val forwardingManager = Mockito.mock(classOf[ForwardingManager])
     Mockito.when(forwardingManager.controllerApiVersions).thenReturn(None)

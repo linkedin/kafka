@@ -194,6 +194,7 @@ public class LogConfig extends AbstractConfig {
     @Deprecated
     public static final String DEFAULT_MESSAGE_FORMAT_VERSION = ServerLogConfigs.LOG_MESSAGE_FORMAT_VERSION_DEFAULT;
     public static final String LI_MIN_SEGMENT_MS_CONFIG = "li.min.log.roll.ms";
+    public static final String LI_LOG_TRUNCATION_METRICS_CONFIG = "li.internal.log.truncation.metrics.enable";
 
     /* See `TopicConfig.MESSAGE_FORMAT_VERSION_CONFIG` for details */
     @SuppressWarnings("deprecation")
@@ -212,7 +213,8 @@ public class LogConfig extends AbstractConfig {
             TopicConfig.REMOTE_LOG_COPY_DISABLE_CONFIG,
             QuotaConfigs.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG,
             QuotaConfigs.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG,
-            LI_MIN_SEGMENT_MS_CONFIG
+            LI_MIN_SEGMENT_MS_CONFIG,
+            LI_LOG_TRUNCATION_METRICS_CONFIG
     ));
 
     @SuppressWarnings("deprecation")
@@ -335,7 +337,9 @@ public class LogConfig extends AbstractConfig {
                 .define(TopicConfig.REMOTE_LOG_COPY_DISABLE_CONFIG, BOOLEAN, false, MEDIUM, TopicConfig.REMOTE_LOG_COPY_DISABLE_DOC)
                 .define(TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_CONFIG, BOOLEAN, false, MEDIUM, TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_DOC)
                 .define(LI_MIN_SEGMENT_MS_CONFIG, LONG, 0L, atLeast(0), MEDIUM,
-                        "Minimum interval before a time-based log segment roll.");
+                        "Minimum interval before a time-based log segment roll.")
+                .define(LI_LOG_TRUNCATION_METRICS_CONFIG, BOOLEAN, false, MEDIUM,
+                        "Whether to expose LinkedIn log truncation metrics.");
     }
 
     public final Set<String> overriddenConfigs;
@@ -348,6 +352,7 @@ public class LogConfig extends AbstractConfig {
     public final long segmentMs;
     public final long segmentJitterMs;
     public final long liMinSegmentMs;
+    public final boolean liLogTruncationMetricsEnable;
     public final int maxIndexSize;
     public final long flushInterval;
     public final long flushMs;
@@ -400,6 +405,7 @@ public class LogConfig extends AbstractConfig {
         this.segmentMs = getLong(TopicConfig.SEGMENT_MS_CONFIG);
         this.segmentJitterMs = getLong(TopicConfig.SEGMENT_JITTER_MS_CONFIG);
         this.liMinSegmentMs = getLong(LI_MIN_SEGMENT_MS_CONFIG);
+        this.liLogTruncationMetricsEnable = getBoolean(LI_LOG_TRUNCATION_METRICS_CONFIG);
         this.maxIndexSize = getInt(TopicConfig.SEGMENT_INDEX_BYTES_CONFIG);
         this.flushInterval = getLong(TopicConfig.FLUSH_MESSAGES_INTERVAL_CONFIG);
         this.flushMs = getLong(TopicConfig.FLUSH_MS_CONFIG);

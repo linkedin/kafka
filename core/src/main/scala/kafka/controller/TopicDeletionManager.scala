@@ -89,7 +89,11 @@ class TopicDeletionManager(config: KafkaConfig,
                            partitionStateMachine: PartitionStateMachine,
                            client: DeletionClient) extends Logging {
   this.logIdent = s"[Topic Deletion Manager ${config.brokerId}] "
-  val isDeleteTopicEnabled: Boolean = config.deleteTopicEnable
+  @volatile var isDeleteTopicEnabled: Boolean = config.deleteTopicEnable
+
+  def resetDeleteTopicEnabled(): Unit = {
+    isDeleteTopicEnabled = config.deleteTopicEnable
+  }
 
   def init(initialTopicsToBeDeleted: Set[String], initialTopicsIneligibleForDeletion: Set[String]): Unit = {
     info(s"Initializing manager with initial deletions: $initialTopicsToBeDeleted, " +
@@ -148,15 +152,15 @@ class TopicDeletionManager(config: KafkaConfig,
    * @param replicas Replicas for which deletion has failed
    */
   def failReplicaDeletion(replicas: Set[PartitionAndReplica]): Unit = {
-    if (isDeleteTopicEnabled) {
-      val replicasThatFailedToDelete = replicas.filter(r => isTopicQueuedUpForDeletion(r.topic))
-      if (replicasThatFailedToDelete.nonEmpty) {
-        val topics = replicasThatFailedToDelete.map(_.topic)
-        debug(s"Deletion failed for replicas ${replicasThatFailedToDelete.mkString(",")}. Halting deletion for topics $topics")
-        replicaStateMachine.handleStateChanges(replicasThatFailedToDelete.toSeq, ReplicaDeletionIneligible)
-        markTopicIneligibleForDeletion(topics, reason = "replica deletion failure")
+    // Requests sent before a pause can still finish. Keep their results for the next resume.
+    val replicasThatFailedToDelete = replicas.filter(r => controllerContext.isTopicQueuedUpForDeletion(r.topic))
+    if (replicasThatFailedToDelete.nonEmpty) {
+      val topics = replicasThatFailedToDelete.map(_.topic)
+      debug(s"Deletion failed for replicas ${replicasThatFailedToDelete.mkString(",")}. Halting deletion for topics $topics")
+      replicaStateMachine.handleStateChanges(replicasThatFailedToDelete.toSeq, ReplicaDeletionIneligible)
+      markTopicIneligibleForDeletion(topics, reason = "replica deletion failure")
+      if (isDeleteTopicEnabled)
         resumeDeletions()
-      }
     }
   }
 
@@ -203,10 +207,11 @@ class TopicDeletionManager(config: KafkaConfig,
    * @param replicas Replicas that were successfully deleted by the broker
    */
   def completeReplicaDeletion(replicas: Set[PartitionAndReplica]): Unit = {
-    val successfullyDeletedReplicas = replicas.filter(r => isTopicQueuedUpForDeletion(r.topic))
+    val successfullyDeletedReplicas = replicas.filter(r => controllerContext.isTopicQueuedUpForDeletion(r.topic))
     debug(s"Deletion successfully completed for replicas ${successfullyDeletedReplicas.mkString(",")}")
     replicaStateMachine.handleStateChanges(successfullyDeletedReplicas.toSeq, ReplicaDeletionSuccessful)
-    resumeDeletions()
+    if (isDeleteTopicEnabled)
+      resumeDeletions()
   }
 
   /**

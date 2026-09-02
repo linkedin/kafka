@@ -93,13 +93,14 @@ object DynamicBrokerConfig {
     LogCleaner.ReconfigurableConfigs ++
     DynamicLogConfig.ReconfigurableConfigs ++
     DynamicThreadPool.ReconfigurableConfigs ++
-    Set(MetricConfigs.METRIC_REPORTER_CLASSES_CONFIG) ++
+    Set(MetricConfigs.METRIC_REPORTER_CLASSES_CONFIG, KafkaConfig.LiProtocolBridgeModeEnableProp) ++
     DynamicListenerConfig.ReconfigurableConfigs ++
     SocketServer.ReconfigurableConfigs ++
     DynamicProducerStateManagerConfig ++
     DynamicRemoteLogConfig.ReconfigurableConfigs
 
   private val ClusterLevelListenerConfigs = Set(SocketServerConfigs.MAX_CONNECTIONS_CONFIG, SocketServerConfigs.MAX_CONNECTION_CREATION_RATE_CONFIG, SocketServerConfigs.NUM_NETWORK_THREADS_CONFIG)
+  private val ClusterLevelConfigs = Set(KafkaConfig.LiProtocolBridgeModeEnableProp)
   private val PerBrokerConfigs = (DynamicSecurityConfigs ++ DynamicListenerConfig.ReconfigurableConfigs).diff(
     ClusterLevelListenerConfigs)
   private val ListenerMechanismConfigs = Set(SaslConfigs.SASL_JAAS_CONFIG,
@@ -148,7 +149,10 @@ object DynamicBrokerConfig {
     checkInvalidProps(securityConfigsWithoutListenerPrefix(props),
       "These security configs can be dynamically updated only per-listener using the listener prefix")
     validateConfigTypes(props)
-    if (!perBrokerConfig) {
+    if (perBrokerConfig) {
+      checkInvalidProps(props.asScala.keySet.intersect(ClusterLevelConfigs),
+        "Cannot update these configs for a single broker")
+    } else {
       checkInvalidProps(perBrokerConfigs(props),
         "Cannot update these configs at default cluster level, broker id must be specified")
     }

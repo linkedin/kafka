@@ -300,6 +300,22 @@ class DynamicBrokerConfigTest {
   }
 
   @Test
+  def testProtocolBridgeModeIsClusterWideDynamicConfig(): Unit = {
+    val brokerProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
+    val config = KafkaConfig(brokerProps)
+    config.dynamicConfig.initialize(None, None)
+    val props = new Properties
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+
+    assertFalse(config.liProtocolBridgeModeActive)
+    config.dynamicConfig.validate(props, perBrokerConfig = false)
+    config.dynamicConfig.updateDefaultConfig(props)
+    assertTrue(config.liProtocolBridgeModeActive)
+    assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(props, perBrokerConfig = true))
+  }
+
+  @Test
   def testConnectionQuota(): Unit = {
     verifyConfigUpdate(SocketServerConfigs.MAX_CONNECTIONS_PER_IP_CONFIG, "100", perBrokerConfig = true, expectFailure = false)
     verifyConfigUpdate(SocketServerConfigs.MAX_CONNECTIONS_PER_IP_CONFIG, "100", perBrokerConfig = false, expectFailure = false)

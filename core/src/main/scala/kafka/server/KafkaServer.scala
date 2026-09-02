@@ -113,8 +113,33 @@ class KafkaServer(
   val config: KafkaConfig,
   time: Time = Time.SYSTEM,
   threadNamePrefix: Option[String] = None,
-  enableForwarding: Boolean = false
+  enableForwarding: Boolean = false,
+  kafkaActions: KafkaActions = NoOpKafkaActions
 ) extends KafkaBroker with Server {
+
+  def this(config: KafkaConfig,
+           time: Time,
+           threadNamePrefix: Option[String],
+           enableForwarding: Boolean) =
+    this(config, time, threadNamePrefix, enableForwarding, NoOpKafkaActions)
+
+  // Binary-compatible constructors preserved for LinkedIn client test harnesses built against
+  // 3.0-li. The reporter argument was already ignored by the old implementation, which creates
+  // reporters from KafkaConfig below.
+  @deprecated("Use the primary KafkaServer constructor", "3.9-li")
+  def this(config: KafkaConfig,
+           time: Time,
+           threadNamePrefix: Option[String],
+           kafkaMetricsReporters: Seq[KafkaMetricsReporter],
+           kafkaActions: KafkaActions) =
+    this(config, time, threadNamePrefix, enableForwarding = false, kafkaActions = kafkaActions)
+
+  @deprecated("Use the primary KafkaServer constructor", "3.9-li")
+  def this(config: KafkaConfig,
+           time: Time,
+           threadNamePrefix: Option[String],
+           kafkaMetricsReporters: Seq[KafkaMetricsReporter]) =
+    this(config, time, threadNamePrefix, enableForwarding = false, kafkaActions = NoOpKafkaActions)
 
   private val startupComplete = new AtomicBoolean(false)
   private val isShuttingDown = new AtomicBoolean(false)
@@ -133,6 +158,7 @@ class KafkaServer(
   private var controlPlaneRequestProcessor: KafkaApis = _
 
   var authorizer: Option[Authorizer] = None
+  private var observer: Observer = _
   @volatile var socketServer: SocketServer = _
   var dataPlaneRequestHandlerPool: KafkaRequestHandlerPool = _
   private var controlPlaneRequestHandlerPool: KafkaRequestHandlerPool = _
@@ -374,13 +400,15 @@ class KafkaServer(
           None
         )
 
+        observer = Observer(config)
+
         // Create and start the socket server acceptor threads so that the bound port is known.
         // Delay starting processors until the end of the initialization sequence to ensure
         // that credentials have been loaded before processing authentications.
         //
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
-        socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager)
+        socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager, observer)
 
         // Start alter partition manager based on the IBP version
         alterPartitionManager = if (config.interBrokerProtocolVersion.isAlterPartitionSupported) {
@@ -855,6 +883,7 @@ class KafkaServer(
 
         while (!shutdownSucceeded && remainingRetries > 0) {
           remainingRetries = remainingRetries - 1
+          var shutdownResponse: ControlledShutdownResponse = null
 
           // 1. Find the controller and establish a connection to it.
           // If the controller id or the broker registration are missing, we sleep and retry (if there are remaining retries)
@@ -904,7 +933,7 @@ class KafkaServer(
                 time.milliseconds(), true)
               val clientResponse = NetworkClientUtils.sendAndReceive(networkClient, request, time)
 
-              val shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
+              shutdownResponse = clientResponse.responseBody.asInstanceOf[ControlledShutdownResponse]
               if (shutdownResponse.error != Errors.NONE) {
                 info(s"Controlled shutdown request returned after ${clientResponse.requestLatencyMs}ms " +
                   s"with error ${shutdownResponse.error}")
@@ -929,6 +958,9 @@ class KafkaServer(
                   s"configured controller.socket.timeout.ms and/or request.timeout.ms: ${ioe.getMessage}")
                 // ignore and try again
             }
+          }
+          if (shutdownResponse != null) {
+            kafkaActions.notifyControlledShutdownStatus(shutdownSucceeded, shutdownResponse, remainingRetries)
           }
           if (!shutdownSucceeded && remainingRetries > 0) {
             Thread.sleep(config.controlledShutdownRetryBackoffMs)
@@ -1020,6 +1052,8 @@ class KafkaServer(
         if (controlPlaneRequestProcessor != null)
           CoreUtils.swallow(controlPlaneRequestProcessor.close(), this)
         CoreUtils.swallow(authorizer.foreach(_.close()), this)
+        if (observer != null)
+          CoreUtils.swallow(observer.close(config.observerShutdownTimeoutMs, TimeUnit.MILLISECONDS), this)
         if (adminManager != null)
           CoreUtils.swallow(adminManager.shutdown(), this)
 

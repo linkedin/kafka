@@ -96,6 +96,16 @@ public class FetchResponse extends AbstractResponse {
         return Errors.forCode(data.errorCode());
     }
 
+    /**
+     * Return response partitions for name-based fetch protocol versions.
+     *
+     * This overload preserves the 3.0-li observer API. Callers handling Fetch v13 or newer must use
+     * {@link #responseData(Map, short)} so topic IDs can be resolved to names.
+     */
+    public LinkedHashMap<TopicPartition, FetchResponseData.PartitionData> responseData() {
+        return responseData(Collections.emptyMap(), (short) 12);
+    }
+
     public LinkedHashMap<TopicPartition, FetchResponseData.PartitionData> responseData(Map<Uuid, String> topicNames, short version) {
         final LinkedHashMap<TopicPartition, FetchResponseData.PartitionData> responseData = new LinkedHashMap<>();
         data.responses().forEach(topicResponse -> {

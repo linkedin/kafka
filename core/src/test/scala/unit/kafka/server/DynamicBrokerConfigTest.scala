@@ -313,7 +313,8 @@ class DynamicBrokerConfigTest {
       KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
       KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp,
       KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp,
-      KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp
+      KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp,
+      KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp
     )
     val allBridgeFlags = dynamicBridgeFlags :+ KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp
     allBridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))

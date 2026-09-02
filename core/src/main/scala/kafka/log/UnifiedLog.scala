@@ -1881,7 +1881,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         false
       } else {
         info(s"Truncating to offset $targetOffset")
-        lock synchronized {
+        val (messagesTruncated, bytesTruncated) = lock synchronized {
+          val originalEndOffset = localLog.logEndOffset
+          val originalSize = size
           localLog.checkIfMemoryMappedBufferClosed()
           if (localLog.segments.firstSegmentBaseOffset.getAsLong > targetOffset) {
             truncateFullyAndStartAt(targetOffset)
@@ -1894,8 +1896,14 @@ class UnifiedLog(@volatile var logStartOffset: Long,
             if (highWatermark >= localLog.logEndOffset)
               updateHighWatermark(localLog.logEndOffsetMetadata)
           }
-          true
+          (math.max(0L, originalEndOffset - localLog.logEndOffset),
+            math.max(0L, originalSize - size))
         }
+        if (config.liLogTruncationMetricsEnable) {
+          LogTruncationStats.logTruncatedMessagesRate.mark(messagesTruncated)
+          LogTruncationStats.logTruncatedBytesRate.mark(bytesTruncated)
+        }
+        true
       }
     }
   }

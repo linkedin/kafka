@@ -43,7 +43,7 @@ import org.apache.kafka.common.requests.{ControlledShutdownRequest, ControlledSh
 import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.security.{JaasContext, JaasUtils}
-import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils}
+import org.apache.kafka.common.utils.{AppInfoParser, LogContext, PoisonPill, Time, Utils}
 import org.apache.kafka.common.{Endpoint, Node, TopicPartition}
 import org.apache.kafka.coordinator.group.GroupCoordinator
 import org.apache.kafka.image.loader.metrics.MetadataLoaderMetrics
@@ -108,6 +108,9 @@ object KafkaServer {
     preferred ++ federated
   }
 
+  private[server] def requestChannelWatchdogIntervalMs(requestMaxLocalTimeMs: Long): Long =
+    math.max(1L, math.min(10000L, requestMaxLocalTimeMs / 2L))
+
   val MIN_INCREMENTAL_FETCH_SESSION_EVICTION_MS: Long = 120000
 }
 
@@ -148,6 +151,7 @@ class KafkaServer(
     this(config, time, threadNamePrefix, enableForwarding = false, kafkaActions = NoOpKafkaActions)
 
   private val startupComplete = new AtomicBoolean(false)
+  private val liProtocolBridgeMetrics = new LiProtocolBridgeMetrics(config)
   private val isShuttingDown = new AtomicBoolean(false)
   private val isStartingUp = new AtomicBoolean(false)
 
@@ -214,6 +218,8 @@ class KafkaServer(
 
   private var _clusterId: String = _
   @volatile private var _brokerTopicStats: BrokerTopicStats = _
+  private var requestChannelPoisonPill: PoisonPill = _
+  private var healthCheckScheduler: KafkaScheduler = _
 
   private var _featureChangeListener: FinalizedFeatureChangeListener = _
 
@@ -309,15 +315,20 @@ class KafkaServer(
         kafkaYammerMetrics = KafkaYammerMetrics.INSTANCE
         kafkaYammerMetrics.configure(config.originals)
         metrics = Server.initializeMetrics(config, time, clusterId)
+        if (config.liProtocolBridgeRequestChannelWatchdogActive)
+          requestChannelPoisonPill = new PoisonPill(metrics)
         createCurrentControllerIdMetric()
 
         /* register broker metrics */
-        _brokerTopicStats = new BrokerTopicStats(config.remoteLogManagerConfig.isRemoteStorageSystemEnabled())
+        _brokerTopicStats = new BrokerTopicStats(
+          config.remoteLogManagerConfig.isRemoteStorageSystemEnabled(),
+          config.liProtocolBridgeLegacyRequestMetricsActive)
 
         quotaManagers = QuotaFactory.instantiate(config, metrics, time, threadNamePrefix.getOrElse(""))
         KafkaBroker.notifyClusterListeners(clusterId, kafkaMetricsReporters ++ metrics.reporters.asScala)
 
-        logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size)
+        logDirFailureChannel = new LogDirFailureChannel(
+          config.logDirs.size, config.liProtocolBridgeLegacyRequestMetricsActive)
 
         // Make sure all storage directories have meta.properties files.
         val metaPropsEnsemble = {
@@ -417,6 +428,22 @@ class KafkaServer(
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
         socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager, observer)
+        if (config.liProtocolBridgeRequestChannelWatchdogActive) {
+          healthCheckScheduler = new KafkaScheduler(1, true, "kafka-healthcheck-scheduler-")
+          healthCheckScheduler.startup()
+          val watchdogIntervalMs = KafkaServer.requestChannelWatchdogIntervalMs(config.requestMaxLocalTimeMs)
+          healthCheckScheduler.schedule("halt-broker-if-request-channel-stalls", () => {
+            val lastDequeueMs = socketServer.dataPlaneRequestChannel.lastDequeueTimeMs
+            if (lastDequeueMs != Long.MaxValue) {
+              val elapsedMs = math.max(0L, time.milliseconds() - lastDequeueMs)
+              requestChannelPoisonPill.recordTimeSinceLastDequeue(elapsedMs)
+              if (elapsedMs > config.requestMaxLocalTimeMs) {
+                fatal(s"No request handler has polled the request channel for $elapsedMs ms; halting broker")
+                requestChannelPoisonPill.die(config.heapDumpFolder, config.heapDumpTimeout)
+              }
+            }
+          }, watchdogIntervalMs, watchdogIntervalMs)
+        }
 
         // Start alter partition manager based on the IBP version
         alterPartitionManager = if (config.interBrokerProtocolVersion.isAlterPartitionSupported) {
@@ -1066,6 +1093,8 @@ class KafkaServer(
          * not flush the remaining partitions or write the clean shutdown marker. Ultimately, the
          * broker would have to take hours to recover the log during restart.
          */
+        if (healthCheckScheduler != null)
+          CoreUtils.swallow(healthCheckScheduler.shutdown(), this)
         if (kafkaScheduler != null)
           CoreUtils.swallow(kafkaScheduler.shutdown(), this)
 
@@ -1103,6 +1132,8 @@ class KafkaServer(
 
         if (logManager != null)
           CoreUtils.swallow(logManager.shutdown(), this)
+        if (logDirFailureChannel != null)
+          CoreUtils.swallow(logDirFailureChannel.close(), this)
 
         if (kafkaController != null)
           CoreUtils.swallow(kafkaController.shutdown(), this)
@@ -1133,6 +1164,7 @@ class KafkaServer(
           CoreUtils.swallow(metrics.close(), this)
         if (brokerTopicStats != null)
           CoreUtils.swallow(brokerTopicStats.close(), this)
+        CoreUtils.swallow(liProtocolBridgeMetrics.close(), this)
 
         // Clear all reconfigurable instances stored in DynamicBrokerConfig
         config.dynamicConfig.clear()

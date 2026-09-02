@@ -32,22 +32,28 @@ object LiProtocolBridgeMetrics {
   val RackIdMapperEnabled = "RackIdMapperEnabled"
   val ZookeeperPaginationEnabled = "ZookeeperPaginationEnabled"
   val DynamicTopicDeletionEnabled = "DynamicTopicDeletionEnabled"
-  val ReassignmentCancellationSafetyEnabled = "ReassignmentCancellationSafetyEnabled"
-  val LeaderTransferEnabled = "LeaderTransferEnabled"
+  val ControllerInitializationThreads = "ControllerInitializationThreads"
   val ProduceRequestInstrumentationEnabled = "ProduceRequestInstrumentationEnabled"
+  val RequestMetricBucketsEnabled = "RequestMetricBucketsEnabled"
+  val RequestChannelWatchdogEnabled = "RequestChannelWatchdogEnabled"
   val MinimumLogRollEnabled = "MinimumLogRollEnabled"
+  val ReassignmentCancellationSafetyEnabled = "ReassignmentCancellationSafetyEnabled"
   val ListOffsetsInstrumentationEnabled = "ListOffsetsInstrumentationEnabled"
   val StaticDefaultQuotasEnabled = "StaticDefaultQuotasEnabled"
   val ReplicaRequestTimeoutEnabled = "ReplicaRequestTimeoutEnabled"
   val OffsetsTopicConfigEnabled = "OffsetsTopicConfigEnabled"
-  val ControllerInitializationThreads = "ControllerInitializationThreads"
+  val LeaderTransferEnabled = "LeaderTransferEnabled"
+  val LegacyRequestMetricsEnabled = "LegacyRequestMetricsEnabled"
+  val LogTruncationMetricsEnabled = "LogTruncationMetricsEnabled"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
-    ReassignmentCancellationSafetyEnabled, LeaderTransferEnabled, ProduceRequestInstrumentationEnabled,
-    MinimumLogRollEnabled, ListOffsetsInstrumentationEnabled, StaticDefaultQuotasEnabled,
-    ReplicaRequestTimeoutEnabled, OffsetsTopicConfigEnabled, ControllerInitializationThreads)
+    ControllerInitializationThreads, ProduceRequestInstrumentationEnabled,
+    RequestMetricBucketsEnabled, RequestChannelWatchdogEnabled, MinimumLogRollEnabled,
+    ReassignmentCancellationSafetyEnabled, ListOffsetsInstrumentationEnabled,
+    StaticDefaultQuotasEnabled, ReplicaRequestTimeoutEnabled, OffsetsTopicConfigEnabled,
+    LeaderTransferEnabled, LegacyRequestMetricsEnabled, LogTruncationMetricsEnabled)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -63,7 +69,7 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
   metricsGroup.newGauge(RecommendedLeaderElectionEnabled,
     () => enabled(config.liProtocolBridgeRecommendedElectionActive), tags)
   metricsGroup.newGauge(ExcludePartitionsEnabled,
-    () => enabled(config.liProtocolBridgeExcludePartitionsEnable), tags)
+    () => enabled(config.liProtocolBridgeExcludePartitionsActive), tags)
   metricsGroup.newGauge(MoveControllerEnabled,
     () => enabled(config.liProtocolBridgeMoveControllerActive), tags)
   metricsGroup.newGauge(ShutdownSafetyOverrideEnabled,
@@ -78,14 +84,18 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liZookeeperPaginationEnable), tags)
   metricsGroup.newGauge(DynamicTopicDeletionEnabled,
     () => enabled(config.liProtocolBridgeDynamicTopicDeletionActive), tags)
-  metricsGroup.newGauge(ReassignmentCancellationSafetyEnabled,
-    () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
-  metricsGroup.newGauge(LeaderTransferEnabled,
-    () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
+  metricsGroup.newGauge(ControllerInitializationThreads,
+    () => config.liNumControllerInitThreads, tags)
   metricsGroup.newGauge(ProduceRequestInstrumentationEnabled,
     () => enabled(config.liProtocolBridgeProduceRequestInstrumentationActive), tags)
+  metricsGroup.newGauge(RequestMetricBucketsEnabled,
+    () => enabled(config.liProtocolBridgeRequestMetricBucketsActive), tags)
+  metricsGroup.newGauge(RequestChannelWatchdogEnabled,
+    () => enabled(config.liProtocolBridgeRequestChannelWatchdogActive), tags)
   metricsGroup.newGauge(MinimumLogRollEnabled,
     () => enabled(config.liProtocolBridgeMinimumLogRollActive), tags)
+  metricsGroup.newGauge(ReassignmentCancellationSafetyEnabled,
+    () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
   metricsGroup.newGauge(ListOffsetsInstrumentationEnabled,
     () => enabled(config.liProtocolBridgeListOffsetsInstrumentationActive), tags)
   metricsGroup.newGauge(StaticDefaultQuotasEnabled,
@@ -94,8 +104,12 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgeReplicaRequestTimeoutActive), tags)
   metricsGroup.newGauge(OffsetsTopicConfigEnabled,
     () => enabled(config.liProtocolBridgeOffsetsTopicConfigActive), tags)
-  metricsGroup.newGauge(ControllerInitializationThreads,
-    () => config.liNumControllerInitThreads, tags)
+  metricsGroup.newGauge(LeaderTransferEnabled,
+    () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
+  metricsGroup.newGauge(LegacyRequestMetricsEnabled,
+    () => enabled(config.liProtocolBridgeLegacyRequestMetricsActive), tags)
+  metricsGroup.newGauge(LogTruncationMetricsEnabled,
+    () => enabled(config.liProtocolBridgeLogTruncationMetricsActive), tags)
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 

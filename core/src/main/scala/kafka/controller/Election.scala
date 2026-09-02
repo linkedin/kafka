@@ -19,7 +19,7 @@ package kafka.controller
 import kafka.api.LeaderAndIsr
 import org.apache.kafka.common.TopicPartition
 
-import scala.collection.Seq
+import scala.collection.{Map, Seq}
 
 case class ElectionResult(topicPartition: TopicPartition, leaderAndIsr: Option[LeaderAndIsr], liveReplicas: Seq[Int])
 
@@ -103,6 +103,27 @@ object Election {
                         leaderAndIsrs: Seq[(TopicPartition, LeaderAndIsr)]): Seq[ElectionResult] = {
     leaderAndIsrs.map { case (partition, leaderAndIsr) =>
       leaderForReassign(partition, leaderAndIsr, controllerContext)
+    }
+  }
+
+  private def leaderForRecommendation(partition: TopicPartition,
+                                      leaderAndIsr: LeaderAndIsr,
+                                      recommendedLeader: Option[Int],
+                                      controllerContext: ControllerContext): ElectionResult = {
+    val assignment = controllerContext.partitionReplicaAssignment(partition)
+    val liveReplicas = assignment.filter(replica => controllerContext.isReplicaOnline(replica, partition))
+    val leaderOpt = PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(
+      recommendedLeader, leaderAndIsr.isr, liveReplicas.toSet)
+    val newLeaderAndIsr = leaderOpt.map(leaderAndIsr.newLeader)
+    ElectionResult(partition, newLeaderAndIsr, liveReplicas)
+  }
+
+  /** Elect the requested leader when it is both live and in the ISR. */
+  def leaderForRecommendation(controllerContext: ControllerContext,
+                              leaderAndIsrs: Seq[(TopicPartition, LeaderAndIsr)],
+                              recommendedLeaders: Map[TopicPartition, Int]): Seq[ElectionResult] = {
+    leaderAndIsrs.map { case (partition, leaderAndIsr) =>
+      leaderForRecommendation(partition, leaderAndIsr, recommendedLeaders.get(partition), controllerContext)
     }
   }
 

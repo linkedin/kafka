@@ -103,6 +103,21 @@ class PartitionLeaderElectionAlgorithmsTest {
   }
 
   @Test
+  def testRecommendedLeaderMustBeLiveAndInSync(): Unit = {
+    val isr = Seq(2, 4)
+    val liveReplicas = Set(2, 4)
+
+    assertEquals(Some(4), PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(
+      Some(4), isr, liveReplicas))
+    assertEquals(None, PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(
+      Some(3), isr, liveReplicas + 3))
+    assertEquals(None, PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(
+      Some(4), isr, liveReplicas - 4))
+    assertEquals(None, PartitionLeaderElectionAlgorithms.recommendedPartitionLeaderElection(
+      None, isr, liveReplicas))
+  }
+
+  @Test
   def testPreferredReplicaPartitionLeaderElection(): Unit = {
     val assignment = Seq(2, 4)
     val isr = Seq(2, 4)

@@ -60,9 +60,19 @@ import scala.collection.{Map, Seq}
 object KafkaConfig {
 
   val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
+  val LiProtocolBridgeFollowerRecoveryEnableProp = "li.protocol.bridge.follower.recovery.enable"
+  val LiProtocolBridgeRecommendedElectionEnableProp = "li.protocol.bridge.recommended.leader.election.enable"
+  val LiProtocolBridgeExcludePartitionsEnableProp = "li.protocol.bridge.metadata.exclude.partitions.enable"
+
   val LiProtocolBridgeModeEnableDoc =
     "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +
     "In ZooKeeper mode, bridge controllers send LeaderAndIsr v2, UpdateMetadata v5, and StopReplica v1."
+  val LiProtocolBridgeFollowerRecoveryEnableDoc =
+    "Accept the 3.0-li earliest-local ListOffsets value and use it for follower recovery in bridge mode."
+  val LiProtocolBridgeRecommendedElectionEnableDoc =
+    "Accept 3.0-li recommended leader election requests on ZooKeeper controllers."
+  val LiProtocolBridgeExcludePartitionsEnableDoc =
+    "Honor the 3.0-li Metadata request tag that omits partition metadata from the response."
 
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
@@ -96,6 +106,12 @@ object KafkaConfig {
   val configDef = new ConfigDef(AbstractKafkaConfig.CONFIG_DEF)
     .define(LiProtocolBridgeModeEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeModeEnableDoc)
+    .define(LiProtocolBridgeFollowerRecoveryEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeFollowerRecoveryEnableDoc)
+    .define(LiProtocolBridgeRecommendedElectionEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeRecommendedElectionEnableDoc)
+    .define(LiProtocolBridgeExcludePartitionsEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeExcludePartitionsEnableDoc)
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -195,7 +211,21 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   @volatile private var currentConfig = this
   val processRoles: Set[ProcessRole] = parseProcessRoles()
   def liProtocolBridgeModeEnable: Boolean = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
+  def liProtocolBridgeFollowerRecoveryEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp)
+  def liProtocolBridgeRecommendedElectionEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp)
+  def liProtocolBridgeExcludePartitionsEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp)
+
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
+  def liProtocolBridgeFollowerRecoveryActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeFollowerRecoveryEnable
+  def liProtocolBridgeRecommendedElectionActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeRecommendedElectionEnable
+  def liProtocolBridgeExcludePartitionsActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeExcludePartitionsEnable
+
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 
   private[server] def updateCurrentConfig(newConfig: KafkaConfig): Unit = {

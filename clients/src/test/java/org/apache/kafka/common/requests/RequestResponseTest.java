@@ -1129,6 +1129,15 @@ public class RequestResponseTest {
             case LI_MOVE_CONTROLLER:
                 return new LiMoveControllerRequest(
                         new org.apache.kafka.common.message.LiMoveControllerRequestData(), version);
+            case LI_CREATE_FEDERATED_TOPIC_ZNODES:
+                return new LiCreateFederatedTopicZnodesRequest(
+                        new org.apache.kafka.common.message.LiCreateFederatedTopicZnodesRequestData(), version);
+            case LI_DELETE_FEDERATED_TOPIC_ZNODES:
+                return new LiDeleteFederatedTopicZnodesRequest(
+                        new org.apache.kafka.common.message.LiDeleteFederatedTopicZnodesRequestData(), version);
+            case LI_LIST_FEDERATED_TOPIC_ZNODES:
+                return new LiListFederatedTopicZnodesRequest(
+                        new org.apache.kafka.common.message.LiListFederatedTopicZnodesRequestData(), version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -1227,6 +1236,12 @@ public class RequestResponseTest {
                 return LiControlledShutdownSkipSafetyCheckResponse.prepareResponse(Errors.NONE);
             case LI_MOVE_CONTROLLER:
                 return LiMoveControllerResponse.prepareResponse(Errors.NONE, version);
+            case LI_CREATE_FEDERATED_TOPIC_ZNODES:
+                return LiCreateFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, 0, version);
+            case LI_DELETE_FEDERATED_TOPIC_ZNODES:
+                return LiDeleteFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, 0, version);
+            case LI_LIST_FEDERATED_TOPIC_ZNODES:
+                return LiListFederatedTopicZnodesResponse.prepareResponse(Errors.NONE, 0, version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }

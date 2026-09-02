@@ -88,6 +88,12 @@ object RequestConvertToJson {
       case req: LiControlledShutdownSkipSafetyCheckRequest =>
         LiControlledShutdownSkipSafetyCheckRequestDataJsonConverter.write(req.data, request.version)
       case req: LiMoveControllerRequest => LiMoveControllerRequestDataJsonConverter.write(req.data, request.version)
+      case req: LiCreateFederatedTopicZnodesRequest =>
+        LiCreateFederatedTopicZnodesRequestDataJsonConverter.write(req.data, request.version)
+      case req: LiDeleteFederatedTopicZnodesRequest =>
+        LiDeleteFederatedTopicZnodesRequestDataJsonConverter.write(req.data, request.version)
+      case req: LiListFederatedTopicZnodesRequest =>
+        LiListFederatedTopicZnodesRequestDataJsonConverter.write(req.data, request.version)
       case req: ListPartitionReassignmentsRequest => ListPartitionReassignmentsRequestDataJsonConverter.write(req.data, request.version)
       case req: ListTransactionsRequest => ListTransactionsRequestDataJsonConverter.write(req.data, request.version)
       case req: MetadataRequest => MetadataRequestDataJsonConverter.write(req.data, request.version)
@@ -186,6 +192,12 @@ object RequestConvertToJson {
       case res: LiControlledShutdownSkipSafetyCheckResponse =>
         LiControlledShutdownSkipSafetyCheckResponseDataJsonConverter.write(res.data, version)
       case res: LiMoveControllerResponse => LiMoveControllerResponseDataJsonConverter.write(res.data, version)
+      case res: LiCreateFederatedTopicZnodesResponse =>
+        LiCreateFederatedTopicZnodesResponseDataJsonConverter.write(res.data, version)
+      case res: LiDeleteFederatedTopicZnodesResponse =>
+        LiDeleteFederatedTopicZnodesResponseDataJsonConverter.write(res.data, version)
+      case res: LiListFederatedTopicZnodesResponse =>
+        LiListFederatedTopicZnodesResponseDataJsonConverter.write(res.data, version)
       case res: ListPartitionReassignmentsResponse => ListPartitionReassignmentsResponseDataJsonConverter.write(res.data, version)
       case res: ListTransactionsResponse => ListTransactionsResponseDataJsonConverter.write(res.data, version)
       case res: MetadataResponse => MetadataResponseDataJsonConverter.write(res.data, version)

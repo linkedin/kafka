@@ -22,6 +22,7 @@ package org.apache.kafka.storage.internals.log;
 public class RollParams {
 
     public final long maxSegmentMs;
+    public final long minSegmentMs;
     public final int maxSegmentBytes;
     public final long maxTimestampInMessages;
     public final long maxOffsetInMessages;
@@ -34,8 +35,20 @@ public class RollParams {
                long maxOffsetInMessages,
                int messagesSize,
                long now) {
+        this(maxSegmentMs, 0L, maxSegmentBytes, maxTimestampInMessages,
+                maxOffsetInMessages, messagesSize, now);
+    }
+
+    public RollParams(long maxSegmentMs,
+               long minSegmentMs,
+               int maxSegmentBytes,
+               long maxTimestampInMessages,
+               long maxOffsetInMessages,
+               int messagesSize,
+               long now) {
 
         this.maxSegmentMs = maxSegmentMs;
+        this.minSegmentMs = minSegmentMs;
         this.maxSegmentBytes = maxSegmentBytes;
         this.maxTimestampInMessages = maxTimestampInMessages;
         this.maxOffsetInMessages = maxOffsetInMessages;
@@ -47,6 +60,7 @@ public class RollParams {
     public String toString() {
         return "RollParams(" +
                 "maxSegmentMs=" + maxSegmentMs +
+                ", minSegmentMs=" + minSegmentMs +
                 ", maxSegmentBytes=" + maxSegmentBytes +
                 ", maxTimestampInMessages=" + maxTimestampInMessages +
                 ", maxOffsetInMessages=" + maxOffsetInMessages +

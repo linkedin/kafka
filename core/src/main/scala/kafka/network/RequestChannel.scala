@@ -99,6 +99,7 @@ object RequestChannel extends Logging {
     @volatile var messageConversionsTimeNanos: Long = 0L
     @volatile var apiThrottleTimeMs: Long = 0L
     @volatile var temporaryMemoryBytes: Long = 0L
+    @volatile var responseBytes: Long = 0L
     @volatile var recordNetworkThreadTimeCallback: Option[Long => Unit] = None
     @volatile var callbackRequestDequeueTimeNanos: Option[Long] = None
     @volatile var callbackRequestCompleteTimeNanos: Option[Long] = None
@@ -115,7 +116,7 @@ object RequestChannel extends Logging {
 
     def header: RequestHeader = context.header
 
-    private def sizeOfBodyInBytes: Int = bodyAndSize.size
+    def sizeOfBodyInBytes: Int = bodyAndSize.size
 
     def sizeInBytes: Int = header.size + sizeOfBodyInBytes
 
@@ -420,9 +421,11 @@ class RequestChannel(val queueSize: Int,
       case NonFatal(e) => warn("Request observer failed while observing a response", e)
     }
     updateErrorMetrics(request.header.apiKey, response.errorCounts.asScala)
+    val responseSend = request.buildResponseSend(response)
+    request.responseBytes = responseSend.size
     sendResponse(new RequestChannel.SendResponse(
       request,
-      request.buildResponseSend(response),
+      responseSend,
       request.responseNode(response),
       onComplete
     ))

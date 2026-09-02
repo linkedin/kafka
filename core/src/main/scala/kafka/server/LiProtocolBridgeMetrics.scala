@@ -34,12 +34,20 @@ object LiProtocolBridgeMetrics {
   val DynamicTopicDeletionEnabled = "DynamicTopicDeletionEnabled"
   val ReassignmentCancellationSafetyEnabled = "ReassignmentCancellationSafetyEnabled"
   val LeaderTransferEnabled = "LeaderTransferEnabled"
+  val ProduceRequestInstrumentationEnabled = "ProduceRequestInstrumentationEnabled"
+  val MinimumLogRollEnabled = "MinimumLogRollEnabled"
+  val ListOffsetsInstrumentationEnabled = "ListOffsetsInstrumentationEnabled"
+  val StaticDefaultQuotasEnabled = "StaticDefaultQuotasEnabled"
+  val ReplicaRequestTimeoutEnabled = "ReplicaRequestTimeoutEnabled"
+  val OffsetsTopicConfigEnabled = "OffsetsTopicConfigEnabled"
   val ControllerInitializationThreads = "ControllerInitializationThreads"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
-    ReassignmentCancellationSafetyEnabled, LeaderTransferEnabled, ControllerInitializationThreads)
+    ReassignmentCancellationSafetyEnabled, LeaderTransferEnabled, ProduceRequestInstrumentationEnabled,
+    MinimumLogRollEnabled, ListOffsetsInstrumentationEnabled, StaticDefaultQuotasEnabled,
+    ReplicaRequestTimeoutEnabled, OffsetsTopicConfigEnabled, ControllerInitializationThreads)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -74,6 +82,18 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
   metricsGroup.newGauge(LeaderTransferEnabled,
     () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
+  metricsGroup.newGauge(ProduceRequestInstrumentationEnabled,
+    () => enabled(config.liProtocolBridgeProduceRequestInstrumentationActive), tags)
+  metricsGroup.newGauge(MinimumLogRollEnabled,
+    () => enabled(config.liProtocolBridgeMinimumLogRollActive), tags)
+  metricsGroup.newGauge(ListOffsetsInstrumentationEnabled,
+    () => enabled(config.liProtocolBridgeListOffsetsInstrumentationActive), tags)
+  metricsGroup.newGauge(StaticDefaultQuotasEnabled,
+    () => enabled(config.liProtocolBridgeStaticDefaultQuotasActive), tags)
+  metricsGroup.newGauge(ReplicaRequestTimeoutEnabled,
+    () => enabled(config.liProtocolBridgeReplicaRequestTimeoutActive), tags)
+  metricsGroup.newGauge(OffsetsTopicConfigEnabled,
+    () => enabled(config.liProtocolBridgeOffsetsTopicConfigActive), tags)
   metricsGroup.newGauge(ControllerInitializationThreads,
     () => config.liNumControllerInitThreads, tags)
 

@@ -24,6 +24,7 @@ import kafka.controller.KafkaController
 import kafka.coordinator.transaction.TransactionCoordinator
 import kafka.utils.Logging
 import org.apache.kafka.clients.ClientResponse
+import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.errors.InvalidTopicException
 import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.internals.Topic.{GROUP_METADATA_TOPIC_NAME, TRANSACTION_STATE_TOPIC_NAME}
@@ -49,6 +50,17 @@ trait AutoTopicCreationManager {
 }
 
 object AutoTopicCreationManager {
+
+  private[server] def offsetsTopicConfigs(base: Properties, config: KafkaConfig): Properties = {
+    val result = new Properties
+    result.putAll(base)
+    if (config.liProtocolBridgeOffsetsTopicConfigActive) {
+      result.put(TopicConfig.MAX_MESSAGE_BYTES_CONFIG, config.offsetsTopicMaxMessageBytes.toString)
+      result.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, config.offsetsTopicMinInSyncReplicas.toString)
+      result.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, config.offsetsTopicMinCompactionLagMs.toString)
+    }
+    result
+  }
 
   def apply(
    config: KafkaConfig,
@@ -236,7 +248,8 @@ class DefaultAutoTopicCreationManager(
           .setName(topic)
           .setNumPartitions(config.groupCoordinatorConfig.offsetsTopicPartitions)
           .setReplicationFactor(config.groupCoordinatorConfig.offsetsTopicReplicationFactor)
-          .setConfigs(convertToTopicConfigCollections(groupCoordinator.groupMetadataTopicConfigs))
+          .setConfigs(convertToTopicConfigCollections(
+            AutoTopicCreationManager.offsetsTopicConfigs(groupCoordinator.groupMetadataTopicConfigs, config)))
       case TRANSACTION_STATE_TOPIC_NAME =>
         new CreatableTopic()
           .setName(topic)

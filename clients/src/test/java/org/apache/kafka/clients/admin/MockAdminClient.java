@@ -416,6 +416,24 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
+    public synchronized CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(
+            Map<String, String> federatedTopics, CreateFederatedTopicZnodesOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public synchronized CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(
+            Map<String, String> federatedTopics, DeleteFederatedTopicZnodesOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public synchronized ListFederatedTopicZnodesResult listFederatedTopicZnodes(
+            Map<String, String> federatedTopics, ListFederatedTopicZnodesOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
     public synchronized ListTopicsResult listTopics(ListTopicsOptions options) {
         Map<String, TopicListing> topicListings = new HashMap<>();
 
@@ -738,6 +756,16 @@ public class MockAdminClient extends AdminClient {
 
     @Override
     public synchronized DeleteConsumerGroupOffsetsResult deleteConsumerGroupOffsets(String groupId, Set<TopicPartition> partitions, DeleteConsumerGroupOffsetsOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public synchronized MoveControllerResult moveController(MoveControllerOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public synchronized SkipShutdownSafetyCheckResult skipShutdownSafetyCheck(SkipShutdownSafetyCheckOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }
 

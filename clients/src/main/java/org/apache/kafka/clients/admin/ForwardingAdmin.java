@@ -63,6 +63,24 @@ public class ForwardingAdmin implements Admin {
     }
 
     @Override
+    public CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(
+        Map<String, String> federatedTopics, CreateFederatedTopicZnodesOptions options) {
+        return delegate.createFederatedTopicZnodes(federatedTopics, options);
+    }
+
+    @Override
+    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(
+        Map<String, String> federatedTopics, DeleteFederatedTopicZnodesOptions options) {
+        return delegate.deleteFederatedTopicZnodes(federatedTopics, options);
+    }
+
+    @Override
+    public ListFederatedTopicZnodesResult listFederatedTopicZnodes(
+        Map<String, String> federatedTopics, ListFederatedTopicZnodesOptions options) {
+        return delegate.listFederatedTopicZnodes(federatedTopics, options);
+    }
+
+    @Override
     public DeleteTopicsResult deleteTopics(TopicCollection topics, DeleteTopicsOptions options) {
         return delegate.deleteTopics(topics, options);
     }
@@ -194,6 +212,16 @@ public class ForwardingAdmin implements Admin {
     @Override
     public ElectLeadersResult electLeaders(ElectionType electionType, Set<TopicPartition> partitions, ElectLeadersOptions options) {
         return delegate.electLeaders(electionType, partitions, options);
+    }
+
+    @Override
+    public MoveControllerResult moveController(MoveControllerOptions options) {
+        return delegate.moveController(options);
+    }
+
+    @Override
+    public SkipShutdownSafetyCheckResult skipShutdownSafetyCheck(SkipShutdownSafetyCheckOptions options) {
+        return delegate.skipShutdownSafetyCheck(options);
     }
 
     @Override

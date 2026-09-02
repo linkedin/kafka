@@ -162,6 +162,11 @@ import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
 import org.apache.kafka.common.message.UnregisterBrokerRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesResponseData.UpdatableFeatureResult;
+import org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRequestData;
+import org.apache.kafka.common.message.LiCreateFederatedTopicZnodesRequestData;
+import org.apache.kafka.common.message.LiDeleteFederatedTopicZnodesRequestData;
+import org.apache.kafka.common.message.LiListFederatedTopicZnodesRequestData;
+import org.apache.kafka.common.message.LiMoveControllerRequestData;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
@@ -246,6 +251,16 @@ import org.apache.kafka.common.requests.UnregisterBrokerRequest;
 import org.apache.kafka.common.requests.UnregisterBrokerResponse;
 import org.apache.kafka.common.requests.UpdateFeaturesRequest;
 import org.apache.kafka.common.requests.UpdateFeaturesResponse;
+import org.apache.kafka.common.requests.LiControlledShutdownSkipSafetyCheckRequest;
+import org.apache.kafka.common.requests.LiControlledShutdownSkipSafetyCheckResponse;
+import org.apache.kafka.common.requests.LiCreateFederatedTopicZnodesRequest;
+import org.apache.kafka.common.requests.LiCreateFederatedTopicZnodesResponse;
+import org.apache.kafka.common.requests.LiDeleteFederatedTopicZnodesRequest;
+import org.apache.kafka.common.requests.LiDeleteFederatedTopicZnodesResponse;
+import org.apache.kafka.common.requests.LiListFederatedTopicZnodesRequest;
+import org.apache.kafka.common.requests.LiListFederatedTopicZnodesResponse;
+import org.apache.kafka.common.requests.LiMoveControllerRequest;
+import org.apache.kafka.common.requests.LiMoveControllerResponse;
 import org.apache.kafka.common.security.auth.KafkaPrincipal;
 import org.apache.kafka.common.security.scram.internals.ScramFormatter;
 import org.apache.kafka.common.security.token.delegation.DelegationToken;
@@ -1801,6 +1816,44 @@ public class KafkaAdminClient extends AdminClient {
         return new CreateTopicsResult(new HashMap<>(topicFutures));
     }
 
+    @Override
+    public CreateOrDeleteFederatedTopicZnodesResult createFederatedTopicZnodes(
+            final Map<String, String> federatedTopics,
+            final CreateFederatedTopicZnodesOptions options) {
+        final Map<String, KafkaFutureImpl<Void>> futures = new HashMap<>(federatedTopics.size());
+        final List<LiCreateFederatedTopicZnodesRequestData.FederatedTopics> topics = new ArrayList<>();
+        federatedTopics.forEach((topic, namespace) -> {
+            topics.add(new LiCreateFederatedTopicZnodesRequestData.FederatedTopics()
+                    .setName(topic).setNamespace(namespace));
+            futures.put(topic, new KafkaFutureImpl<>());
+        });
+        final long now = time.milliseconds();
+        runnable.call(new Call("createFederatedTopicZnodes", calcDeadlineMs(now, options.timeoutMs()),
+                new ControllerNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new LiCreateFederatedTopicZnodesRequest.Builder(
+                        new LiCreateFederatedTopicZnodesRequestData().setTopics(topics).setTimeoutMs(timeoutMs),
+                        (short) 0);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                handleNotControllerError(abstractResponse);
+                Errors error = Errors.forCode(((LiCreateFederatedTopicZnodesResponse) abstractResponse)
+                        .data().errorCode());
+                if (error == Errors.NONE) futures.values().forEach(future -> future.complete(null));
+                else completeAllExceptionally(futures.values(), error.exception());
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                completeAllExceptionally(futures.values(), throwable);
+            }
+        }, now);
+        return new CreateOrDeleteFederatedTopicZnodesResult(new HashMap<>(futures));
+    }
+
     private Call getCreateTopicsCall(final CreateTopicsOptions options,
                                      final Map<String, KafkaFutureImpl<TopicMetadataAndConfig>> futures,
                                      final CreatableTopicCollection topics,
@@ -1911,6 +1964,44 @@ public class KafkaAdminClient extends AdminClient {
             return DeleteTopicsResult.ofTopicNames(handleDeleteTopicsUsingNames(((TopicNameCollection) topics).topicNames(), options));
         else
             throw new IllegalArgumentException("The TopicCollection: " + topics + " provided did not match any supported classes for deleteTopics.");
+    }
+
+    @Override
+    public CreateOrDeleteFederatedTopicZnodesResult deleteFederatedTopicZnodes(
+            final Map<String, String> federatedTopics,
+            final DeleteFederatedTopicZnodesOptions options) {
+        final Map<String, KafkaFutureImpl<Void>> futures = new HashMap<>(federatedTopics.size());
+        final List<LiDeleteFederatedTopicZnodesRequestData.FederatedTopics> topics = new ArrayList<>();
+        federatedTopics.forEach((topic, namespace) -> {
+            topics.add(new LiDeleteFederatedTopicZnodesRequestData.FederatedTopics()
+                    .setName(topic).setNamespace(namespace));
+            futures.put(topic, new KafkaFutureImpl<>());
+        });
+        final long now = time.milliseconds();
+        runnable.call(new Call("deleteFederatedTopicZnodes", calcDeadlineMs(now, options.timeoutMs()),
+                new ControllerNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new LiDeleteFederatedTopicZnodesRequest.Builder(
+                        new LiDeleteFederatedTopicZnodesRequestData().setTopics(topics).setTimeoutMs(timeoutMs),
+                        (short) 0);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                handleNotControllerError(abstractResponse);
+                Errors error = Errors.forCode(((LiDeleteFederatedTopicZnodesResponse) abstractResponse)
+                        .data().errorCode());
+                if (error == Errors.NONE) futures.values().forEach(future -> future.complete(null));
+                else completeAllExceptionally(futures.values(), error.exception());
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                completeAllExceptionally(futures.values(), throwable);
+            }
+        }, now);
+        return new CreateOrDeleteFederatedTopicZnodesResult(new HashMap<>(futures));
     }
 
     private Map<String, KafkaFuture<Void>> handleDeleteTopicsUsingNames(final Collection<String> topicNames,
@@ -2139,6 +2230,40 @@ public class KafkaAdminClient extends AdminClient {
             }
         }, now);
         return new ListTopicsResult(topicListingFuture);
+    }
+
+    @Override
+    public ListFederatedTopicZnodesResult listFederatedTopicZnodes(
+            final Map<String, String> federatedTopics,
+            final ListFederatedTopicZnodesOptions options) {
+        final KafkaFutureImpl<List<String>> future = new KafkaFutureImpl<>();
+        final List<LiListFederatedTopicZnodesRequestData.FederatedTopics> topics = new ArrayList<>();
+        federatedTopics.forEach((topic, namespace) -> topics.add(
+                new LiListFederatedTopicZnodesRequestData.FederatedTopics()
+                        .setName(topic).setNamespace(namespace)));
+        final long now = time.milliseconds();
+        runnable.call(new Call("listFederatedTopicZnodes", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new LiListFederatedTopicZnodesRequest.Builder(
+                        new LiListFederatedTopicZnodesRequestData().setTopics(topics), (short) 0);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                LiListFederatedTopicZnodesResponse response = (LiListFederatedTopicZnodesResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                if (error == Errors.NONE) future.complete(new ArrayList<>(response.data().topics()));
+                else future.completeExceptionally(error.exception());
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        }, now);
+        return new ListFederatedTopicZnodesResult(future);
     }
 
     @Override
@@ -3685,6 +3810,62 @@ public class KafkaAdminClient extends AdminClient {
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
         return Collections.unmodifiableMap(this.metrics.metrics());
+    }
+
+    @Override
+    public SkipShutdownSafetyCheckResult skipShutdownSafetyCheck(SkipShutdownSafetyCheckOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        runnable.call(new Call("skipShutdownSafetyCheck", calcDeadlineMs(now, options.timeoutMs()),
+                new ControllerNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new LiControlledShutdownSkipSafetyCheckRequest.Builder(
+                        new LiControlledShutdownSkipSafetyCheckRequestData()
+                                .setBrokerId(options.brokerId()).setBrokerEpoch(options.brokerEpoch()),
+                        (short) 0);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                Errors error = Errors.forCode(((LiControlledShutdownSkipSafetyCheckResponse) abstractResponse)
+                        .data().errorCode());
+                if (error == Errors.NONE) future.complete(null);
+                else future.completeExceptionally(error.exception());
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        }, now);
+        return new SkipShutdownSafetyCheckResult(future);
+    }
+
+    @Override
+    public MoveControllerResult moveController(MoveControllerOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        runnable.call(new Call("moveController", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new LiMoveControllerRequest.Builder(new LiMoveControllerRequestData(), (short) 0);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                Errors error = Errors.forCode(((LiMoveControllerResponse) abstractResponse).data().errorCode());
+                if (error == Errors.NONE) future.complete(null);
+                else future.completeExceptionally(error.exception());
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        }, now);
+        return new MoveControllerResult(future);
     }
 
     @Override

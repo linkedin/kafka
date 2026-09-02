@@ -25,6 +25,7 @@ import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BridgeProtocolConstantsTest {
     @Test
@@ -38,14 +39,14 @@ public class BridgeProtocolConstantsTest {
     }
 
     @Test
-    public void testControlApiDefinitionsAreNotAdvertisedWithoutHandlers() {
+    public void testControlApisAreScopedToZooKeeperBrokers() {
         for (ApiKeys apiKey : Arrays.asList(
             ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK,
             ApiKeys.LI_MOVE_CONTROLLER
         )) {
-            for (ListenerType listener : ListenerType.values()) {
-                assertFalse(apiKey.inScope(listener));
-            }
+            assertTrue(apiKey.inScope(ListenerType.ZK_BROKER));
+            assertFalse(apiKey.inScope(ListenerType.BROKER));
+            assertFalse(apiKey.inScope(ListenerType.CONTROLLER));
         }
     }
 }

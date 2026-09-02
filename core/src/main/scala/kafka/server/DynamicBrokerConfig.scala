@@ -98,7 +98,9 @@ object DynamicBrokerConfig {
       KafkaConfig.LiProtocolBridgeModeEnableProp,
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
       KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
-      KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp
+      KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
+      KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
+      KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp
     ) ++
     DynamicListenerConfig.ReconfigurableConfigs ++
     SocketServer.ReconfigurableConfigs ++
@@ -110,7 +112,9 @@ object DynamicBrokerConfig {
     KafkaConfig.LiProtocolBridgeModeEnableProp,
     KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
     KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
-    KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp
+    KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
+    KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
+    KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp
   )
   private val PerBrokerConfigs = (DynamicSecurityConfigs ++ DynamicListenerConfig.ReconfigurableConfigs).diff(
     ClusterLevelListenerConfigs)

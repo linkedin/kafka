@@ -16,7 +16,7 @@
 {
   "apiKey": 1002,
   "type": "request",
-  "listeners": [],
+  "listeners": ["zkBroker"],
   "name": "LiMoveControllerRequest",
   "validVersions": "0-1",
   "flexibleVersions": "0+",

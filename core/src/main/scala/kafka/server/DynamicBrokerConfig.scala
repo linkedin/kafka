@@ -82,17 +82,22 @@ object DynamicBrokerConfig {
     LogCleaner.ReconfigurableConfigs ++
     DynamicLogConfig.ReconfigurableConfigs ++
     DynamicThreadPool.ReconfigurableConfigs ++
-    Set(KafkaConfig.MetricReporterClassesProp) ++
-    Set(KafkaConfig.AutoCreateTopicsEnableProp) ++
-    Set(KafkaConfig.AllowPreferredControllerFallbackProp) ++
-    Set(KafkaConfig.LiCombinedControlRequestEnableProp) ++
+    Set(
+      KafkaConfig.MetricReporterClassesProp,
+      KafkaConfig.AutoCreateTopicsEnableProp,
+      KafkaConfig.AllowPreferredControllerFallbackProp,
+      KafkaConfig.LiCombinedControlRequestEnableProp,
+      KafkaConfig.LiProtocolBridgeModeEnableProp
+    ) ++
     DynamicListenerConfig.ReconfigurableConfigs ++
     ProduceRequestInstrumentationLogger.ReconfigurableConfigs ++
     SocketServer.ReconfigurableConfigs
 
   private val ClusterLevelListenerConfigs = Set(KafkaConfig.MaxConnectionsProp, KafkaConfig.MaxConnectionCreationRateProp)
-  private val ClusterLevelConfigs = Set(KafkaConfig.AllowPreferredControllerFallbackProp) ++
-    DynamicConfig.Broker.ClusterLevelConfigs
+  private val ClusterLevelConfigs = Set(
+    KafkaConfig.AllowPreferredControllerFallbackProp,
+    KafkaConfig.LiProtocolBridgeModeEnableProp
+  ) ++ DynamicConfig.Broker.ClusterLevelConfigs
   private val PerBrokerConfigs = (DynamicSecurityConfigs ++ DynamicListenerConfig.ReconfigurableConfigs).diff(
     ClusterLevelListenerConfigs)
   private val ListenerMechanismConfigs = Set(KafkaConfig.SaslJaasConfigProp,

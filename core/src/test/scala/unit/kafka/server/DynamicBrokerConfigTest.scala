@@ -20,6 +20,7 @@ package kafka.server
 import java.{lang, util}
 import java.util.Properties
 import java.util.concurrent.CompletionStage
+import kafka.api.KAFKA_2_1_IV2
 import kafka.utils.TestUtils
 import kafka.zk.KafkaZkClient
 import org.apache.kafka.common.{Endpoint, Reconfigurable}
@@ -172,6 +173,31 @@ class DynamicBrokerConfigTest {
     verifyUpdate(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "JKS")
     verifyUpdate(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, "password")
     verifyUpdate(SslConfigs.SSL_KEY_PASSWORD_CONFIG, "password")
+  }
+
+  @Test
+  def testProtocolBridgeModeIsClusterWideDynamicConfig(): Unit = {
+    val config = KafkaConfig(TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181))
+    val props = new Properties
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+
+    assertFalse(config.liProtocolBridgeModeEnable)
+    config.dynamicConfig.validate(props, perBrokerConfig = false)
+    config.dynamicConfig.updateDefaultConfig(props)
+    assertTrue(config.liProtocolBridgeModeEnable)
+    assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(props, perBrokerConfig = true))
+  }
+
+  @Test
+  def testProtocolBridgeModeDynamicUpdateRejectsOldIbp(): Unit = {
+    val brokerProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    TestUtils.setIbpAndMessageFormatVersions(brokerProps, KAFKA_2_1_IV2)
+    val config = KafkaConfig(brokerProps)
+    val bridgeProps = new Properties
+    bridgeProps.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+
+    assertThrows(classOf[IllegalArgumentException],
+      () => config.dynamicConfig.validate(bridgeProps, perBrokerConfig = false))
   }
 
   @Test

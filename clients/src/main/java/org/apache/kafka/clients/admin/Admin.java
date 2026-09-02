@@ -1023,6 +1023,28 @@ public interface Admin extends AutoCloseable {
     }
 
     /**
+     * Elect the recommended leader for each supplied partition using default options.
+     *
+     * @param partitionsWithRecommendedLeaders partitions mapped to their recommended broker IDs
+     * @return The ElectLeadersResult.
+     */
+    default ElectLeadersResult electRecommendedLeaders(
+        Map<TopicPartition, Integer> partitionsWithRecommendedLeaders) {
+        return electRecommendedLeaders(partitionsWithRecommendedLeaders, new ElectLeadersOptions());
+    }
+
+    /**
+     * Elect the recommended leader for each supplied partition.
+     *
+     * @param partitionsWithRecommendedLeaders partitions mapped to their recommended broker IDs
+     * @param options options to use when electing leaders
+     * @return The ElectLeadersResult.
+     */
+    ElectLeadersResult electRecommendedLeaders(
+        Map<TopicPartition, Integer> partitionsWithRecommendedLeaders,
+        ElectLeadersOptions options);
+
+    /**
      * Elect a replica as leader for the given {@code partitions}, or for all partitions if the argument
      * to {@code partitions} is null.
      * <p>

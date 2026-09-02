@@ -50,6 +50,10 @@
     { "name": "IncludeClusterAuthorizedOperations", "type": "bool", "versions": "8-10",
       "about": "Whether to include cluster authorized operations." },
     { "name": "IncludeTopicAuthorizedOperations", "type": "bool", "versions": "8+",
-      "about": "Whether to include topic authorized operations." }
+      "about": "Whether to include topic authorized operations." },
+    // Compatibility field introduced by 3.0-li commit 60325e5905 for AdminClient listTopics.
+    { "name": "ExcludePartitions", "type": "bool", "versions": "9+", "default": "false",
+      "tag": 0, "taggedVersions": "9+",
+      "about": "Whether to omit partition metadata from the response. This preserves compatibility with 3.0-li AdminClient listTopics requests." }
   ]
 }

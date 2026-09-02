@@ -18,6 +18,7 @@
 package kafka.server
 
 import kafka.utils.{CoreUtils, TestUtils}
+import kafka.zk.{FederatedTopicsZNode, PreferredControllersZNode}
 import org.apache.kafka.common.security.JaasUtils
 import org.apache.kafka.network.SocketServerConfigs
 import org.apache.kafka.server.common.MetadataVersion
@@ -31,6 +32,20 @@ import java.util.Properties
 import scala.jdk.CollectionConverters._
 
 class KafkaServerTest extends QuorumTestHarness {
+
+  @Test
+  def testCompatibilityZkPathsRequireFeatureFlags(): Unit = {
+    val defaultProps = new Properties
+    defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, TestUtils.MockZkConnect)
+    assertEquals(Seq.empty, KafkaServer.compatibilityZkPaths(KafkaConfig.fromProps(defaultProps)))
+
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, TestUtils.MockZkConnect)
+    props.put(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp, "true")
+    props.put(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp, "true")
+    assertEquals(Set(PreferredControllersZNode.path, FederatedTopicsZNode.path),
+      KafkaServer.compatibilityZkPaths(KafkaConfig.fromProps(props)).toSet)
+  }
 
   @Test
   def testAlreadyRegisteredAdvertisedListeners(): Unit = {

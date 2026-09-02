@@ -6854,6 +6854,7 @@ class KafkaApisTest extends Logging {
       anyShort
     )).thenReturn(UnboundedControllerMutationQuota)
     when(controller.isActive).thenReturn(true)
+    when(controller.isTopicDeletionEnabled).thenReturn(true)
     when(controller.controllerContext).thenReturn(controllerContext)
 
     val topicResults = Map(
@@ -6933,6 +6934,7 @@ class KafkaApisTest extends Logging {
       anyShort
     )).thenReturn(UnboundedControllerMutationQuota)
     when(controller.isActive).thenReturn(true)
+    when(controller.isTopicDeletionEnabled).thenReturn(true)
 
     // Try to delete three topics:
     // 1. One without describe permission

@@ -29,6 +29,7 @@ import kafka.server.DelayedOperationPurgatory;
 import kafka.server.DelayedProduce;
 import kafka.server.DelayedRemoteFetch;
 import kafka.server.KafkaConfig;
+import kafka.server.LeaderTransferManager;
 import kafka.server.MetadataCache;
 import kafka.server.QuotaFactory.QuotaManagers;
 import kafka.server.ReplicaManager;
@@ -70,6 +71,7 @@ public class ReplicaManagerBuilder {
     private Long brokerEpoch = -1L;
     private Optional<AddPartitionsToTxnManager> addPartitionsToTxnManager = Optional.empty();
     private DirectoryEventHandler directoryEventHandler = DirectoryEventHandler.NOOP;
+    private LeaderTransferManager leaderTransferManager = LeaderTransferManager.noOp();
 
     public ReplicaManagerBuilder setConfig(KafkaConfig config) {
         this.config = config;
@@ -181,6 +183,11 @@ public class ReplicaManagerBuilder {
         return this;
     }
 
+    public ReplicaManagerBuilder setLeaderTransferManager(LeaderTransferManager leaderTransferManager) {
+        this.leaderTransferManager = leaderTransferManager;
+        return this;
+    }
+
     public ReplicaManager build() {
         if (config == null) config = new KafkaConfig(Collections.emptyMap());
         if (logManager == null) throw new RuntimeException("You must set logManager");
@@ -213,6 +220,7 @@ public class ReplicaManagerBuilder {
                              OptionConverters.toScala(threadNamePrefix),
                              () -> brokerEpoch,
                              OptionConverters.toScala(addPartitionsToTxnManager),
-                             directoryEventHandler);
+                             directoryEventHandler,
+                             leaderTransferManager);
     }
 }

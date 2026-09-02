@@ -30,10 +30,16 @@ object LiProtocolBridgeMetrics {
   val PreferredControllerEnabled = "PreferredControllerEnabled"
   val FederatedTopicsEnabled = "FederatedTopicsEnabled"
   val RackIdMapperEnabled = "RackIdMapperEnabled"
+  val ZookeeperPaginationEnabled = "ZookeeperPaginationEnabled"
+  val DynamicTopicDeletionEnabled = "DynamicTopicDeletionEnabled"
+  val ReassignmentCancellationSafetyEnabled = "ReassignmentCancellationSafetyEnabled"
+  val LeaderTransferEnabled = "LeaderTransferEnabled"
+  val ControllerInitializationThreads = "ControllerInitializationThreads"
   val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
-    RackIdMapperEnabled)
+    RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
+    ReassignmentCancellationSafetyEnabled, LeaderTransferEnabled, ControllerInitializationThreads)
 }
 
 /** Exposes the effective value of every 3.0-li compatibility flag on each ZooKeeper broker. */
@@ -60,6 +66,16 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
     () => enabled(config.liProtocolBridgeFederatedTopicsActive), tags)
   metricsGroup.newGauge(RackIdMapperEnabled,
     () => enabled(config.liProtocolBridgeRackIdMapperActive), tags)
+  metricsGroup.newGauge(ZookeeperPaginationEnabled,
+    () => enabled(config.liZookeeperPaginationEnable), tags)
+  metricsGroup.newGauge(DynamicTopicDeletionEnabled,
+    () => enabled(config.liProtocolBridgeDynamicTopicDeletionActive), tags)
+  metricsGroup.newGauge(ReassignmentCancellationSafetyEnabled,
+    () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
+  metricsGroup.newGauge(LeaderTransferEnabled,
+    () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
+  metricsGroup.newGauge(ControllerInitializationThreads,
+    () => config.liNumControllerInitThreads, tags)
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 

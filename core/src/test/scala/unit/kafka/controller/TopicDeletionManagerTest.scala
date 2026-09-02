@@ -24,9 +24,26 @@ import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito._
 
 class TopicDeletionManagerTest {
+
+  @Test
+  def testDynamicDeleteTopicFlagCanBeResetToBrokerConfig(): Unit = {
+    val disabledProps = TestUtils.createBrokerConfig(1, "zkConnect")
+    disabledProps.put("delete.topic.enable", "false")
+    val disabledConfig = KafkaConfig.fromProps(disabledProps)
+    val manager = new TopicDeletionManager(disabledConfig, new ControllerContext,
+      mock(classOf[ReplicaStateMachine]), mock(classOf[PartitionStateMachine]), deletionClient)
+
+    assertFalse(manager.isDeleteTopicEnabled)
+    manager.isDeleteTopicEnabled = true
+    assertTrue(manager.isDeleteTopicEnabled)
+    manager.resetDeleteTopicEnabled()
+    assertFalse(manager.isDeleteTopicEnabled)
+  }
 
   private val brokerId = 1
   private val config = KafkaConfig.fromProps(TestUtils.createBrokerConfig(brokerId, "zkConnect"))
@@ -58,6 +75,40 @@ class TopicDeletionManagerTest {
 
     assertEquals(Set("foo", "bar"), controllerContext.topicsToBeDeleted.toSet)
     assertEquals(Set("bar"), controllerContext.topicsIneligibleForDeletion.toSet)
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testDeletionCallbacksAreRecordedWhilePaused(withFailure: Boolean): Unit = {
+    val context = initContext(Seq(1, 2, 3), Set("foo"), numPartitions = 1, replicationFactor = 3)
+    val replicaStateMachine = new MockReplicaStateMachine(context)
+    replicaStateMachine.startup()
+    val partitionStateMachine = new MockPartitionStateMachine(context,
+      uncleanLeaderElectionEnabled = false, isLeaderRecoverySupported = true)
+    partitionStateMachine.startup()
+    val manager = new TopicDeletionManager(config, context, replicaStateMachine,
+      partitionStateMachine, deletionClient)
+    manager.init(Set.empty, Set.empty)
+    manager.enqueueTopicsForDeletion(Set("foo"))
+    val replicas = context.replicasForTopic("foo")
+    val (failed, successful) = replicas.partition(replica => withFailure && replica.replica == 1)
+
+    manager.isDeleteTopicEnabled = false
+    manager.completeReplicaDeletion(successful)
+    manager.failReplicaDeletion(failed)
+    assertEquals(successful, context.replicasInState("foo", ReplicaDeletionSuccessful))
+    assertEquals(failed, context.replicasInState("foo", ReplicaDeletionIneligible))
+    assertTrue(context.topicsToBeDeleted.contains("foo"))
+    verify(deletionClient, never()).deleteTopic("foo", context.epochZkVersion)
+
+    manager.isDeleteTopicEnabled = true
+    manager.tryTopicDeletion()
+    if (withFailure) {
+      assertEquals(failed, context.replicasInState("foo", ReplicaDeletionStarted))
+      manager.completeReplicaDeletion(failed)
+    }
+    assertFalse(context.topicsToBeDeleted.contains("foo"))
+    verify(deletionClient).deleteTopic("foo", context.epochZkVersion)
   }
 
   @Test

@@ -24,6 +24,7 @@ import org.apache.kafka.common.requests.{ListOffsetsRequest, ListOffsetsResponse
 import org.apache.kafka.common.{IsolationLevel, TopicPartition}
 import org.apache.kafka.server.config.ServerConfigs
 import org.junit.jupiter.api.Assertions._
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
@@ -35,6 +36,18 @@ class ListOffsetsRequestTest extends BaseRequestTest {
 
   val topic = "topic"
   val partition = new TopicPartition(topic, 0)
+
+  @Test
+  def testOffsetMovedErrorCodeForOldFollower(): Unit = {
+    assertEquals(1107.toShort, KafkaApis.offsetMovedErrorCode(
+      liFollowerRecovery = true, ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP))
+    assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE.code,
+      KafkaApis.offsetMovedErrorCode(liFollowerRecovery = false,
+        ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP))
+    assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE.code,
+      KafkaApis.offsetMovedErrorCode(liFollowerRecovery = true,
+        ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP))
+  }
 
   override def modifyConfigs(props: Seq[Properties]): Unit = {
     super.modifyConfigs(props)

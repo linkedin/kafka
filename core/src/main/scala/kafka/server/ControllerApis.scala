@@ -30,6 +30,7 @@ import kafka.server.logger.RuntimeLoggerManager
 import kafka.server.metadata.KRaftMetadataCache
 import kafka.utils.Logging
 import org.apache.kafka.clients.admin.{AlterConfigOp, EndpointType}
+import org.apache.kafka.common.ElectionType
 import org.apache.kafka.common.Uuid.ZERO_UUID
 import org.apache.kafka.common.acl.AclOperation.{ALTER, ALTER_CONFIGS, CLUSTER_ACTION, CREATE, CREATE_TOKENS, DELETE, DESCRIBE, DESCRIBE_CONFIGS}
 import org.apache.kafka.common.config.ConfigResource
@@ -567,6 +568,12 @@ class ControllerApis(
   def handleElectLeaders(request: RequestChannel.Request): CompletableFuture[Unit] = {
     authHelper.authorizeClusterOperation(request, ALTER)
     val electLeadersRequest = request.body[ElectLeadersRequest]
+    if (electLeadersRequest.data.electionType == ElectionType.RECOMMENDED.value) {
+      requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+        electLeadersRequest.getErrorResponse(throttleMs,
+          new InvalidRequestException("Recommended leader election is supported only by ZooKeeper controllers")))
+      return CompletableFuture.completedFuture(())
+    }
     val context = new ControllerRequestContext(request.context.header.data, request.context.principal,
       requestTimeoutMsToDeadlineNs(time, electLeadersRequest.data.timeoutMs))
     val future = controller.electLeaders(context, electLeadersRequest.data)

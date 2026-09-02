@@ -47,6 +47,17 @@ public class ListOffsetsRequest extends AbstractRequest {
      */
     public static final long EARLIEST_LOCAL_TIMESTAMP = -4L;
 
+    /**
+     * 3.0-li uses -104 for the same earliest-local-offset query; see
+     * https://github.com/linkedin/kafka/commit/d54ff658e478d6314fdf1d51ca98592fb4f4d36f.
+     * Accept it while 3.0-li brokers remain in the cluster.
+     */
+    public static final long LI_EARLIEST_LOCAL_TIMESTAMP = -104L;
+
+    public static boolean isEarliestLocalTimestamp(long timestamp) {
+        return timestamp == EARLIEST_LOCAL_TIMESTAMP || timestamp == LI_EARLIEST_LOCAL_TIMESTAMP;
+    }
+
     public static final long LATEST_TIERED_TIMESTAMP = -5L;
 
     public static final int CONSUMER_REPLICA_ID = -1;

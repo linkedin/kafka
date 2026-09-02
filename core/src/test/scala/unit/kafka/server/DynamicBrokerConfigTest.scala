@@ -300,18 +300,24 @@ class DynamicBrokerConfigTest {
   }
 
   @Test
-  def testProtocolBridgeModeIsClusterWideDynamicConfig(): Unit = {
+  def testProtocolBridgeFlagsAreDisabledByDefaultAndClusterWide(): Unit = {
     val brokerProps = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
     brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
     val config = KafkaConfig(brokerProps)
     config.dynamicConfig.initialize(None, None)
-    val props = new Properties
-    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+    val bridgeFlags = Seq(
+      KafkaConfig.LiProtocolBridgeModeEnableProp,
+      KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
+      KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
+      KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp
+    )
+    bridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))
 
-    assertFalse(config.liProtocolBridgeModeActive)
+    val props = new Properties
+    bridgeFlags.foreach(props.put(_, "true"))
     config.dynamicConfig.validate(props, perBrokerConfig = false)
     config.dynamicConfig.updateDefaultConfig(props)
-    assertTrue(config.liProtocolBridgeModeActive)
+    bridgeFlags.foreach(flag => assertTrue(config.getBoolean(flag), s"$flag should be enabled dynamically"))
     assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(props, perBrokerConfig = true))
   }
 

@@ -17,6 +17,7 @@
 package org.apache.kafka.common.protocol;
 
 import org.apache.kafka.common.errors.ApiException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ErrorsTest {
 
@@ -47,6 +49,18 @@ public class ErrorsTest {
                 exceptionSet.add(error.exception().getClass());
         }
         assertEquals(exceptionSet.size(), Errors.values().length - 1, "Exceptions must be unique"); // Ignore NONE
+    }
+
+    @Test
+    public void testBridgeDecodesLiTieredStorageError() {
+        Errors decoded = Errors.forCode(Errors.LI_OFFSET_MOVED_TO_TIERED_STORAGE_CODE);
+        assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, decoded);
+        assertEquals((short) 109, decoded.code(), "The bridge normalizes LI code 1107 to upstream code 109");
+    }
+
+    @Test
+    public void testPreferredControllerShutdownErrorIsRetriable() {
+        assertTrue(Errors.NOT_ENOUGH_PREFERRED_CONTROLLERS.exception() instanceof RetriableException);
     }
 
     @Test

@@ -394,6 +394,9 @@ class Partition(val topicPartition: TopicPartition,
    */
   def isAtMinIsr: Boolean = leaderLogIfLocal.exists { partitionState.isr.size == effectiveMinIsr(_) }
 
+  def isOneAboveMinIsr: Boolean =
+    leaderLogIfLocal.exists { partitionState.isr.size == effectiveMinIsr(_) + 1 }
+
   def isReassigning: Boolean = assignmentState.isInstanceOf[OngoingReassignmentState]
 
   def isAddingLocalReplica: Boolean = assignmentState.isAddingReplica(localBrokerId)

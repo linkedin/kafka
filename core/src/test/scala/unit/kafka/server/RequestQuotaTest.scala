@@ -193,29 +193,24 @@ class RequestQuotaTest extends BaseRequestTest {
   def testUnauthorizedThrottle(quorum: String): Unit = {
     RequestQuotaTest.principal = RequestQuotaTest.UnauthorizedPrincipal
 
-    val apiKeys = if (isKRaftTest()) ApiKeys.kraftBrokerApis else ApiKeys.zkBrokerApis
-    for (apiKey <- apiKeys.asScala.toSet -- RequestQuotaTest.Envelope) {
+    for (apiKey <- enabledBrokerApis -- RequestQuotaTest.Envelope) {
       submitTest(apiKey, () => checkUnauthorizedRequestThrottle(apiKey))
     }
 
     waitAndCheckResults()
   }
 
-  private def clientActions: Set[ApiKeys] = {
-    if (isKRaftTest()) {
-      ApiKeys.kraftBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope
-    } else {
-      ApiKeys.zkBrokerApis.asScala.toSet -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope
-    }
+  private def enabledBrokerApis: Set[ApiKeys] = {
+    val brokerApis = if (isKRaftTest()) ApiKeys.kraftBrokerApis else ApiKeys.zkBrokerApis
+    // Private compatibility APIs are disabled in these default-config quota fixtures.
+    brokerApis.asScala.filter(_.id < 1000).toSet
   }
 
-  private def clusterActions: Set[ApiKeys] = {
-    if (isKRaftTest()) {
-      ApiKeys.kraftBrokerApis.asScala.filter(_.clusterAction).toSet
-    } else {
-      ApiKeys.zkBrokerApis.asScala.filter(_.clusterAction).toSet
-    }
-  }
+  private def clientActions: Set[ApiKeys] =
+    enabledBrokerApis -- clusterActions -- RequestQuotaTest.SaslActions -- RequestQuotaTest.Envelope
+
+  private def clusterActions: Set[ApiKeys] =
+    enabledBrokerApis.filter(_.clusterAction)
 
   private def clusterActionsWithThrottleForBroker: Set[ApiKeys] = {
     if (isKRaftTest()) {

@@ -78,6 +78,8 @@ class ControllerContext extends ControllerChannelContext {
   var offlinePartitionCount = 0
   var preferredReplicaImbalanceCount = 0
   val shuttingDownBrokerIds = mutable.Set.empty[Int]
+  val skipShutdownSafetyCheck = mutable.Map.empty[Int, Long]
+  @volatile private var livePreferredControllerIds = Set.empty[Int]
   private val liveBrokers = mutable.Set.empty[Broker]
   private val liveBrokerEpochs = mutable.Map.empty[Int, Long]
   var epoch: Int = KafkaController.InitialControllerEpoch
@@ -215,6 +217,12 @@ class ControllerContext extends ControllerChannelContext {
   }
 
   // getter
+  def setLivePreferredControllerIds(brokerIds: Set[Int]): Unit = {
+    livePreferredControllerIds = brokerIds
+  }
+
+  def getLivePreferredControllerIds: Set[Int] = livePreferredControllerIds
+
   def liveBrokerIds: Set[Int] = liveBrokerEpochs.keySet.diff(shuttingDownBrokerIds)
   // To just check if a broker is live, we should use this method instead of liveBrokerIds.contains(brokerId)
   // which is more expensive because it constructs the set of live broker IDs.

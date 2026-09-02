@@ -17,17 +17,36 @@
 package org.apache.kafka.common.protocol;
 
 import org.apache.kafka.common.ElectionType;
+import org.apache.kafka.common.message.ApiMessageType.ListenerType;
 import org.apache.kafka.common.requests.ListOffsetsRequest;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BridgeProtocolConstantsTest {
     @Test
     public void testLinkedInClientProtocolConstants() {
+        assertEquals(1000, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK.id);
+        assertEquals(1002, ApiKeys.LI_MOVE_CONTROLLER.id);
         assertEquals(2, ElectionType.RECOMMENDED.value);
         assertEquals(-104L, ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP);
         assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, Errors.forCode((short) 1107));
         assertEquals(Errors.NOT_ENOUGH_PREFERRED_CONTROLLERS, Errors.forCode((short) 2000));
+    }
+
+    @Test
+    public void testControlApisAreScopedToZooKeeperBrokers() {
+        for (ApiKeys apiKey : Arrays.asList(
+            ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK,
+            ApiKeys.LI_MOVE_CONTROLLER
+        )) {
+            assertTrue(apiKey.inScope(ListenerType.ZK_BROKER));
+            assertFalse(apiKey.inScope(ListenerType.BROKER));
+            assertFalse(apiKey.inScope(ListenerType.CONTROLLER));
+        }
     }
 }

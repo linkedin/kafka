@@ -19,6 +19,7 @@ package kafka.server
 import kafka.network
 import kafka.network.RequestChannel
 import org.apache.kafka.common.feature.SupportedVersionRange
+import org.apache.kafka.common.message.ApiVersionsResponseData
 import org.apache.kafka.common.message.ApiMessageType.ListenerType
 import org.apache.kafka.common.protocol.ApiKeys
 import org.apache.kafka.common.requests.ApiVersionsResponse
@@ -59,7 +60,9 @@ object ApiVersionManager {
       metadataCache,
       config.unstableApiVersionsEnabled,
       config.migrationEnabled,
-      clientMetricsManager
+      clientMetricsManager,
+      () => config.liProtocolBridgeMoveControllerActive,
+      () => config.liProtocolBridgeShutdownSafetyOverrideActive
     )
   }
 }
@@ -141,10 +144,21 @@ class DefaultApiVersionManager(
   metadataCache: MetadataCache,
   val enableUnstableLastVersion: Boolean,
   val zkMigrationEnabled: Boolean = false,
-  val clientMetricsManager: Option[ClientMetricsManager] = None
+  val clientMetricsManager: Option[ClientMetricsManager] = None,
+  liMoveControllerEnabled: () => Boolean = () => false,
+  liShutdownSafetyOverrideEnabled: () => Boolean = () => false
 ) extends ApiVersionManager {
 
   val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala
+
+  private def isLiApiEnabled(apiKey: ApiKeys): Boolean = apiKey match {
+    case ApiKeys.LI_MOVE_CONTROLLER => liMoveControllerEnabled()
+    case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => liShutdownSafetyOverrideEnabled()
+    case _ => true
+  }
+
+  override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean =
+    super.isApiEnabled(apiKey, apiVersion) && isLiApiEnabled(apiKey)
 
   override def apiVersionResponse(
     throttleTimeMs: Int,
@@ -156,7 +170,7 @@ class DefaultApiVersionManager(
       case Some(manager) => manager.isTelemetryReceiverConfigured
       case None => false
     }
-    val apiVersions = if (controllerApiVersions.isDefined) {
+    val unfilteredApiVersions = if (controllerApiVersions.isDefined) {
       ApiVersionsResponse.controllerApiVersions(
         finalizedFeatures.metadataVersion().highestSupportedRecordVersion,
         controllerApiVersions.get,
@@ -170,6 +184,13 @@ class DefaultApiVersionManager(
         enableUnstableLastVersion,
         clientTelemetryEnabled)
     }
+    // Generated message collections are intrusive: an element cannot belong to both the
+    // collection returned above and the filtered response collection. Duplicate each retained
+    // element rather than attempting to insert the already-linked instance.
+    val apiVersions = new ApiVersionsResponseData.ApiVersionCollection(unfilteredApiVersions.size)
+    unfilteredApiVersions.iterator.asScala
+      .filter(apiVersion => isLiApiEnabled(ApiKeys.forId(apiVersion.apiKey)))
+      .foreach(apiVersion => apiVersions.add(apiVersion.duplicate()))
     new ApiVersionsResponse.Builder().
       setThrottleTimeMs(throttleTimeMs).
       setApiVersions(apiVersions).

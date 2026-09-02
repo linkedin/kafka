@@ -165,7 +165,12 @@ class ZkAdminManager(val config: KafkaConfig,
                    responseCallback: Map[String, ApiError] => Unit): Unit = {
 
     // 1. map over topics creating assignment and calling zookeeper
-    val brokers = metadataCache.getAliveBrokers()
+    val liveBrokers = metadataCache.getAliveBrokers()
+    val preferredControllerIds = if (config.liProtocolBridgePreferredControllerActive)
+      zkClient.getPreferredControllerList.toSet
+    else
+      Set.empty[Int]
+    val brokers = liveBrokers.filterNot(broker => preferredControllerIds.contains(broker.id))
     val metadata = toCreate.values.map(topic =>
       try {
         if (metadataCache.contains(topic.name))
@@ -310,7 +315,12 @@ class ZkAdminManager(val config: KafkaConfig,
                        validateOnly: Boolean,
                        controllerMutationQuota: ControllerMutationQuota,
                        callback: Map[String, ApiError] => Unit): Unit = {
-    val allBrokers = adminZkClient.getBrokerMetadatas()
+    val brokerMetadatas = adminZkClient.getBrokerMetadatas()
+    val preferredControllerIds = if (config.liProtocolBridgePreferredControllerActive)
+      zkClient.getPreferredControllerList.toSet
+    else
+      Set.empty[Int]
+    val allBrokers = brokerMetadatas.filterNot(broker => preferredControllerIds.contains(broker.id))
     val allBrokerIds = allBrokers.map(_.id)
 
     // 1. map over topics creating assignment and calling AdminUtils

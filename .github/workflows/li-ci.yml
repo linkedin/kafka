@@ -1,0 +1,201 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: LinkedIn CI
+
+on:
+  pull_request:
+    branches:
+      - 3.9-li
+      - '3.9-li-**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: li-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '17'
+  SCALA_VERSION: '2.12'
+
+jobs:
+  all:
+    name: all
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Run code analysis
+        run: >-
+          ./gradlew --no-daemon -PscalaVersion=${SCALA_VERSION} -PxmlSpotBugsReport=true
+          rat checkstyleMain checkstyleTest spotbugsMain spotbugsTest
+
+  module-tests:
+    name: ${{ matrix.name }}_2.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: clients
+            path: clients
+          - name: generator
+            path: generator
+          - name: metadata
+            path: metadata
+          - name: raft
+            path: raft
+          - name: server-common
+            path: server-common
+          - name: shell
+            path: shell
+          - name: storage
+            path: storage
+          - name: storage:api
+            path: storage:storage-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Run unit and integration tests
+        run: >-
+          ./gradlew --no-daemon -PscalaVersion=${SCALA_VERSION} -PmaxTestRetries=3
+          -PtestLoggingEvents=started,passed,skipped,failed cleanTest
+          ${{ matrix.path }}:unitTest ${{ matrix.path }}:integrationTest
+
+  core-unit:
+    name: core_2.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Run core unit tests
+        run: >-
+          ./gradlew --no-daemon -PscalaVersion=${SCALA_VERSION} -PmaxTestRetries=3
+          -PtestLoggingEvents=started,passed,skipped,failed cleanTest core:unitTest
+
+  core-integration:
+    name: core_2.12 (${{ matrix.prefixes }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        prefixes:
+          - A B C
+          - D E F
+          - G H I J K
+          - L M N O
+          - P Q
+          - R S
+          - T U V W X Y Z
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Run core integration tests
+        env:
+          PREFIXES: ${{ matrix.prefixes }}
+        run: |
+          set -f
+          filters=()
+          for prefix in ${PREFIXES}; do
+            filters+=(--tests "${prefix}*")
+          done
+          ./gradlew --no-daemon -PscalaVersion=${SCALA_VERSION} -PmaxTestRetries=3 \
+            -PtestLoggingEvents=started,passed,skipped,failed cleanTest core:integrationTest "${filters[@]}"
+
+  additional-modules:
+    name: additional-modules_2.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Test additional published modules
+        run: >-
+          ./gradlew --no-daemon -PscalaVersion=${SCALA_VERSION} -PmaxTestRetries=3
+          -PtestLoggingEvents=started,passed,skipped,failed cleanTest
+          group-coordinator:unitTest group-coordinator:integrationTest
+          group-coordinator:group-coordinator-api:unitTest group-coordinator:group-coordinator-api:integrationTest
+          server:unitTest server:integrationTest
+          transaction-coordinator:unitTest transaction-coordinator:integrationTest
+          tools:tools-api:unitTest tools:tools-api:integrationTest
+
+  scala-2-13-compile:
+    name: scala_2.13
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Compile Scala 2.13 main and test code
+        run: >-
+          ./gradlew --no-daemon -PscalaVersion=2.13 core:clean
+          clients:compileTestJava core:compileScala core:compileTestScala

@@ -44,6 +44,40 @@ public class BridgePrivateApiFixtureTest {
         assertFixture(fixture, new LiMoveControllerRequestData(accessor(fixture), (short) 0));
     }
 
+    @Test
+    public void testCreateFederatedTopic() {
+        byte[] fixture = bytes("02076f7264657273057765737400000004d200");
+        LiCreateFederatedTopicZnodesRequestData data =
+            new LiCreateFederatedTopicZnodesRequestData(accessor(fixture), (short) 0);
+        assertFederatedTopic(data.topics().get(0).name(), data.topics().get(0).namespace());
+        assertEquals(1234, data.timeoutMs());
+        assertFixture(fixture, data);
+    }
+
+    @Test
+    public void testDeleteFederatedTopic() {
+        byte[] fixture = bytes("02076f7264657273057765737400000004d200");
+        LiDeleteFederatedTopicZnodesRequestData data =
+            new LiDeleteFederatedTopicZnodesRequestData(accessor(fixture), (short) 0);
+        assertFederatedTopic(data.topics().get(0).name(), data.topics().get(0).namespace());
+        assertEquals(1234, data.timeoutMs());
+        assertFixture(fixture, data);
+    }
+
+    @Test
+    public void testListFederatedTopic() {
+        byte[] fixture = bytes("02076f726465727305776573740000");
+        LiListFederatedTopicZnodesRequestData data =
+            new LiListFederatedTopicZnodesRequestData(accessor(fixture), (short) 0);
+        assertFederatedTopic(data.topics().get(0).name(), data.topics().get(0).namespace());
+        assertFixture(fixture, data);
+    }
+
+    private static void assertFederatedTopic(String name, String namespace) {
+        assertEquals("orders", name);
+        assertEquals("west", namespace);
+    }
+
     private static ByteBufferAccessor accessor(byte[] fixture) {
         return new ByteBufferAccessor(ByteBuffer.wrap(fixture));
     }

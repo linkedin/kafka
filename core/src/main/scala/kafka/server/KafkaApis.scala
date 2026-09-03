@@ -66,7 +66,7 @@ import org.apache.kafka.common.resource.{Resource, ResourceType}
 import org.apache.kafka.common.security.auth.{KafkaPrincipal, SecurityProtocol}
 import org.apache.kafka.common.security.token.delegation.{DelegationToken, TokenInformation}
 import org.apache.kafka.common.utils.{ProducerIdAndEpoch, Time}
-import org.apache.kafka.common.{Node, TopicIdPartition, TopicPartition, Uuid}
+import org.apache.kafka.common.{ElectionType, Node, TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.coordinator.group.{Group, GroupCoordinator}
 import org.apache.kafka.server.ClientMetricsManager
 import org.apache.kafka.server.authorizer._
@@ -1160,13 +1160,19 @@ class KafkaApis(val requestChannel: RequestChannel,
     val clientId = request.header.clientId
     val offsetRequest = request.body[ListOffsetsRequest]
     val version = request.header.apiVersion
-    val timestampMinSupportedVersion = immutable.Map[Long, Short](
+    val upstreamTimestampMinSupportedVersion = immutable.Map[Long, Short](
       ListOffsetsRequest.EARLIEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.LATEST_TIMESTAMP -> 1.toShort,
       ListOffsetsRequest.MAX_TIMESTAMP -> 7.toShort,
       ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP -> 8.toShort,
       ListOffsetsRequest.LATEST_TIERED_TIMESTAMP -> 9.toShort
     )
+    val timestampMinSupportedVersion = if (config.liProtocolBridgeFollowerRecoveryActive) {
+      // 3.0-li introduced its private earliest-local value in ListOffsets v7.
+      upstreamTimestampMinSupportedVersion + (ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP -> 7.toShort)
+    } else {
+      upstreamTimestampMinSupportedVersion
+    }
 
     def buildErrorResponse(e: Errors, partition: ListOffsetsPartition): ListOffsetsPartitionResponse = {
       new ListOffsetsPartitionResponse()
@@ -1238,6 +1244,12 @@ class KafkaApis(val requestChannel: RequestChannel,
                   s"partition $topicPartition failed due to ${e.getMessage}")
               buildErrorResponse(Errors.forException(e), partition)
 
+            case e: OffsetMovedToTieredStorageException =>
+              val response = buildErrorResponse(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, partition)
+              response.setErrorCode(KafkaApis.offsetMovedErrorCode(
+                config.liProtocolBridgeFollowerRecoveryActive, partition.timestamp))
+              response
+
             // Only V5 and newer ListOffset calls should get OFFSET_NOT_AVAILABLE
             case e: OffsetNotAvailableException =>
               if (request.header.apiVersion >= 5) {
@@ -1273,6 +1285,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   private def getTopicMetadata(
     request: RequestChannel.Request,
     fetchAllTopics: Boolean,
+    excludePartitions: Boolean,
     allowAutoTopicCreation: Boolean,
     topics: Set[String],
     listenerName: ListenerName,
@@ -1281,11 +1294,24 @@ class KafkaApis(val requestChannel: RequestChannel,
   ): Seq[MetadataResponseTopic] = {
     val topicResponses = metadataCache.getTopicMetadata(topics, listenerName,
       errorUnavailableEndpoints, errorUnavailableListeners)
-
-    if (topics.isEmpty || topicResponses.size == topics.size || fetchAllTopics) {
-      topicResponses
+    val effectiveTopicResponses = if (excludePartitions) {
+      topicResponses.map { topic =>
+        new MetadataResponseTopic()
+          .setErrorCode(topic.errorCode)
+          .setName(topic.name)
+          .setTopicId(topic.topicId)
+          .setIsInternal(topic.isInternal)
+          .setPartitions(util.Collections.emptyList())
+          .setTopicAuthorizedOperations(topic.topicAuthorizedOperations)
+      }
     } else {
-      val nonExistingTopics = topics.diff(topicResponses.map(_.name).toSet)
+      topicResponses
+    }
+
+    if (topics.isEmpty || effectiveTopicResponses.size == topics.size || fetchAllTopics) {
+      effectiveTopicResponses
+    } else {
+      val nonExistingTopics = topics.diff(effectiveTopicResponses.map(_.name).toSet)
       val nonExistingTopicResponses = if (allowAutoTopicCreation) {
         val controllerMutationQuota = quotas.controllerMutation.newPermissiveQuotaFor(request)
         autoTopicCreationManager.createTopics(nonExistingTopics, controllerMutationQuota, Some(request.context))
@@ -1309,7 +1335,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
-      topicResponses ++ nonExistingTopicResponses
+      effectiveTopicResponses ++ nonExistingTopicResponses
     }
   }
 
@@ -1390,8 +1416,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     val errorUnavailableListeners = requestVersion >= 6
 
     val allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation && !metadataRequest.isAllTopics
-    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, allowAutoCreation, authorizedTopics,
-      request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
+    val excludePartitions = metadataRequest.excludePartitions && config.liProtocolBridgeExcludePartitionsActive
+    val topicMetadata = getTopicMetadata(request, metadataRequest.isAllTopics, excludePartitions, allowAutoCreation,
+      authorizedTopics, request.context.listenerName, errorUnavailableEndpoints, errorUnavailableListeners)
 
     var clusterAuthorizedOperations = Int.MinValue // Default value in the schema
     if (requestVersion >= 8) {
@@ -3377,6 +3404,13 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleElectLeaders(request: RequestChannel.Request): Unit = {
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldAlwaysForward(request))
     val electionRequest = request.body[ElectLeadersRequest]
+    if (electionRequest.electionType == ElectionType.RECOMMENDED &&
+      !config.liProtocolBridgeRecommendedElectionActive) {
+      requestHelper.sendResponseMaybeThrottle(request, throttleMs =>
+        electionRequest.getErrorResponse(throttleMs,
+          new InvalidRequestException("Recommended leader election compatibility is disabled")))
+      return
+    }
 
     def sendResponseCallback(
       error: ApiError
@@ -3438,6 +3472,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       replicaManager.electLeaders(
         zkSupport.controller,
         partitions,
+        electionRequest.partitionRecommendedLeaders,
         electionRequest.electionType,
         sendResponseCallback(ApiError.NONE),
         electionRequest.data.timeoutMs
@@ -4132,6 +4167,12 @@ class KafkaApis(val requestChannel: RequestChannel,
 }
 
 object KafkaApis {
+  private[server] def offsetMovedErrorCode(liFollowerRecovery: Boolean, timestamp: Long): Short =
+    if (liFollowerRecovery && timestamp == ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP)
+      Errors.liOffsetMovedToTieredStorageCode()
+    else
+      Errors.OFFSET_MOVED_TO_TIERED_STORAGE.code
+
   // Traffic from both in-sync and out of sync replicas are accounted for in replication quota to ensure total replication
   // traffic doesn't exceed quota.
   // TODO: remove resolvedResponseData method when sizeOf can take a data object.

@@ -2621,6 +2621,7 @@ class ReplicaManager(val config: KafkaConfig,
   def electLeaders(
     controller: KafkaController,
     partitions: Set[TopicPartition],
+    recommendedLeaders: Map[TopicPartition, Int],
     electionType: ElectionType,
     responseCallback: Map[TopicPartition, ApiError] => Unit,
     requestTimeout: Int
@@ -2656,7 +2657,7 @@ class ReplicaManager(val config: KafkaConfig,
       }
     }
 
-    controller.electLeaders(partitions, electionType, electionCallback)
+    controller.electLeaders(partitions, recommendedLeaders, electionType, electionCallback)
   }
 
   def activeProducerState(requestPartition: TopicPartition): DescribeProducersResponseData.PartitionResponse = {

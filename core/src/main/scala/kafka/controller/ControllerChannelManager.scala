@@ -47,6 +47,56 @@ import scala.jdk.CollectionConverters._
 object ControllerChannelManager {
   private val QueueSizeMetricName = "QueueSize"
   private val RequestRateAndQueueTimeMetricName = "RequestRateAndQueueTimeMs"
+  private val ProtocolBridgeModeMetricName = "LiProtocolBridgeModeEnabled"
+
+  // Commit 74dca03f5bf3561c3694605fd15dc7b7c6502de8 added MaxBrokerEpoch to LeaderAndIsr v3,
+  // UpdateMetadata v6, and StopReplica v2 in 3.0-li. Apache later used those version numbers for
+  // different changes. The preceding versions are therefore the newest formats shared by both
+  // codebases. This can be checked by comparing the three request schemas under
+  // clients/src/main/resources/common/message at these revisions:
+  //   3.0-li:          31df5cec3298e31b55888307929904df83cc8753
+  //   Apache 3.9.2:   5e9866f43ab8e7e41ef39e5584ac50019381328d
+  // Cross-artifact tests must still compare encoded requests and responses before production use.
+  private[controller] val BridgeLeaderAndIsrRequestVersion: Short = 2
+  private[controller] val BridgeUpdateMetadataRequestVersion: Short = 5
+  private[controller] val BridgeStopReplicaRequestVersion: Short = 1
+
+  private[controller] def leaderAndIsrRequestVersion(metadataVersion: MetadataVersion,
+                                                      bridgeMode: Boolean): Short = {
+    if (bridgeMode) BridgeLeaderAndIsrRequestVersion
+    else if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 7
+    else if (metadataVersion.isAtLeast(IBP_3_2_IV0)) 6
+    else if (metadataVersion.isAtLeast(IBP_2_8_IV1)) 5
+    else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 4
+    else if (metadataVersion.isAtLeast(IBP_2_4_IV0)) 3
+    else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 2
+    else if (metadataVersion.isAtLeast(IBP_1_0_IV0)) 1
+    else 0
+  }
+
+  private[controller] def updateMetadataRequestVersion(metadataVersion: MetadataVersion,
+                                                        bridgeMode: Boolean): Short = {
+    if (bridgeMode) BridgeUpdateMetadataRequestVersion
+    else if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 8
+    else if (metadataVersion.isAtLeast(IBP_2_8_IV1)) 7
+    else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 6
+    else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 5
+    else if (metadataVersion.isAtLeast(IBP_1_0_IV0)) 4
+    else if (metadataVersion.isAtLeast(IBP_0_10_2_IV0)) 3
+    else if (metadataVersion.isAtLeast(IBP_0_10_0_IV1)) 2
+    else if (metadataVersion.isAtLeast(IBP_0_9_0)) 1
+    else 0
+  }
+
+  private[controller] def stopReplicaRequestVersion(metadataVersion: MetadataVersion,
+                                                     bridgeMode: Boolean): Short = {
+    if (bridgeMode) BridgeStopReplicaRequestVersion
+    else if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 4
+    else if (metadataVersion.isAtLeast(IBP_2_6_IV0)) 3
+    else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 2
+    else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 1
+    else 0
+  }
 }
 
 class ControllerChannelManager(controllerEpoch: () => Int,
@@ -68,6 +118,8 @@ class ControllerChannelManager(controllerEpoch: () => Int,
       brokerStateInfo.values.iterator.map(_.messageQueue.size).sum
     }
   )
+  metricsGroup.newGauge(ProtocolBridgeModeMetricName,
+    () => if (config.liProtocolBridgeModeActive) 1 else 0)
 
   def startup(initialBrokers: Set[Broker]):Unit = {
     initialBrokers.foreach(addNewBroker)
@@ -373,6 +425,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
                                                     metadataVersionProvider: () => MetadataVersion,
                                                     stateChangeLogger: StateChangeLogger,
                                                     kraftController: Boolean = false) extends Logging {
+  import ControllerChannelManager._
+
   val controllerId: Int = config.brokerId
   private val leaderAndIsrRequestMap = mutable.Map.empty[Int, mutable.Map[TopicPartition, LeaderAndIsrPartitionState]]
   private val stopReplicaRequestMap = mutable.Map.empty[Int, mutable.Map[TopicPartition, StopReplicaPartitionState]]
@@ -380,6 +434,7 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
   private val updateMetadataRequestPartitionInfoMap = mutable.Map.empty[TopicPartition, UpdateMetadataPartitionState]
   private var updateType: AbstractControlRequest.Type = AbstractControlRequest.Type.UNKNOWN
   private var metadataInstance: ControllerChannelContext = _
+  private var lastLoggedBridgeMode: Option[Boolean] = None
 
   def sendRequest(brokerId: Int,
                   request: AbstractControlRequest.Builder[_ <: AbstractControlRequest],
@@ -512,17 +567,10 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
     updateMetadataRequestPartitionInfoMap.put(partition, partitionStateInfo)
   }
 
-  private def sendLeaderAndIsrRequest(controllerEpoch: Int, stateChangeLog: StateChangeLogger): Unit = {
-    val metadataVersion = metadataVersionProvider.apply()
-    val leaderAndIsrRequestVersion: Short =
-      if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 7
-      else if (metadataVersion.isAtLeast(IBP_3_2_IV0)) 6
-      else if (metadataVersion.isAtLeast(IBP_2_8_IV1)) 5
-      else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 4
-      else if (metadataVersion.isAtLeast(IBP_2_4_IV0)) 3
-      else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 2
-      else if (metadataVersion.isAtLeast(IBP_1_0_IV0)) 1
-      else 0
+  private def sendLeaderAndIsrRequest(controllerEpoch: Int, stateChangeLog: StateChangeLogger,
+                                      bridgeMode: Boolean): Unit = {
+    val leaderAndIsrRequestVersion = ControllerChannelManager.leaderAndIsrRequestVersion(
+      metadataVersionProvider.apply(), bridgeMode)
 
     leaderAndIsrRequestMap.forKeyValue { (broker, leaderAndIsrPartitionStates) =>
       if (metadataInstance.liveOrShuttingDownBrokerIds.contains(broker)) {
@@ -572,22 +620,14 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
   def handleLeaderAndIsrResponse(response: LeaderAndIsrResponse, broker: Int): Unit
 
-  private def sendUpdateMetadataRequests(controllerEpoch: Int, stateChangeLog: StateChangeLogger): Unit = {
+  private def sendUpdateMetadataRequests(controllerEpoch: Int, stateChangeLog: StateChangeLogger,
+                                         bridgeMode: Boolean): Unit = {
     stateChangeLog.info(s"Sending UpdateMetadata request to brokers $updateMetadataRequestBrokerSet " +
       s"for ${updateMetadataRequestPartitionInfoMap.size} partitions")
 
     val partitionStates = updateMetadataRequestPartitionInfoMap.values.toBuffer
-    val metadataVersion = metadataVersionProvider.apply()
-    val updateMetadataRequestVersion: Short =
-      if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 8
-      else if (metadataVersion.isAtLeast(IBP_2_8_IV1)) 7
-      else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 6
-      else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 5
-      else if (metadataVersion.isAtLeast(IBP_1_0_IV0)) 4
-      else if (metadataVersion.isAtLeast(IBP_0_10_2_IV0)) 3
-      else if (metadataVersion.isAtLeast(IBP_0_10_0_IV1)) 2
-      else if (metadataVersion.isAtLeast(IBP_0_9_0)) 1
-      else 0
+    val updateMetadataRequestVersion = ControllerChannelManager.updateMetadataRequestVersion(
+      metadataVersionProvider.apply(), bridgeMode)
 
     val liveBrokers = metadataInstance.liveOrShuttingDownBrokers.iterator.map { broker =>
       val endpoints = if (updateMetadataRequestVersion == 0) {
@@ -644,15 +684,11 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
 
   def handleUpdateMetadataResponse(response: UpdateMetadataResponse, broker: Int): Unit
 
-  private def sendStopReplicaRequests(controllerEpoch: Int, stateChangeLog: StateChangeLogger): Unit = {
+  private def sendStopReplicaRequests(controllerEpoch: Int, stateChangeLog: StateChangeLogger,
+                                      bridgeMode: Boolean): Unit = {
     val traceEnabled = stateChangeLog.isTraceEnabled
-    val metadataVersion = metadataVersionProvider.apply()
-    val stopReplicaRequestVersion: Short =
-      if (metadataVersion.isAtLeast(IBP_3_4_IV0)) 4
-      else if (metadataVersion.isAtLeast(IBP_2_6_IV0)) 3
-      else if (metadataVersion.isAtLeast(IBP_2_4_IV1)) 2
-      else if (metadataVersion.isAtLeast(IBP_2_2_IV0)) 1
-      else 0
+    val stopReplicaRequestVersion = ControllerChannelManager.stopReplicaRequestVersion(
+      metadataVersionProvider.apply(), bridgeMode)
 
     def responseCallback(brokerId: Int, isPartitionDeleted: TopicPartition => Boolean)
                         (response: AbstractResponse): Unit = {
@@ -742,9 +778,23 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
   def sendRequestsToBrokers(controllerEpoch: Int): Unit = {
     try {
       val stateChangeLog = stateChangeLogger.withControllerEpoch(controllerEpoch)
-      sendLeaderAndIsrRequest(controllerEpoch, stateChangeLog)
-      sendUpdateMetadataRequests(controllerEpoch, stateChangeLog)
-      sendStopReplicaRequests(controllerEpoch, stateChangeLog)
+      // KRaft controllers never coexist with 3.0-li, so KafkaConfig activates the bridge only in ZooKeeper mode.
+      val bridgeMode = config.liProtocolBridgeModeActive && !kraftController
+      if (!lastLoggedBridgeMode.contains(bridgeMode)) {
+        if (bridgeMode) {
+          info(s"LI protocol bridge mode enabled: LeaderAndIsr=v$BridgeLeaderAndIsrRequestVersion, " +
+            s"UpdateMetadata=v$BridgeUpdateMetadataRequestVersion, StopReplica=v$BridgeStopReplicaRequestVersion")
+          warn("Protocol bridge mode uses older controller request versions. Monitor controller heap, GC, " +
+            "request queues, and failover time while it is enabled.")
+        } else {
+          info("LI protocol bridge mode disabled: using request versions selected by metadata.version")
+        }
+        lastLoggedBridgeMode = Some(bridgeMode)
+      }
+      // Use one mode snapshot for the whole batch so a dynamic update cannot mix request generations.
+      sendLeaderAndIsrRequest(controllerEpoch, stateChangeLog, bridgeMode)
+      sendUpdateMetadataRequests(controllerEpoch, stateChangeLog, bridgeMode)
+      sendStopReplicaRequests(controllerEpoch, stateChangeLog, bridgeMode)
       this.updateType = AbstractControlRequest.Type.UNKNOWN
     } catch {
       case e: Throwable =>

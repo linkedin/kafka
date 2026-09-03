@@ -20,6 +20,7 @@ package kafka.server
 import java.util
 import java.util.concurrent.TimeUnit
 import java.util.Properties
+import kafka.admin.RackAwareReplicaAssignmentRackIdMapper
 import kafka.cluster.EndPoint
 import kafka.utils.{CoreUtils, Logging}
 import kafka.utils.Implicits._
@@ -70,14 +71,63 @@ object KafkaConfig {
     "li.protocol.bridge.preferred.controller.enable"
   val LiProtocolBridgeFederatedTopicsEnableProp =
     "li.protocol.bridge.federated.topics.enable"
+  val LiProtocolBridgeRackIdMapperEnableProp =
+    "li.protocol.bridge.rack.id.mapper.enable"
 
   // 3.0-li operational settings consumed by the LinkedIn server wrapper.
+  val ListenersProp: String = SocketServerConfigs.LISTENERS_CONFIG
+  val ZkConnectProp: String = ZkConfigs.ZK_CONNECT_CONFIG
+  val ZkSessionTimeoutMsProp: String = ZkConfigs.ZK_SESSION_TIMEOUT_MS_CONFIG
+  val ZkConnectionTimeoutMsProp: String = ZkConfigs.ZK_CONNECTION_TIMEOUT_MS_CONFIG
+  val LogMessageFormatVersionProp: String = ServerLogConfigs.LOG_MESSAGE_FORMAT_VERSION_CONFIG
   val PreferredControllerProp = "preferred.controller"
   val AllowPreferredControllerFallbackProp = "allow.preferred.controller.fallback"
   val LiMinPreferredControllerCountProp = "li.min.preferred.controller.count"
   val ControlledShutdownSafetyCheckEnableProp = "controlled.shutdown.safety.check.enable"
   val ControlledShutdownSafetyCheckRedundancyFactorProp =
     "controlled.shutdown.safety.check.redundancy.factor"
+  val ObserverClassNameProp = "observer.class.name"
+  val ObserverShutdownTimeoutMsProp = "observer.shutdown.timeout"
+
+  // Source-compatible names used by the LinkedIn KafkaServer wrapper. Apache 3.9 moved most of
+  // these definitions into Java config classes, but the wrapper still calls KafkaConfig.*Prop().
+  val BrokerIdProp = "broker.id"
+  val ConsumerQuotaBytesPerSecondDefaultProp = "quota.consumer.default"
+  val DefaultReplicationFactorProp = "default.replication.factor"
+  val DeleteTopicEnableProp = "delete.topic.enable"
+  val LogRetentionTimeHoursProp = "log.retention.hours"
+  val LogRetentionTimeMillisProp = "log.retention.ms"
+  val LogRetentionTimeMinutesProp = "log.retention.minutes"
+  val LogRollTimeHoursProp = "log.roll.hours"
+  val LogRollTimeJitterHoursProp = "log.roll.jitter.hours"
+  val LogRollTimeJitterMillisProp = "log.roll.jitter.ms"
+  val LogRollTimeMillisProp = "log.roll.ms"
+  val NumPartitionsProp = "num.partitions"
+  val ProducerQuotaBytesPerSecondDefaultProp = "quota.producer.default"
+  val ListenerSecurityProtocolMapProp = "listener.security.protocol.map"
+  val MetricReplaceOnDuplicateProp = "metrics.replace.on.duplicate"
+  val ReplicaRequestTimeoutMsProp = "replica.request.timeout.ms"
+  val ZkClientCnxnSocketProp = "zookeeper.clientCnxnSocket"
+  val ZkEnableSecureAclsProp = "zookeeper.set.acl"
+  val ZkSslClientEnableProp = "zookeeper.ssl.client.enable"
+  val ZkSslEndpointIdentificationAlgorithmProp = "zookeeper.ssl.endpoint.identification.algorithm"
+  val ZkSslKeyStoreLocationProp = "zookeeper.ssl.keystore.location"
+  val ZkSslKeyStorePasswordProp = "zookeeper.ssl.keystore.password"
+  val ZkSslTrustStoreLocationProp = "zookeeper.ssl.truststore.location"
+  val ZkSslTrustStorePasswordProp = "zookeeper.ssl.truststore.password"
+  val ZkSslTrustStoreTypeProp = "zookeeper.ssl.truststore.type"
+
+  val LiDropCorruptedFilesEnableProp = "li.drop.corrupted.files.enable"
+  val LiLeaderElectionOnCorruptionWaitMsProp = "li.leader.election.on.corruption.wait.ms"
+  val LiLongTailProduceRequestLogRatioProp = "li.instrumentation.requests.produce.long.tail.log.ratio"
+  val LiLongTailProduceRequestLogThresholdMsProp = "li.instrumentation.requests.produce.long.tail.log.threshold.ms"
+  val LiMinOriginalAliveReplicasProp = "li.min.original.alive.replicas"
+  val LiNumControllerInitThreadsProp = "li.num.controller.init.threads"
+  val LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp =
+    "li.rack.aware.assignment.rack.id.mapper.class"
+  val LiZookeeperPaginationEnableProp = "li.zookeeper.pagination.enable"
+  val RequestMetricsSizeBucketsProp = "request.metrics.size.buckets"
+  val RequestMetricsTotalTimeBucketsProp = "request.metrics.total.time.buckets"
 
   val LiProtocolBridgeModeEnableDoc =
     "Enable the temporary protocol bridge used while 3.0-li and upstream-based brokers coexist. " +
@@ -96,6 +146,8 @@ object KafkaConfig {
     "Enable 3.0-li preferred-controller election and shutdown behavior on ZooKeeper brokers."
   val LiProtocolBridgeFederatedTopicsEnableDoc =
     "Enable the 3.0-li federated-topic APIs and ZooKeeper metadata used by the LinkedIn authorizer."
+  val LiProtocolBridgeRackIdMapperEnableDoc =
+    "Apply the configured 3.0-li rack ID mapper during automatic replica assignment."
   val PreferredControllerDoc = "Whether this broker is eligible for preferred-controller placement."
   val AllowPreferredControllerFallbackDoc =
     "Allow a non-preferred broker to become controller when no preferred controller is available."
@@ -105,6 +157,8 @@ object KafkaConfig {
     "Reject controlled shutdown when the remaining live ISR would be below min ISR plus the configured redundancy."
   val ControlledShutdownSafetyCheckRedundancyFactorDoc =
     "Additional live ISR replicas required by the controlled shutdown safety check."
+  val ObserverClassNameDoc = "Broker request observer implementation class."
+  val ObserverShutdownTimeoutMsDoc = "Maximum time in milliseconds allowed to close the request observer."
 
   def main(args: Array[String]): Unit = {
     System.out.println(configDef.toHtml(4, (config: String) => "brokerconfigs_" + config,
@@ -152,6 +206,8 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, LiProtocolBridgePreferredControllerEnableDoc)
     .define(LiProtocolBridgeFederatedTopicsEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeFederatedTopicsEnableDoc)
+    .define(LiProtocolBridgeRackIdMapperEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, LiProtocolBridgeRackIdMapperEnableDoc)
     .define(PreferredControllerProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, PreferredControllerDoc)
     .define(AllowPreferredControllerFallbackProp, ConfigDef.Type.BOOLEAN, true,
@@ -162,6 +218,12 @@ object KafkaConfig {
       ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckEnableDoc)
     .define(ControlledShutdownSafetyCheckRedundancyFactorProp, ConfigDef.Type.INT, 0,
       ConfigDef.Range.atLeast(0), ConfigDef.Importance.HIGH, ControlledShutdownSafetyCheckRedundancyFactorDoc)
+    .define(ObserverClassNameProp, ConfigDef.Type.STRING, "kafka.server.NoOpObserver",
+      ConfigDef.Importance.MEDIUM, ObserverClassNameDoc)
+    .define(ObserverShutdownTimeoutMsProp, ConfigDef.Type.LONG, 60000L, ConfigDef.Range.atLeast(1),
+      ConfigDef.Importance.MEDIUM, ObserverShutdownTimeoutMsDoc)
+    .define(LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp, ConfigDef.Type.STRING, "",
+      ConfigDef.Importance.HIGH, "Rack ID mapper class used for automatic replica assignment.")
 
   def configNames: Seq[String] = configDef.names.asScala.toBuffer.sorted
   private[server] def defaultValues: Map[String, _] = configDef.defaultValues.asScala
@@ -275,6 +337,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp)
   def liProtocolBridgeFederatedTopicsEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp)
+  def liProtocolBridgeRackIdMapperEnable: Boolean =
+    getBoolean(KafkaConfig.LiProtocolBridgeRackIdMapperEnableProp)
 
   def liProtocolBridgeModeActive: Boolean = processRoles.isEmpty && liProtocolBridgeModeEnable
   def liProtocolBridgeFollowerRecoveryActive: Boolean =
@@ -291,6 +355,16 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     processRoles.isEmpty && liProtocolBridgePreferredControllerEnable
   def liProtocolBridgeFederatedTopicsActive: Boolean =
     processRoles.isEmpty && liProtocolBridgeFederatedTopicsEnable
+  def liProtocolBridgeRackIdMapperActive: Boolean =
+    processRoles.isEmpty && liProtocolBridgeRackIdMapperEnable
+
+  lazy val rackIdMapperForReplicaAssignment: RackAwareReplicaAssignmentRackIdMapper = {
+    val className = getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
+    if (liProtocolBridgeRackIdMapperActive && className.nonEmpty)
+      CoreUtils.createObject[RackAwareReplicaAssignmentRackIdMapper](className)
+    else
+      rackId => rackId
+  }
 
   def preferredController: Boolean = getBoolean(KafkaConfig.PreferredControllerProp)
   def allowPreferredControllerFallback: Boolean = getBoolean(KafkaConfig.AllowPreferredControllerFallbackProp)
@@ -299,6 +373,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
     getBoolean(KafkaConfig.ControlledShutdownSafetyCheckEnableProp)
   def controlledShutdownSafetyCheckRedundancyFactor: Int =
     getInt(KafkaConfig.ControlledShutdownSafetyCheckRedundancyFactorProp)
+  def observerClassName: String = getString(KafkaConfig.ObserverClassNameProp)
+  def observerShutdownTimeoutMs: Long = getLong(KafkaConfig.ObserverShutdownTimeoutMsProp)
 
   private[server] val dynamicConfig = new DynamicBrokerConfig(this)
 

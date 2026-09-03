@@ -213,7 +213,10 @@ class MetricsTest extends IntegrationTestHarness with SaslSetup {
     assertTrue(tempBytes >= recordSize, s"Unexpected temporary memory size requestBytes $requestBytes tempBytes $tempBytes")
 
     verifyYammerMetricRecorded(s"kafka.server:type=BrokerTopicMetrics,name=ProduceMessageConversionsPerSec")
-    verifyYammerMetricRecorded(s"$requestMetricsPrefix,name=MessageConversionsTimeMs,request=Produce", value => value > 0.0)
+    // Submillisecond conversions round to zero in this histogram.
+    val conversionTime = yammerHistogram(s"$requestMetricsPrefix,name=MessageConversionsTimeMs,request=Produce")
+    assertTrue(conversionTime.count > 0, "Message conversion time was not recorded")
+    assertTrue(conversionTime.min >= 0, "Message conversion time must be non-negative")
     verifyYammerMetricRecorded(s"$requestMetricsPrefix,name=RequestBytes,request=Fetch")
     verifyYammerMetricRecorded(s"$requestMetricsPrefix,name=TemporaryMemoryBytes,request=Fetch", value => value == 0.0)
 

@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false  # We still want to see all jobs' build result to the end
+      max-parallel: 4
       matrix:
         scalaVersion:
           - 2.12
@@ -49,15 +50,18 @@ jobs:
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           # bring in all history because the gradle versions plugin needs to "walk back" to the closest ancestor tag
           fetch-depth: 0
       - name: Set up JDK 11
-        uses: actions/setup-java@v1
+        uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          distribution: temurin
+          # Kafka 3.0's file-backed SSL fixtures fail with the runner's current 11.0.32 JDK.
+          java-version: '11.0.21'
+          cache: gradle
       - name: Run tests
         env:
           SCALA_VERSION: ${{ matrix.scalaVersion }}

@@ -1,0 +1,147 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Publish LinkedIn Kafka 3.0
+
+on:
+  push:
+    branches:
+      - 3.0-li
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-3.0-li
+  cancel-in-progress: false
+
+env:
+  JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+  JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
+
+jobs:
+  publish:
+    name: Publish commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11.0.21'
+          cache: gradle
+
+      - name: Allocate an internal release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          mapfile -t published_tags < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.prerelease == false) | .tag_name' |
+              grep -E '^3\.0\.1\.[0-9]+$' | sort -V
+          )
+          existing=$(git tag --points-at "${GITHUB_SHA}" --list '3.0.1.*' |
+            grep -E '^3\.0\.1\.[0-9]+$' | sort -V | head -1 || true)
+          if [[ -n "${existing}" ]]; then
+            release_version=${existing}
+          else
+            if (( ${#published_tags[@]} > 0 )); then
+              latest=${published_tags[$(( ${#published_tags[@]} - 1 ))]}
+            else
+              latest=3.0.1.82
+            fi
+            next=$(( ${latest##*.} + 1 ))
+            release_version="3.0.1.${next}"
+            while git rev-parse --verify --quiet "refs/tags/${release_version}" >/dev/null; do
+              next=$((next + 1))
+              release_version="3.0.1.${next}"
+            done
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git tag --annotate "${release_version}" --message "LinkedIn Kafka ${release_version}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${release_version}"
+          fi
+          previous=$(printf '%s\n' "${published_tags[@]}" | grep -Fvx "${release_version}" | sort -V | tail -1 || true)
+          echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+          echo "previous_version=${previous}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish Maven modules to JFrog
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          ./gradlew --no-daemon -Pversion="${RELEASE_VERSION}" \
+            :clients:publish \
+            :core:publish \
+            :metadata:publish \
+            :raft:publish \
+            :server-common:publish \
+            :storage:publish \
+            :storage:api:publish
+
+      - name: Build release archive and checksum
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          ./gradlew --no-daemon -Pversion="${RELEASE_VERSION}" core:releaseTarGz
+          archive="core/build/distributions/kafka_2.12-${RELEASE_VERSION}.tgz"
+          sha256sum "${archive}" > "${archive}.sha256"
+          echo "RELEASE_ARCHIVE=${archive}" >> "${GITHUB_ENV}"
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+          PREVIOUS_VERSION: ${{ steps.version.outputs.previous_version }}
+        run: |
+          args=("repos/${GITHUB_REPOSITORY}/releases/generate-notes" --method POST
+                -f "tag_name=${RELEASE_VERSION}" -f "target_commitish=${GITHUB_SHA}")
+          if [[ -n "${PREVIOUS_VERSION}" ]]; then
+            args+=(-f "previous_tag_name=${PREVIOUS_VERSION}")
+          fi
+          gh api "${args[@]}" --jq .body > generated-notes.md
+          {
+            echo "LinkedIn Kafka ${RELEASE_VERSION}"
+            echo
+            echo "Source commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "Maven coordinates: \`com.linkedin.kafka\`, Scala 2.12"
+            echo
+            cat generated-notes.md
+          } > release-notes.md
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          if gh release view "${RELEASE_VERSION}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_VERSION}" --title "LinkedIn Kafka ${RELEASE_VERSION}" \
+              --notes-file release-notes.md --target "${GITHUB_SHA}"
+            gh release upload "${RELEASE_VERSION}" "${RELEASE_ARCHIVE}" "${RELEASE_ARCHIVE}.sha256" --clobber
+          else
+            gh release create "${RELEASE_VERSION}" "${RELEASE_ARCHIVE}" "${RELEASE_ARCHIVE}.sha256" \
+              --title "LinkedIn Kafka ${RELEASE_VERSION}" --notes-file release-notes.md \
+              --target "${GITHUB_SHA}" --verify-tag
+          fi

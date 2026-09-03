@@ -41,7 +41,9 @@ class ApiVersionManagerTest {
       forwardingManager = None,
       brokerFeatures = brokerFeatures,
       metadataCache = metadataCache,
-      enableUnstableLastVersion = true
+      enableUnstableLastVersion = true,
+      liMoveControllerEnabled = () => true,
+      liShutdownSafetyOverrideEnabled = () => true
     )
     assertEquals(ApiKeys.apisForListener(apiScope).asScala, versionManager.enabledApis)
     assertTrue(ApiKeys.apisForListener(apiScope).asScala.forall { apiKey =>
@@ -67,6 +69,29 @@ class ApiVersionManagerTest {
         assertFalse(versionManager.isApiEnabled(apiKey, apiKey.latestVersion),
           s"$apiKey version ${apiKey.latestVersion} should be disabled.")
       }
+    }
+  }
+
+  @Test
+  def testPrivateApiFeatureFlags(): Unit = {
+    def versionManager(enabled: Boolean) = new DefaultApiVersionManager(
+      listenerType = ListenerType.ZK_BROKER,
+      forwardingManager = None,
+      brokerFeatures = brokerFeatures,
+      metadataCache = metadataCache,
+      enableUnstableLastVersion = true,
+      liMoveControllerEnabled = () => enabled,
+      liShutdownSafetyOverrideEnabled = () => enabled
+    )
+
+    Seq(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK).foreach { apiKey =>
+      val disabledManager = versionManager(enabled = false)
+      assertFalse(disabledManager.isApiEnabled(apiKey, apiKey.latestVersion))
+      assertNull(disabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys.find(apiKey.id))
+
+      val enabledManager = versionManager(enabled = true)
+      assertTrue(enabledManager.isApiEnabled(apiKey, apiKey.latestVersion))
+      assertNotNull(enabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys.find(apiKey.id))
     }
   }
 

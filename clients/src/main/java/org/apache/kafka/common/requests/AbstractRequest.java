@@ -350,6 +350,10 @@ public abstract class AbstractRequest implements AbstractRequestResponse {
                 return DeleteShareGroupStateRequest.parse(buffer, apiVersion);
             case READ_SHARE_GROUP_STATE_SUMMARY:
                 return ReadShareGroupStateSummaryRequest.parse(buffer, apiVersion);
+            case LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK:
+                return LiControlledShutdownSkipSafetyCheckRequest.parse(buffer, apiVersion);
+            case LI_MOVE_CONTROLLER:
+                return LiMoveControllerRequest.parse(buffer, apiVersion);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseRequest`, the " +
                         "code should be updated to do so.", apiKey));

@@ -114,6 +114,14 @@ class KafkaZkClient private[zk] (
     stat.getCzxid
   }
 
+  /** Register this broker as a preferred ZooKeeper controller for the lifetime of its session. */
+  def registerPreferredControllerId(brokerId: Int): Unit = {
+    checkedEphemeralCreate(PreferredControllerIdZNode.path(brokerId), null)
+  }
+
+  def getPreferredControllerList: Seq[Int] =
+    getChildren(PreferredControllersZNode.path).map(_.toInt)
+
   /**
    * Registers a given broker in zookeeper as the controller and increments controller epoch.
    * @param controllerId the id of the broker that is to be registered as the controller.
@@ -1295,6 +1303,12 @@ class KafkaZkClient private[zk] (
   def deleteController(expectedControllerEpochZkVersion: Int): Unit = {
     val deleteRequest = DeleteRequest(ControllerZNode.path, ZkVersion.MatchAnyVersion)
     retryRequestUntilConnected(deleteRequest, expectedControllerEpochZkVersion)
+  }
+
+  /** Delete the controller znode without an epoch check so operational tooling can force a new election. */
+  def deleteControllerRaw(): Unit = {
+    val deleteRequest = DeleteRequest(ControllerZNode.path, ZkVersion.MatchAnyVersion)
+    retryRequestUntilConnected(deleteRequest, ZkVersion.MatchAnyVersion)
   }
 
   /**

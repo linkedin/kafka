@@ -279,6 +279,11 @@ class LogSegmentTest {
     // If the segment is empty after truncation, the create time should be reset
     time.sleep(500)
     assertEquals(500, seg.timeWaitedForRoll(time.milliseconds(), RecordBatch.NO_TIMESTAMP))
+    assertFalse(seg.shouldRoll(new RollParams(100L, 1000L, Int.MaxValue,
+      RecordBatch.NO_TIMESTAMP, 42L, 1, time.milliseconds())))
+    time.sleep(501)
+    assertTrue(seg.shouldRoll(new RollParams(100L, 1000L, Int.MaxValue,
+      RecordBatch.NO_TIMESTAMP, 42L, 1, time.milliseconds())))
 
     seg.truncateTo(0)
     assertEquals(0, seg.timeWaitedForRoll(time.milliseconds(), RecordBatch.NO_TIMESTAMP))

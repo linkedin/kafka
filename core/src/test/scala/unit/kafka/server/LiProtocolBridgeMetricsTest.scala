@@ -52,8 +52,7 @@ class LiProtocolBridgeMetricsTest {
         KafkaConfig.LiProtocolBridgeMoveControllerEnableProp,
         KafkaConfig.LiProtocolBridgeShutdownSafetyOverrideEnableProp,
         KafkaConfig.LiProtocolBridgeFederatedTopicsEnableProp,
-        KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp,
-        KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp
+        KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp
       ).foreach(props.put(_, "true"))
       config.dynamicConfig.updateDefaultConfig(props)
 
@@ -61,12 +60,19 @@ class LiProtocolBridgeMetricsTest {
       assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, updatedValues.keySet)
       val staticMetrics = Set(LiProtocolBridgeMetrics.PreferredControllerEnabled,
         LiProtocolBridgeMetrics.RackIdMapperEnabled, LiProtocolBridgeMetrics.ZookeeperPaginationEnabled,
-        LiProtocolBridgeMetrics.DynamicTopicDeletionEnabled)
+        LiProtocolBridgeMetrics.DynamicTopicDeletionEnabled, LiProtocolBridgeMetrics.MinimumLogRollEnabled,
+        LiProtocolBridgeMetrics.ReassignmentCancellationSafetyEnabled,
+        LiProtocolBridgeMetrics.ListOffsetsInstrumentationEnabled,
+        LiProtocolBridgeMetrics.StaticDefaultQuotasEnabled,
+        LiProtocolBridgeMetrics.ReplicaRequestTimeoutEnabled,
+        LiProtocolBridgeMetrics.OffsetsTopicConfigEnabled,
+        LiProtocolBridgeMetrics.LeaderTransferEnabled)
       assertEquals(1, updatedValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
       staticMetrics.foreach(name => assertEquals(0, updatedValues(name)))
-      assertTrue(updatedValues.filterNot { case (name, _) =>
+      val dynamicValues = updatedValues.filterNot { case (name, _) =>
         staticMetrics.contains(name) || name == LiProtocolBridgeMetrics.ControllerInitializationThreads
-      }.values.forall(_ == 1))
+      }
+      assertTrue(dynamicValues.values.forall(_ == 1), s"Expected dynamic bridge metrics to be enabled: $dynamicValues")
     } finally {
       metrics.close()
     }

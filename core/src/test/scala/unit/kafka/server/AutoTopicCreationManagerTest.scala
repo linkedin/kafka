@@ -26,6 +26,7 @@ import kafka.coordinator.transaction.TransactionCoordinator
 import kafka.utils.TestUtils
 import org.apache.kafka.clients.{ClientResponse, NodeApiVersions, RequestCompletionHandler}
 import org.apache.kafka.common.Node
+import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.internals.Topic.{GROUP_METADATA_TOPIC_NAME, TRANSACTION_STATE_TOPIC_NAME}
 import org.apache.kafka.common.message.{ApiVersionsResponseData, CreateTopicsRequestData}
@@ -38,7 +39,7 @@ import org.apache.kafka.common.security.auth.{KafkaPrincipal, KafkaPrincipalSerd
 import org.apache.kafka.common.utils.{SecurityUtils, Utils}
 import org.apache.kafka.coordinator.transaction.TransactionLogConfigs
 import org.apache.kafka.coordinator.group.{GroupCoordinator, GroupCoordinatorConfig}
-import org.apache.kafka.server.config.ServerConfigs
+import org.apache.kafka.server.config.{ServerConfigs, ZkConfigs}
 import org.apache.kafka.server.{ControllerRequestCompletionHandler, NodeToControllerChannelManager}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
@@ -49,6 +50,26 @@ import org.mockito.{ArgumentCaptor, ArgumentMatchers, Mockito}
 import scala.collection.{Map, Seq}
 
 class AutoTopicCreationManagerTest {
+
+  @Test
+  def testOffsetsTopicCompatibilityConfigsRequireGate(): Unit = {
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    props.put(KafkaConfig.OffsetsTopicMaxMessageBytesProp, "20971520")
+    props.put(KafkaConfig.OffsetsTopicMinInSyncReplicasProp, "2")
+    props.put(KafkaConfig.OffsetsTopicMinCompactionLagMsProp, "1000")
+    val base = new Properties
+    base.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT)
+
+    val disabled = AutoTopicCreationManager.offsetsTopicConfigs(base, KafkaConfig.fromProps(props))
+    assertEquals(1, disabled.size)
+
+    props.put(KafkaConfig.LiProtocolBridgeOffsetsTopicConfigEnableProp, "true")
+    val enabled = AutoTopicCreationManager.offsetsTopicConfigs(base, KafkaConfig.fromProps(props))
+    assertEquals("20971520", enabled.getProperty(TopicConfig.MAX_MESSAGE_BYTES_CONFIG))
+    assertEquals("2", enabled.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG))
+    assertEquals("1000", enabled.getProperty(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
+  }
 
   private val requestTimeout = 100
   private var config: KafkaConfig = _

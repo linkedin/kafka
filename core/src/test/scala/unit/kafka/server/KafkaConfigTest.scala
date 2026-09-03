@@ -54,6 +54,14 @@ import scala.jdk.CollectionConverters._
 class KafkaConfigTest {
 
   @Test
+  def testInvalidMaintenanceBrokerList(): Unit = {
+    val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
+    props.setProperty(KafkaConfig.MaintenanceBrokerListProp, "1,not-a-broker")
+    val config = KafkaConfig.fromProps(props)
+    assertThrows(classOf[ConfigException], () => config.maintenanceBrokerList)
+  }
+
+  @Test
   def testLogRetentionTimeHoursProvided(): Unit = {
     val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect, port = 8181)
     props.setProperty(ServerLogConfigs.LOG_RETENTION_TIME_HOURS_CONFIG, "1")
@@ -1147,6 +1155,7 @@ class KafkaConfigTest {
         case GroupCoordinatorConfig.SHARE_GROUP_MAX_SIZE_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", 0, -1)
 
         case KafkaConfig.ObserverClassNameProp |
+             KafkaConfig.MaintenanceBrokerListProp |
              KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp => // ignore string values
 
         case _ => assertPropertyInvalid(baseProperties, name, "not_a_number", "-1")

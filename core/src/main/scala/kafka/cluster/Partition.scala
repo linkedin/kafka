@@ -147,7 +147,9 @@ object Partition {
       delayedOperations = delayedOperations,
       metadataCache = replicaManager.metadataCache,
       logManager = replicaManager.logManager,
-      alterIsrManager = replicaManager.alterPartitionManager)
+      alterIsrManager = replicaManager.alterPartitionManager,
+      leaderTransferEnabled = replicaManager.config.liProtocolBridgeLeaderTransferActive,
+      leaderTransferManager = replicaManager.leaderTransferManager)
   }
 
   def removeMetrics(topicPartition: TopicPartition): Unit = {
@@ -301,7 +303,9 @@ class Partition(val topicPartition: TopicPartition,
                 metadataCache: MetadataCache,
                 logManager: LogManager,
                 alterIsrManager: AlterPartitionManager,
-                @volatile private var _topicId: Option[Uuid] = None // TODO: merge topicPartition and _topicId into TopicIdPartition once TopicId persist in most of the code by KAFKA-16212
+                @volatile private var _topicId: Option[Uuid] = None, // TODO: merge topicPartition and _topicId into TopicIdPartition once TopicId persist in most of the code by KAFKA-16212
+                leaderTransferEnabled: Boolean = false,
+                leaderTransferManager: LeaderTransferManager = LeaderTransferManager.NoOp
                ) extends Logging {
 
   import Partition.metricsGroup
@@ -1281,7 +1285,27 @@ class Partition(val topicPartition: TopicPartition,
   }
 
   private def needsShrinkIsr(): Boolean = {
-    leaderLogIfLocal.exists { _ => getOutOfSyncReplicas(replicaLagTimeMaxMs).nonEmpty }
+    leaderLogIfLocal.exists { leaderLog =>
+      val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
+      outOfSyncReplicaIds.nonEmpty &&
+        (!leaderTransferEnabled ||
+          (partitionState.isr -- outOfSyncReplicaIds).size >= leaderLog.config.minInSyncReplicas)
+    }
+  }
+
+  def maybeTransferToNewLeader(): Unit = {
+    if (!leaderTransferEnabled)
+      return
+    val recommendedLeader = inReadLock(leaderIsrUpdateLock) {
+      leaderLogIfLocal.flatMap { leaderLog =>
+        val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
+        if (outOfSyncReplicaIds.nonEmpty &&
+          (partitionState.isr -- outOfSyncReplicaIds).size < leaderLog.config.minInSyncReplicas)
+          (partitionState.isr -- outOfSyncReplicaIds - localBrokerId).toSeq.sorted.headOption
+        else None
+      }
+    }
+    recommendedLeader.foreach(leaderTransferManager.submit(topicPartition, _))
   }
 
   private def isFollowerOutOfSync(replicaId: Int,

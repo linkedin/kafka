@@ -47,6 +47,7 @@ import org.apache.kafka.security.authorizer.AclEntry
 import org.apache.kafka.server.common.MetadataVersion
 import org.apache.kafka.server.config.{ConfigType, ReplicationConfigs, ZkConfigs}
 import org.apache.kafka.storage.internals.log.LogConfig
+import org.apache.zookeeper.KeeperException
 import org.apache.zookeeper.KeeperException.{Code, NoAuthException, NoNodeException, NodeExistsException}
 import org.apache.zookeeper.{CreateMode, ZooDefs}
 import org.apache.zookeeper.client.ZKClientConfig
@@ -112,6 +113,35 @@ class KafkaZkClientTest extends QuorumTestHarness {
 
     zkClient.deleteFederatedTopicZNode("orders", "west")
     assertEquals(Set("/east/payments"), zkClient.getAllFederatedTopics())
+  }
+
+  @Test
+  def testSetTopicDeletionFlagCreatesMissingZnode(): Unit = {
+    assertEquals(None, zkClient.getTopicDeletionFlag)
+    zkClient.setTopicDeletionFlag(enabled = false)
+    assertEquals(Some(false), zkClient.getTopicDeletionFlag)
+    zkClient.setTopicDeletionFlag(enabled = true)
+    assertEquals(Some(true), zkClient.getTopicDeletionFlag)
+  }
+
+  @Test
+  def testPaginatedConfigReadPropagatesClientFailure(): Unit = {
+    val paginatedClient = KafkaZkClient(zkConnect,
+      zkAclsEnabled.getOrElse(JaasUtils.isZkSaslEnabled),
+      zkSessionTimeout,
+      zkConnectionTimeout,
+      zkMaxInFlightRequests,
+      Time.SYSTEM,
+      name = "KafkaZkClientPaginationFailureTest",
+      zkClientConfig = new ZKClientConfig,
+      enableEntityConfigControllerCheck = false,
+      paginateTopics = true)
+    try {
+      assertThrows(classOf[KeeperException],
+        () => paginatedClient.getAllEntitiesWithConfig(ConfigType.TOPIC))
+    } finally {
+      paginatedClient.close()
+    }
   }
 
   @Test

@@ -58,6 +58,18 @@ class ControllerContextTest {
   }
 
   @Test
+  def testTopicNameLengthTotalTracksTopicChanges(): Unit = {
+    context.setAllTopics(Set("a", "orders"))
+    assertEquals(7L, context.sumOfTopicNameLengths)
+
+    context.removeTopic("orders")
+    assertEquals(1L, context.sumOfTopicNameLengths)
+
+    context.resetContext()
+    assertEquals(0L, context.sumOfTopicNameLengths)
+  }
+
+  @Test
   def testUpdatePartitionFullReplicaAssignmentUpdatesReplicaAssignment(): Unit = {
     val initialReplicas = Seq(4)
     context.updatePartitionFullReplicaAssignment(tp1, ReplicaAssignment(initialReplicas))

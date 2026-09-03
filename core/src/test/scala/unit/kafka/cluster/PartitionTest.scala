@@ -1287,6 +1287,7 @@ class PartitionTest extends AbstractPartitionTest {
     val leaderEpoch = 8
 
     assertFalse(partition.isAtMinIsr)
+    assertFalse(partition.isOneAboveMinIsr)
     // Make isr set to only have leader to trigger AtMinIsr (default min isr config is 1)
     val leaderState = new LeaderAndIsrPartitionState()
       .setControllerEpoch(controllerEpoch)
@@ -1298,6 +1299,12 @@ class PartitionTest extends AbstractPartitionTest {
       .setIsNew(true)
     partition.makeLeader(leaderState, offsetCheckpoints, None)
     assertTrue(partition.isAtMinIsr)
+    assertFalse(partition.isOneAboveMinIsr)
+
+    leaderState.setLeaderEpoch(leaderEpoch + 1).setIsr(List[Integer](leader, follower1).asJava)
+    partition.makeLeader(leaderState, offsetCheckpoints, None)
+    assertFalse(partition.isAtMinIsr)
+    assertTrue(partition.isOneAboveMinIsr)
   }
 
   @Test

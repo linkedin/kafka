@@ -86,6 +86,7 @@ class ControllerContext extends ControllerChannelContext {
   var epochZkVersion: Int = KafkaController.InitialControllerEpochZkVersion
 
   val allTopics = mutable.Set.empty[String]
+  @volatile private var topicNameLengthTotal = 0L
   var topicIds = mutable.Map.empty[String, Uuid]
   var topicNames = mutable.Map.empty[Uuid, String]
   val partitionAssignments = mutable.Map.empty[String, mutable.Map[Int, ReplicaAssignment]]
@@ -121,6 +122,7 @@ class ControllerContext extends ControllerChannelContext {
 
   private def clearTopicsState(): Unit = {
     allTopics.clear()
+    topicNameLengthTotal = 0L
     topicIds.clear()
     topicNames.clear()
     partitionAssignments.clear()
@@ -323,7 +325,10 @@ class ControllerContext extends ControllerChannelContext {
   def setAllTopics(topics: Set[String]): Unit = {
     allTopics.clear()
     allTopics ++= topics
+    topicNameLengthTotal = topics.iterator.map(_.length.toLong).sum
   }
+
+  def sumOfTopicNameLengths: Long = topicNameLengthTotal
 
   def removeTopic(topic: String): Unit = {
     // Metric is cleaned when the topic is queued up for deletion so
@@ -333,7 +338,8 @@ class ControllerContext extends ControllerChannelContext {
       cleanPreferredReplicaImbalanceMetric(topic)
     topicsToBeDeleted -= topic
     topicsWithDeletionStarted -= topic
-    allTopics -= topic
+    if (allTopics.remove(topic))
+      topicNameLengthTotal -= topic.length
     topicIds.remove(topic).foreach { topicId =>
       topicNames.remove(topicId)
     }

@@ -87,6 +87,7 @@ object KafkaController extends Logging {
   private val MaintenanceBrokerCountMetricName = "MaintenanceBrokerCount"
   private val FencedBrokerCountMetricName = "FencedBrokerCount"
   private val ZkMigrationStateMetricName = "ZkMigrationState"
+  private val SumOfTopicNameLengthMetricName = "SumOfTopicNameLength"
 
   // package private for testing
   private[controller] val MetricNames = Set(
@@ -234,6 +235,9 @@ class KafkaController(val config: KafkaConfig,
     () => if (isActive) config.maintenanceBrokerList.size else 0)
   // FencedBrokerCount metric is always 0 in the ZK controller.
   metricsGroup.newGauge(FencedBrokerCountMetricName, () => 0)
+  if (config.liProtocolBridgeLegacyRequestMetricsActive)
+    metricsGroup.newGauge(KafkaController.SumOfTopicNameLengthMetricName,
+      () => controllerContext.sumOfTopicNameLengths)
 
   /**
    * Returns true if this broker is the current controller.
@@ -595,6 +599,8 @@ class KafkaController(val config: KafkaConfig,
 
   private def removeMetrics(): Unit = {
     KafkaController.MetricNames.foreach(metricsGroup.removeMetric)
+    if (config.liProtocolBridgeLegacyRequestMetricsActive)
+      metricsGroup.removeMetric(KafkaController.SumOfTopicNameLengthMetricName)
   }
 
   /*

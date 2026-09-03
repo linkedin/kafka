@@ -17,6 +17,7 @@
 package org.apache.kafka.clients;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
@@ -61,6 +62,15 @@ public final class ClientUtils {
     }
 
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, ClientDnsLookup clientDnsLookup) {
+        return parseAndValidateAddresses(urls, clientDnsLookup, new DefaultHostResolver());
+    }
+
+    static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls,
+                                                              ClientDnsLookup clientDnsLookup,
+                                                              HostResolver hostResolver) {
+        Objects.requireNonNull(urls, "urls must not be null");
+        Objects.requireNonNull(clientDnsLookup, "clientDnsLookup must not be null");
+        Objects.requireNonNull(hostResolver, "hostResolver must not be null");
         List<InetSocketAddress> addresses = new ArrayList<>();
         for (String url : urls) {
             if (url != null && !url.isEmpty()) {
@@ -71,7 +81,7 @@ public final class ClientUtils {
                         throw new ConfigException("Invalid url in " + CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG + ": " + url);
 
                     if (clientDnsLookup == ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY) {
-                        InetAddress[] inetAddresses = InetAddress.getAllByName(host);
+                        InetAddress[] inetAddresses = hostResolver.resolve(host);
                         for (InetAddress inetAddress : inetAddresses) {
                             String resolvedCanonicalName = inetAddress.getCanonicalHostName();
                             InetSocketAddress address = new InetSocketAddress(resolvedCanonicalName, port);

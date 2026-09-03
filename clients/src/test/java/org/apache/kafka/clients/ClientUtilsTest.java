@@ -19,10 +19,8 @@ package org.apache.kafka.clients;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.kafka.common.config.ConfigException;
 import org.junit.jupiter.api.Test;
 
@@ -56,19 +54,14 @@ public class ClientUtilsTest {
         checkWithoutLookup("[::1]:8000");
         checkWithoutLookup("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1234", "localhost:10000");
 
-        // With lookup of example.com, either one or two addresses are expected depending on
-        // whether ipv4 and ipv6 are enabled
-        List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("example.com:10000"));
-        assertTrue(validatedAddresses.size() >= 1, "Unexpected addresses " + validatedAddresses);
-        List<String> validatedHostNames = validatedAddresses.stream().map(InetSocketAddress::getHostName)
-                .collect(Collectors.toList());
-        List<String> expectedHostNames = Arrays.asList(
-            "104.18.26.120",
-            "104.18.27.120",
-            "2606:4700:0:0:0:0:6812:1a78",
-            "2606:4700:0:0:0:0:6812:1b78"
-        );
-        assertTrue(expectedHostNames.containsAll(validatedHostNames), "Unexpected addresses " + validatedHostNames);
+        InetAddress loopback = InetAddress.getLoopbackAddress();
+        HostResolver resolver = new AddressChangeHostResolver(
+            new InetAddress[]{loopback, loopback}, new InetAddress[]{loopback, loopback});
+
+        List<InetSocketAddress> validatedAddresses = ClientUtils.parseAndValidateAddresses(
+            asList("example.com:10000"), ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY, resolver);
+        assertEquals(2, validatedAddresses.size());
+        assertFalse(validatedAddresses.stream().anyMatch(InetSocketAddress::isUnresolved));
         validatedAddresses.forEach(address -> assertEquals(10000, address.getPort()));
     }
 
@@ -76,6 +69,24 @@ public class ClientUtilsTest {
     public void testInvalidConfig() {
         assertThrows(IllegalArgumentException.class,
             () -> ClientUtils.parseAndValidateAddresses(Collections.singletonList("localhost:10000"), "random.value"));
+    }
+
+    @Test
+    public void testParseAndValidateAddressesRejectsNullInputs() {
+        NullPointerException urlsError = assertThrows(NullPointerException.class,
+            () -> ClientUtils.parseAndValidateAddresses(
+                null, ClientDnsLookup.USE_ALL_DNS_IPS, hostResolver));
+        assertEquals("urls must not be null", urlsError.getMessage());
+
+        NullPointerException lookupError = assertThrows(NullPointerException.class,
+            () -> ClientUtils.parseAndValidateAddresses(
+                Collections.emptyList(), null, hostResolver));
+        assertEquals("clientDnsLookup must not be null", lookupError.getMessage());
+
+        NullPointerException resolverError = assertThrows(NullPointerException.class,
+            () -> ClientUtils.parseAndValidateAddresses(
+                Collections.emptyList(), ClientDnsLookup.USE_ALL_DNS_IPS, null));
+        assertEquals("hostResolver must not be null", resolverError.getMessage());
     }
 
     @Test
@@ -142,10 +153,6 @@ public class ClientUtilsTest {
 
     private List<InetSocketAddress> checkWithoutLookup(String... url) {
         return ClientUtils.parseAndValidateAddresses(asList(url), ClientDnsLookup.USE_ALL_DNS_IPS);
-    }
-
-    private List<InetSocketAddress> checkWithLookup(List<String> url) {
-        return ClientUtils.parseAndValidateAddresses(url, ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY);
     }
 
 }

@@ -1129,6 +1129,18 @@ class KafkaConfigTest {
   }
 
   @Test
+  def testProtocolBridgeModeRejectsRaftBroker(): Unit = {
+    val props = new Properties()
+    props.put(KafkaConfig.ProcessRolesProp, "broker")
+    props.put(KafkaConfig.QuorumVotersProp, "2@localhost:9093")
+    props.put(KafkaConfig.NodeIdProp, "1")
+    assertTrue(isValidKafkaConfig(props))
+
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+    assertFalse(isValidKafkaConfig(props))
+  }
+
+  @Test
   def testRejectsNegativeNodeIdForRaftBasedBrokerCaseWithAutoGenEnabled(): Unit = {
     // -1 is the default for both node.id and broker.id
     val props = new Properties()

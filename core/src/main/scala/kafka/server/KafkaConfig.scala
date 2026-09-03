@@ -22,7 +22,7 @@ import kafka.admin.RackAwareReplicaAssignmentRackIdMapper
 import java.io.File
 import java.util
 import java.util.{Collections, Locale, Properties}
-import kafka.api.{ApiVersion, ApiVersionValidator, KAFKA_0_10_0_IV1, KAFKA_2_1_IV0, KAFKA_2_7_IV0, KAFKA_2_8_IV0, KAFKA_3_0_IV1}
+import kafka.api.{ApiVersion, ApiVersionValidator, KAFKA_0_10_0_IV1, KAFKA_2_1_IV0, KAFKA_2_2_IV0, KAFKA_2_7_IV0, KAFKA_2_8_IV0, KAFKA_3_0_IV1}
 import kafka.cluster.EndPoint
 import kafka.coordinator.group.OffsetConfig
 import kafka.coordinator.transaction.{TransactionLog, TransactionStateManager}
@@ -330,6 +330,7 @@ object Defaults {
 
   /** Linkedin Internal states */
   val LiCombinedControlRequestEnabled = false
+  val LiProtocolBridgeModeEnabled = false
   val LiUpdateMetadataDelayMs = 0
   val LiDropFetchFollowerEnable = false
   val LiDenyAlterIsr = false
@@ -457,6 +458,7 @@ object KafkaConfig {
   val LiMinPreferredControllerCountProp = "li.min.preferred.controller.count"
   val LiAsyncFetcherEnableProp = "li.async.fetcher.enable"
   val LiCombinedControlRequestEnableProp = "li.combined.control.request.enable"
+  val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
   val LiUpdateMetadataDelayMsProp = "li.update.metadata.delay.ms"
   val LiDropFetchFollowerEnableProp = "li.stop.replication.enable"
   val LiDenyAlterIsrProp = "li.deny.alter.isr"
@@ -814,6 +816,11 @@ object KafkaConfig {
   val LiMinPreferredControllerCountDoc = s"Specifies the desired count of minimum preferred controller. It will refuse to shutdown a broker if taking it down brings alive preferred controller below the threshold."
   val LiAsyncFetcherEnableDoc = "Specifies whether the event-based async fetcher should be used."
   val LiCombinedControlRequestEnableDoc = "Specifies whether the controller should use the LiCombinedControlRequest."
+  val LiProtocolBridgeModeEnableDoc = "Enables the temporary 3.0-li to upstream bridge protocol. " +
+    "When enabled, the controller sends LeaderAndIsr v2, UpdateMetadata v5, and StopReplica v1, and does not " +
+    "merge new LiCombinedControl requests. The setting is supported only on ZooKeeper brokers, requires " +
+    "inter.broker.protocol.version 2.2 or newer, and is a cluster-wide dynamic config only for a controlled " +
+    "rolling upgrade."
   val LiUpdateMetadataDelayMsDoc = "Specifies how long a UpdateMetadata request with partitions should be delayed before its processing can start. This config is purely for testing the LiCombinedControl feature and should not be enabled in a production environment."
   val LiDropCorruptedFilesEnableDoc = "Specifies whether the broker should delete corrupted files during startup."
   val LiConsumerFetchSampleRatioDoc = "Specifies the ratio of consumer Fetch requests to sample, which must be a number in the range [0.0, 1.0]. For now, the sampling is used to derive the age of consumed data."
@@ -1277,6 +1284,7 @@ object KafkaConfig {
       .define(LiMinPreferredControllerCountProp, INT, Defaults.LiMinPreferredControllerCount, atLeast(0), HIGH, LiMinPreferredControllerCountDoc)
       .define(LiAsyncFetcherEnableProp, BOOLEAN, Defaults.LiAsyncFetcherEnabled, HIGH, LiAsyncFetcherEnableDoc)
       .define(LiCombinedControlRequestEnableProp, BOOLEAN, Defaults.LiCombinedControlRequestEnabled, HIGH, LiCombinedControlRequestEnableDoc)
+      .define(LiProtocolBridgeModeEnableProp, BOOLEAN, Defaults.LiProtocolBridgeModeEnabled, HIGH, LiProtocolBridgeModeEnableDoc)
       .define(LiUpdateMetadataDelayMsProp, LONG, Defaults.LiUpdateMetadataDelayMs, atLeast(0), LOW, LiUpdateMetadataDelayMsDoc)
       .define(LiDropFetchFollowerEnableProp, BOOLEAN, Defaults.LiDropFetchFollowerEnable, LOW, LiDropFetchFollowerEnableDoc)
       .define(LiDenyAlterIsrProp, BOOLEAN, Defaults.LiDenyAlterIsr, HIGH, LiDenyAlterIsrDoc)
@@ -1833,6 +1841,7 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
 
   val liAsyncFetcherEnable = getBoolean(KafkaConfig.LiAsyncFetcherEnableProp)
   def liCombinedControlRequestEnable = getBoolean(KafkaConfig.LiCombinedControlRequestEnableProp)
+  def liProtocolBridgeModeEnable = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
   def liUpdateMetadataDelayMs = getLong(KafkaConfig.LiUpdateMetadataDelayMsProp)
   def liDropFetchFollowerEnable = getBoolean(KafkaConfig.LiDropFetchFollowerEnableProp)
   def liDenyAlterIsr = getBoolean(KafkaConfig.LiDenyAlterIsrProp)
@@ -2347,5 +2356,10 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
     require(classOf[KafkaPrincipalSerde].isAssignableFrom(principalBuilderClass),
       s"${KafkaConfig.PrincipalBuilderClassProp} must implement KafkaPrincipalSerde")
     require(liMinOriginalAliveReplicas >= Defaults.MinInSyncReplicas, KafkaConfig.liMinOriginalAliveReplicasDoc)
+    require(!liProtocolBridgeModeEnable || requiresZookeeper,
+      s"${KafkaConfig.LiProtocolBridgeModeEnableProp}=true is supported only on ZooKeeper brokers")
+    require(!liProtocolBridgeModeEnable || interBrokerProtocolVersion >= KAFKA_2_2_IV0,
+      s"${KafkaConfig.LiProtocolBridgeModeEnableProp}=true requires " +
+        s"${KafkaConfig.InterBrokerProtocolVersionProp}=${KAFKA_2_2_IV0.shortVersion} or newer")
   }
 }

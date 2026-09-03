@@ -17,7 +17,7 @@
 package kafka.controller
 
 import java.util.Properties
-import kafka.api.{ApiVersion, KAFKA_0_10_0_IV1, KAFKA_0_10_2_IV0, KAFKA_0_9_0, KAFKA_1_0_IV0, KAFKA_2_2_IV0, KAFKA_2_3_IV2, KAFKA_2_4_IV0, KAFKA_2_4_IV1, KAFKA_2_6_IV0, KAFKA_2_8_IV1, LeaderAndIsr}
+import kafka.api.{ApiVersion, KAFKA_0_10_0_IV1, KAFKA_0_10_2_IV0, KAFKA_0_9_0, KAFKA_1_0_IV0, KAFKA_2_1_IV2, KAFKA_2_2_IV0, KAFKA_2_3_IV2, KAFKA_2_4_IV0, KAFKA_2_4_IV1, KAFKA_2_6_IV0, KAFKA_2_8_IV1, LeaderAndIsr}
 import kafka.cluster.{Broker, EndPoint}
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
@@ -174,9 +174,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: ApiVersion,
-                                                                       expectedLeaderAndIsrVersion: Short): Unit = {
+                                                                       expectedLeaderAndIsrVersion: Short,
+                                                                       bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo", "bar"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     val partition = new TopicPartition("foo", 0)
@@ -198,7 +199,12 @@ class ControllerChannelManagerTest {
     val byteBuffer = request.serialize
     val deserializedRequest = LeaderAndIsrRequest.parse(byteBuffer, expectedLeaderAndIsrVersion)
 
-    if (interBrokerProtocolVersion >= KAFKA_2_8_IV1) {
+    if (bridgeMode) {
+      assertEquals(context.liveBrokerIdAndEpochs(2), deserializedRequest.brokerEpoch)
+      assertEquals(AbstractControlRequest.UNKNOWN_BROKER_EPOCH, deserializedRequest.maxBrokerEpoch)
+    }
+
+    if (expectedLeaderAndIsrVersion >= 6) {
       assertFalse(request.topicIds().get("foo").equals(Uuid.ZERO_UUID))
       assertFalse(deserializedRequest.topicIds().get("foo").equals(Uuid.ZERO_UUID))
     } else if (interBrokerProtocolVersion >= KAFKA_2_2_IV0) {
@@ -378,9 +384,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testUpdateMetadataFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: ApiVersion,
-                                                                  expectedUpdateMetadataVersion: Short): Unit = {
+                                                                  expectedUpdateMetadataVersion: Short,
+                                                                  bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo", "bar"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     batch.newBatch()
@@ -395,6 +402,13 @@ class ControllerChannelManagerTest {
     val allVersions = requests.map(_.version)
     assertTrue(allVersions.forall(_ == expectedUpdateMetadataVersion),
       s"IBP $interBrokerProtocolVersion should use version $expectedUpdateMetadataVersion, but found versions $allVersions")
+    if (bridgeMode) {
+      requests.foreach { request =>
+        val parsedRequest = UpdateMetadataRequest.parse(request.serialize, request.version)
+        assertEquals(context.liveBrokerIdAndEpochs(2), parsedRequest.brokerEpoch)
+        assertEquals(AbstractControlRequest.UNKNOWN_BROKER_EPOCH, parsedRequest.maxBrokerEpoch)
+      }
+    }
   }
 
   @Test
@@ -772,9 +786,10 @@ class ControllerChannelManagerTest {
   }
 
   private def testStopReplicaFollowsInterBrokerProtocolVersion(interBrokerProtocolVersion: ApiVersion,
-                                                               expectedStopReplicaRequestVersion: Short): Unit = {
+                                                               expectedStopReplicaRequestVersion: Short,
+                                                               bridgeMode: Boolean = false): Unit = {
     val context = initContext(Seq(1, 2, 3), 2, 3, Set("foo"))
-    val config = createConfig(interBrokerProtocolVersion)
+    val config = createConfig(interBrokerProtocolVersion, bridgeMode)
     val batch = new MockControllerBrokerRequestBatch(context, config)
 
     val partition = new TopicPartition("foo", 0)
@@ -794,6 +809,50 @@ class ControllerChannelManagerTest {
     val allVersions = requests.map(_.version)
     assertTrue(allVersions.forall(_ == expectedStopReplicaRequestVersion),
       s"IBP $interBrokerProtocolVersion should use version $expectedStopReplicaRequestVersion, but found versions $allVersions")
+    if (bridgeMode) {
+      requests.foreach { request =>
+        val parsedRequest = StopReplicaRequest.parse(request.serialize, request.version)
+        assertEquals(context.liveBrokerIdAndEpochs(2), parsedRequest.brokerEpoch)
+        assertEquals(AbstractControlRequest.UNKNOWN_BROKER_EPOCH, parsedRequest.maxBrokerEpoch)
+      }
+    }
+  }
+
+  @Test
+  def testProtocolBridgeVersionSelection(): Unit = {
+    ApiVersion.allVersions.foreach { version =>
+      val bridgeSupported = version >= KAFKA_2_2_IV0
+      val expectedLeaderAndIsrVersion = if (bridgeSupported)
+        ControllerChannelManager.BridgeLeaderAndIsrRequestVersion
+      else ControllerChannelManager.leaderAndIsrRequestVersion(version, bridgeMode = false)
+      val expectedUpdateMetadataVersion = if (bridgeSupported)
+        ControllerChannelManager.BridgeUpdateMetadataRequestVersion
+      else ControllerChannelManager.updateMetadataRequestVersion(version, bridgeMode = false)
+      val expectedStopReplicaVersion = if (bridgeSupported)
+        ControllerChannelManager.BridgeStopReplicaRequestVersion
+      else ControllerChannelManager.stopReplicaRequestVersion(version, bridgeMode = false)
+
+      assertEquals(expectedLeaderAndIsrVersion,
+        ControllerChannelManager.leaderAndIsrRequestVersion(version, bridgeMode = true))
+      assertEquals(expectedUpdateMetadataVersion,
+        ControllerChannelManager.updateMetadataRequestVersion(version, bridgeMode = true))
+      assertEquals(expectedStopReplicaVersion,
+        ControllerChannelManager.stopReplicaRequestVersion(version, bridgeMode = true))
+    }
+
+    val latestVersion = ApiVersion.latestVersion
+    testLeaderAndIsrRequestFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeLeaderAndIsrRequestVersion, bridgeMode = true)
+    testUpdateMetadataFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeUpdateMetadataRequestVersion, bridgeMode = true)
+    testStopReplicaFollowsInterBrokerProtocolVersion(latestVersion,
+      ControllerChannelManager.BridgeStopReplicaRequestVersion, bridgeMode = true)
+  }
+
+  @Test
+  def testProtocolBridgeModeRequiresIbp22(): Unit = {
+    assertThrows(classOf[IllegalArgumentException],
+      () => createConfig(KAFKA_2_1_IV2, bridgeMode = true))
   }
 
   private case class LeaderAndDelete(leaderAndIsr: LeaderAndIsr,
@@ -872,10 +931,11 @@ class ControllerChannelManagerTest {
     }
   }
 
-  private def createConfig(interBrokerVersion: ApiVersion): KafkaConfig = {
+  private def createConfig(interBrokerVersion: ApiVersion, bridgeMode: Boolean = false): KafkaConfig = {
     val props = new Properties()
     props.put(KafkaConfig.BrokerIdProp, controllerId.toString)
     props.put(KafkaConfig.ZkConnectProp, "zkConnect")
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, bridgeMode.toString)
     TestUtils.setIbpAndMessageFormatVersions(props, interBrokerVersion)
     KafkaConfig.fromProps(props)
   }

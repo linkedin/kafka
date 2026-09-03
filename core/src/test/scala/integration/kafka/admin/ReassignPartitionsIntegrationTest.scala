@@ -19,7 +19,7 @@ package kafka.admin
 
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
-import java.util.{Collections, HashMap, List}
+import java.util.{Collections, HashMap, List, Properties}
 import kafka.admin.ReassignPartitionsCommand._
 import kafka.api.KAFKA_2_7_IV1
 import kafka.server.{IsrChangePropagationConfig, KafkaConfig, KafkaServer, ZkIsrManager}
@@ -61,6 +61,39 @@ class ReassignPartitionsIntegrationTest extends ZooKeeperTestHarness {
     cluster = new ReassignPartitionsTestCluster(zkConnect)
     cluster.setup()
     executeAndVerifyReassignment()
+  }
+
+  @Test
+  def testReassignmentInProtocolBridgeMode(): Unit = {
+    val configOverrides = Map(
+      KafkaConfig.LiProtocolBridgeModeEnableProp -> "true",
+      KafkaConfig.LiCombinedControlRequestEnableProp -> "true"
+    )
+    cluster = new ReassignPartitionsTestCluster(zkConnect, configOverrides = configOverrides)
+    cluster.setup()
+    executeAndVerifyReassignment()
+  }
+
+  @Test
+  def testReassignmentStartedBeforeProtocolBridgeActivationCompletes(): Unit = {
+    cluster = new ReassignPartitionsTestCluster(zkConnect)
+    cluster.setup()
+    cluster.produceMessages("foo", 0, 100)
+
+    val assignment =
+      """{"version":1,"partitions":[{"topic":"foo","partition":0,"replicas":[0,1,3],"log_dirs":["any","any","any"]}]}"""
+    runExecuteAssignment(cluster.adminClient, false, assignment, 100000L, -1L)
+
+    val bridgeProps = new Properties
+    bridgeProps.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+    TestUtils.incrementalAlterConfigs(cluster.servers, cluster.adminClient, bridgeProps, perBrokerConfig = false).all.get()
+    TestUtils.waitUntilTrue(
+      () => cluster.servers.forall(_.config.liProtocolBridgeModeEnable),
+      "protocol bridge config did not propagate to every broker")
+
+    val finalAssignment = Map(new TopicPartition("foo", 0) ->
+      PartitionReassignmentState(Seq(0, 1, 3), Seq(0, 1, 3), true))
+    waitForVerifyAssignment(cluster.adminClient, assignment, false, VerifyAssignmentResult(finalAssignment))
   }
 
   @Test

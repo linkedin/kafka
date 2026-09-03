@@ -91,6 +91,23 @@ class LiCombinedControlRequestTest extends KafkaServerTestHarness  with Logging 
   }
 
   @Test
+  def testProtocolBridgeModeStopsNewLiCombinedControlRequests(): Unit = {
+    val props = new Properties
+    props.put(KafkaConfig.LiCombinedControlRequestEnableProp, "true")
+    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiCombinedControlRequestEnableProp, "true"))
+    createTopic("bridge-warmup")
+    assertTrue(createTopicAndGetCombinedRequestCount(Set("bridge-before-1", "bridge-before-2")) > 0)
+
+    props.clear()
+    props.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+    reconfigureServers(props, perBrokerConfig = false, (KafkaConfig.LiProtocolBridgeModeEnableProp, "true"))
+
+    val countAfterActivation = createTopicAndGetCombinedRequestCount(Set("bridge-after-1", "bridge-after-2"))
+    val countAfterMoreRequests = createTopicAndGetCombinedRequestCount(Set("bridge-after-3", "bridge-after-4"))
+    assertEquals(countAfterActivation, countAfterMoreRequests)
+  }
+
+  @Test
   def testLiCombinedControlRequestNoPartitionBroker(): Unit = {
     // This test is to verify that commit 8c5b1ec033577cb6ca2b445a70e7347581d5b7c6 would fix the bug described below.
     // https://github.com/linkedin/kafka/commit/8c5b1ec033577cb6ca2b445a70e7347581d5b7c6

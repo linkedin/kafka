@@ -17,7 +17,7 @@
 
 package kafka.server
 
-import java.util.{Arrays, Collections}
+import java.util.{Arrays, Collections, Properties}
 
 import kafka.network.SocketServer
 import kafka.utils._
@@ -32,6 +32,19 @@ import org.junit.jupiter.api.Test
 import scala.jdk.CollectionConverters._
 
 class DeleteTopicsRequestTest extends BaseRequestTest {
+
+  @Test
+  def testDeleteTopicInProtocolBridgeMode(): Unit = {
+    val bridgeProps = new Properties
+    bridgeProps.put(KafkaConfig.LiProtocolBridgeModeEnableProp, "true")
+    servers.foreach(_.config.dynamicConfig.updateDefaultConfig(bridgeProps))
+
+    createTopic("bridge-delete-topic", 3, 2)
+    validateValidDeleteTopicRequests(new DeleteTopicsRequest.Builder(
+      new DeleteTopicsRequestData()
+        .setTopicNames(Arrays.asList("bridge-delete-topic"))
+        .setTimeoutMs(10000)).build())
+  }
 
   @Test
   def testValidDeleteTopicRequests(): Unit = {

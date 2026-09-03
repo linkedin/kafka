@@ -189,6 +189,7 @@ class KafkaServer(
 
   private var _clusterId: String = null
   private var _brokerTopicStats: BrokerTopicStats = null
+  private var liProtocolBridgeMetrics: LiProtocolBridgeMetrics = null
 
   private var _featureChangeListener: FinalizedFeatureChangeListener = null
 
@@ -305,6 +306,7 @@ class KafkaServer(
 
         /* register broker metrics */
         _brokerTopicStats = new BrokerTopicStats
+        liProtocolBridgeMetrics = new LiProtocolBridgeMetrics(config)
 
         quotaManagers = QuotaFactory.instantiate(config, metrics, time, Some(kafkaScheduler), threadNamePrefix.getOrElse(""))
         KafkaBroker.notifyClusterListeners(clusterId, kafkaMetricsReporters ++ metrics.reporters.asScala)
@@ -911,6 +913,8 @@ class KafkaServer(
         // avoid any failures (e.g. when metrics are recorded)
         if (socketServer != null)
           CoreUtils.swallow(socketServer.shutdown(), this)
+        if (liProtocolBridgeMetrics != null)
+          CoreUtils.swallow(liProtocolBridgeMetrics.close(), this)
         if (metrics != null)
           CoreUtils.swallow(metrics.close(), this)
         if (kafkaYammerMetrics != null)

@@ -46,6 +46,7 @@ class LiProtocolBridgeMetricsTest {
       val props = new Properties
       Seq(
         KafkaConfig.LiProtocolBridgeModeEnableProp,
+        KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp,
         KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
         KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
         KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,

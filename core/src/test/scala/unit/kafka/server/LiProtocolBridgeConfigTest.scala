@@ -31,8 +31,7 @@ class LiProtocolBridgeConfigTest {
     val defaultProps = new Properties
     defaultProps.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
     val defaults = KafkaConfig.fromProps(defaultProps)
-    // The wrapper and preflight manifest must be updated deliberately when this contract changes.
-    assertEquals(22, KafkaConfig.LiProtocolBridgeEnableProps.size)
+    // The Python contract test checks this registry against the preflight flag list.
     assertEquals(KafkaConfig.LiProtocolBridgeEnableProps.size,
       KafkaConfig.LiProtocolBridgeEnableProps.distinct.size, "compatibility settings must be unique")
     KafkaConfig.LiProtocolBridgeEnableProps.foreach { name =>

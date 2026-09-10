@@ -61,6 +61,8 @@ import scala.collection.{Map, Seq}
 object KafkaConfig {
 
   val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
+  val LiProtocolBridgeTopicDeletionStateCleanupEnableProp =
+    "li.protocol.bridge.topic.deletion.state.cleanup.enable"
   val LiProtocolBridgeFollowerRecoveryEnableProp = "li.protocol.bridge.follower.recovery.enable"
   val LiProtocolBridgeRecommendedElectionEnableProp = "li.protocol.bridge.recommended.leader.election.enable"
   val LiProtocolBridgeExcludePartitionsEnableProp = "li.protocol.bridge.metadata.exclude.partitions.enable"
@@ -102,6 +104,7 @@ object KafkaConfig {
 
   val LiProtocolBridgeEnableProps: Seq[String] = Seq(
     LiProtocolBridgeModeEnableProp,
+    LiProtocolBridgeTopicDeletionStateCleanupEnableProp,
     LiProtocolBridgeFollowerRecoveryEnableProp,
     LiProtocolBridgeRecommendedElectionEnableProp,
     LiProtocolBridgeExcludePartitionsEnableProp,
@@ -277,6 +280,9 @@ object KafkaConfig {
   val configDef = new ConfigDef(AbstractKafkaConfig.CONFIG_DEF)
     .define(LiProtocolBridgeModeEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeModeEnableDoc)
+    .define(LiProtocolBridgeTopicDeletionStateCleanupEnableProp, ConfigDef.Type.BOOLEAN, false,
+      ConfigDef.Importance.HIGH, "Clear stale topic deletion state and reconcile the metadata cache " +
+        "from the first full update of each ZooKeeper controller epoch. Enable on every broker together.")
     .define(LiProtocolBridgeFollowerRecoveryEnableProp, ConfigDef.Type.BOOLEAN, false,
       ConfigDef.Importance.HIGH, LiProtocolBridgeFollowerRecoveryEnableDoc)
     .define(LiProtocolBridgeRecommendedElectionEnableProp, ConfigDef.Type.BOOLEAN, false,
@@ -477,6 +483,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   @volatile private var currentConfig = this
   val processRoles: Set[ProcessRole] = parseProcessRoles()
   def liProtocolBridgeModeEnable: Boolean = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
+  def liProtocolBridgeTopicDeletionStateCleanupActive: Boolean =
+    processRoles.isEmpty && getBoolean(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp)
   def liProtocolBridgeFollowerRecoveryEnable: Boolean =
     getBoolean(KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp)
   def liProtocolBridgeRecommendedElectionEnable: Boolean =

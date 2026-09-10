@@ -307,6 +307,7 @@ class DynamicBrokerConfigTest {
     config.dynamicConfig.initialize(None, None)
     val dynamicBridgeFlags = Seq(
       KafkaConfig.LiProtocolBridgeModeEnableProp,
+      KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp,
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
       KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
       KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,

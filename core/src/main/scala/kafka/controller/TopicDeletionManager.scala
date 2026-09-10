@@ -273,6 +273,11 @@ class TopicDeletionManager(config: KafkaConfig,
     // controller will remove this replica from the state machine as well as its partition assignment cache
     replicaStateMachine.handleStateChanges(replicasForDeletedTopic.toSeq, NonExistentReplica)
     client.deleteTopic(topic, controllerContext.epochZkVersion)
+    if (config.liProtocolBridgeTopicDeletionStateCleanupActive) {
+      // A reassignment can block deletion just before its last callback succeeds.
+      // Do not let a later topic with the same name inherit that old block.
+      controllerContext.topicsIneligibleForDeletion -= topic
+    }
     controllerContext.removeTopic(topic)
   }
 
@@ -340,6 +345,13 @@ class TopicDeletionManager(config: KafkaConfig,
       }
     }
 
+    if (config.liProtocolBridgeModeEnable && allDeadReplicas.nonEmpty) {
+      // Bridge requests cannot encode the full-state cleanup used by LI after rejoin.
+      // Retain these assignments until the returning broker acknowledges StopReplica.
+      replicaStateMachine.handleStateChanges(allDeadReplicas, ReplicaDeletionIneligible)
+      markTopicIneligibleForDeletion(allDeadReplicas.map(_.topic).toSet, reason = "offline replicas in bridge mode")
+    }
+
     // send stop replica to all followers that are not in the OfflineReplica state so they stop sending fetch requests to the leader
     replicaStateMachine.handleStateChanges(allReplicasForDeletionRetry, OfflineReplica)
     replicaStateMachine.handleStateChanges(allReplicasForDeletionRetry, ReplicaDeletionStarted)
@@ -353,9 +365,17 @@ class TopicDeletionManager(config: KafkaConfig,
     if (topicsQueuedForDeletion.nonEmpty)
       info(s"Handling deletion for topics ${topicsQueuedForDeletion.mkString(",")}")
 
+    // LI's native full-control path can clean up an offline replica later. In bridge mode,
+    // completing an all-offline deletion here would skip onTopicDeletion's metadata tombstone
+    // and discard the assignment before StopReplica can reach the returning broker. That leaves
+    // ghost topics in live metadata caches (CreateTopics says exists; DeleteTopics says absent).
+    val completedStates: Set[ReplicaState] = if (config.liProtocolBridgeModeEnable)
+      Set(ReplicaDeletionSuccessful)
+    else Set(ReplicaDeletionSuccessful, OfflineReplica)
+
     topicsQueuedForDeletion.foreach { topic =>
-      // if all replicas are marked as deleted successfully, then topic deletion is done
-      if (controllerContext.areAllReplicasInStates(topic, Set(ReplicaDeletionSuccessful, OfflineReplica))) {
+      // In bridge mode every replica must explicitly acknowledge deletion.
+      if (controllerContext.areAllReplicasInStates(topic, completedStates)) {
         // clear up all state for this topic from controller cache and zookeeper
         completeDeleteTopic(topic)
         info(s"Deletion of topic $topic successfully completed")

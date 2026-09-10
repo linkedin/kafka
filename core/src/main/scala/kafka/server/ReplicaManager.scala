@@ -1488,7 +1488,8 @@ class ReplicaManager(val config: KafkaConfig,
         throw new ControllerMovedException(stateChangeLogger.messageWithPrefix(stateControllerEpochErrorMessage))
       } else {
         val zkMetadataCache = metadataCache.asInstanceOf[ZkMetadataCache]
-        val deletedPartitions = zkMetadataCache.updateMetadata(correlationId, updateMetadataRequest)
+        val deletedPartitions = zkMetadataCache.updateMetadata(correlationId, updateMetadataRequest,
+          config.liProtocolBridgeTopicDeletionStateCleanupActive)
         controllerEpoch = updateMetadataRequest.controllerEpoch
         deletedPartitions
       }

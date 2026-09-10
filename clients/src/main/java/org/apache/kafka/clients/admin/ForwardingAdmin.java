@@ -184,6 +184,14 @@ public class ForwardingAdmin implements Admin {
     }
 
     @Override
+    public ElectLeadersResult electRecommendedLeaders(
+        Map<TopicPartition, Integer> partitionsWithRecommendedLeaders,
+        ElectLeadersOptions options
+    ) {
+        return delegate.electRecommendedLeaders(partitionsWithRecommendedLeaders, options);
+    }
+
+    @Override
     public ElectLeadersResult electLeaders(ElectionType electionType, Set<TopicPartition> partitions, ElectLeadersOptions options) {
         return delegate.electLeaders(electionType, partitions, options);
     }

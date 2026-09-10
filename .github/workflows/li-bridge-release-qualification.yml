@@ -1,0 +1,131 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Qualify published bridge and internal wrapper
+on:
+  workflow_dispatch:
+    inputs:
+      archive_30_url:
+        description: Approved published 3.0 archive HTTPS URL
+        required: true
+        type: string
+      archive_39_url:
+        description: Approved published 3.9 archive HTTPS URL
+        required: true
+        type: string
+      archive_30_sha256:
+        description: Published 3.0 archive SHA-256
+        required: true
+        type: string
+      archive_39_sha256:
+        description: Published 3.9 archive SHA-256
+        required: true
+        type: string
+      commit_30:
+        description: Approved 40-character 3.0 source commit
+        required: true
+        type: string
+      commit_39:
+        description: Approved 40-character 3.9 source commit
+        required: true
+        type: string
+      wrapper_commit:
+        description: Approved wrapper commit with official regenerated dependencies
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  qualified-wrapper-and-brokers:
+    # Release owners must provision this runner and protect the environment with reviewers.
+    # Never run untrusted pull-request code with internal credentials.
+    runs-on: [self-hosted, li-bridge-qualification]
+    environment: li-bridge-release
+    timeout-minutes: 240
+    env:
+      KAFKA_30_COMMIT: ${{ inputs.commit_30 }}
+      KAFKA_39_COMMIT: ${{ inputs.commit_39 }}
+      WRAPPER_COMMIT: ${{ inputs.wrapper_commit }}
+      KAFKA_30_SHA256: ${{ inputs.archive_30_sha256 }}
+      KAFKA_39_SHA256: ${{ inputs.archive_39_sha256 }}
+      ARCHIVE_30_URL: ${{ inputs.archive_30_url }}
+      ARCHIVE_39_URL: ${{ inputs.archive_39_url }}
+      EVIDENCE_DIR: ${{ runner.temp }}/li-bridge-release-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Validate immutable release inputs
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from urllib.parse import urlparse
+          for name in ('KAFKA_30_COMMIT', 'KAFKA_39_COMMIT', 'WRAPPER_COMMIT'):
+              if not re.fullmatch('[0-9a-f]{40}', os.environ[name]):
+                  raise SystemExit(f'{name} must be a full commit hash')
+          for name in ('KAFKA_30_SHA256', 'KAFKA_39_SHA256'):
+              if not re.fullmatch('[0-9a-f]{64}', os.environ[name]):
+                  raise SystemExit(f'{name} must be a SHA-256 checksum')
+          for name in ('ARCHIVE_30_URL', 'ARCHIVE_39_URL'):
+              url = urlparse(os.environ[name])
+              if url.scheme != 'https' or url.hostname != 'github.com':
+                  raise SystemExit(f'{name} must use GitHub HTTPS')
+              if not url.path.startswith('/linkedin/kafka/releases/download/'):
+                  raise SystemExit(f'{name} must name a Kafka release asset')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_39 }}
+          fetch-depth: 0
+          path: kafka
+      - name: Require internal repository authorization
+        env:
+          WRAPPER_TOKEN: ${{ secrets.LI_BRIDGE_WRAPPER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WRAPPER_TOKEN}" ]]; then
+            echo 'BLOCKED: missing internal wrapper repository token' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: linkedin-multiproduct/kafka-server
+          ref: ${{ inputs.wrapper_commit }}
+          token: ${{ secrets.LI_BRIDGE_WRAPPER_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: wrapper
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download and qualify the actual published artifacts
+        working-directory: kafka
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}/downloads"
+          export KAFKA_30_TGZ="${EVIDENCE_DIR}/downloads/kafka-30.tgz"
+          export KAFKA_39_TGZ="${EVIDENCE_DIR}/downloads/kafka-39.tgz"
+          export WRAPPER_ROOT="${GITHUB_WORKSPACE}/wrapper"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            "${ARCHIVE_30_URL}" -o "${KAFKA_30_TGZ}"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            "${ARCHIVE_39_URL}" -o "${KAFKA_39_TGZ}"
+          tests/bin/verify_li_bridge_release.sh
+      - name: Retain qualification evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: li-bridge-release-evidence
+          path: ${{ env.EVIDENCE_DIR }}
+          if-no-files-found: warn

@@ -100,7 +100,8 @@ object AlterPartitionManager {
       time = time,
       brokerId = config.brokerId,
       brokerEpochSupplier = brokerEpochSupplier,
-      metadataVersionSupplier = () => metadataCache.metadataVersion()
+      metadataVersionSupplier = () => metadataCache.metadataVersion(),
+      liBridgeModeSupplier = () => config.liProtocolBridgeModeActive
     )
   }
 
@@ -122,8 +123,20 @@ class DefaultAlterPartitionManager(
   val time: Time,
   val brokerId: Int,
   val brokerEpochSupplier: () => Long,
-  val metadataVersionSupplier: () => MetadataVersion
+  val metadataVersionSupplier: () => MetadataVersion,
+  val liBridgeModeSupplier: () => Boolean
 ) extends AlterPartitionManager with Logging {
+
+  // Keep the existing JVM constructor and its native behavior.
+  def this(
+    controllerChannelManager: NodeToControllerChannelManager,
+    scheduler: Scheduler,
+    time: Time,
+    brokerId: Int,
+    brokerEpochSupplier: () => Long,
+    metadataVersionSupplier: () => MetadataVersion
+  ) = this(controllerChannelManager, scheduler, time, brokerId,
+    brokerEpochSupplier, metadataVersionSupplier, () => false)
 
   // Used to allow only one pending ISR update per partition (visible for testing).
   // Note that we key items by TopicPartition despite using TopicIdPartition while
@@ -295,8 +308,20 @@ class DefaultAlterPartitionManager(
       }
     }
 
+    // A retry can reach a controller with a different supported version. The native
+    // builder mutates its data when building old versions, so bridge retries must
+    // start from a fresh copy. Recheck the flag at build time because a request
+    // can stay queued across activation. The flag-off path keeps native behavior.
+    val builder = new AlterPartitionRequest.Builder(message, canUseTopicIds) {
+      override def build(version: Short): AlterPartitionRequest = {
+        if (liBridgeModeSupplier())
+          new AlterPartitionRequest.Builder(message.duplicate(), canUseTopicIds).build(version)
+        else
+          super.build(version)
+      }
+    }
     // If we cannot use topic ids, the builder will ensure that no version higher than 1 is used.
-    (new AlterPartitionRequest.Builder(message, canUseTopicIds), topicNamesByIds)
+    (builder, topicNamesByIds)
   }
 
   private def handleAlterPartitionResponse(

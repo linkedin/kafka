@@ -1491,6 +1491,17 @@ class ReplicaManager(val config: KafkaConfig,
         val deletedPartitions = zkMetadataCache.updateMetadata(correlationId, updateMetadataRequest,
           config.liProtocolBridgeTopicDeletionStateCleanupActive)
         controllerEpoch = updateMetadataRequest.controllerEpoch
+        if (config.liProtocolBridgeTopicDeletionStateCleanupActive) {
+          // A canceled reassignment can leave a loaded log without a hosted replica.
+          // Retire these local strays on metadata deletion. Hosted replicas still use
+          // StopReplica, which also controls deletion of remote data.
+          val strays = deletedPartitions.filter(tp => getPartition(tp) == HostedPartition.None &&
+            logManager.getLog(tp).isDefined).map(tp => StopPartition(tp, deleteLocalLog = true)).toSet
+          if (strays.nonEmpty) {
+            val failures = stopPartitions(strays)
+            if (failures.nonEmpty) throw failures.head._2
+          }
+        }
         deletedPartitions
       }
     }

@@ -49,6 +49,7 @@ docs/generated/
 .release-settings.json
 
 kafkatest.egg-info/
+__pycache__/
 systest/
 *.swp
 jmh-benchmarks/generated

@@ -148,6 +148,8 @@ class ReassignPartitionsIntegrationTest extends ZooKeeperTestHarness {
 
     // Set the high water mark of foo-0 to 123 on its leader.
     val part = new TopicPartition("foo", 0)
+    TestUtils.waitUntilTrue(() => cluster.servers(0).replicaManager.onlinePartition(part)
+      .flatMap(_.leaderLogIfLocal).isDefined, "broker 0 should be the initial leader", pause = 10L)
     cluster.servers(0).replicaManager.logManager.truncateFullyAndStartAt(part, 123L, false)
 
     // Execute the assignment

@@ -1123,6 +1123,12 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateRequest(version);
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateRequest(version);
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryRequest(version);
+            case LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK:
+                return new LiControlledShutdownSkipSafetyCheckRequest(
+                        new org.apache.kafka.common.message.LiControlledShutdownSkipSafetyCheckRequestData(), version);
+            case LI_MOVE_CONTROLLER:
+                return new LiMoveControllerRequest(
+                        new org.apache.kafka.common.message.LiMoveControllerRequestData(), version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -1217,6 +1223,10 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateResponse();
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateResponse();
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryResponse();
+            case LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK:
+                return LiControlledShutdownSkipSafetyCheckResponse.prepareResponse(Errors.NONE);
+            case LI_MOVE_CONTROLLER:
+                return LiMoveControllerResponse.prepareResponse(Errors.NONE, version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }

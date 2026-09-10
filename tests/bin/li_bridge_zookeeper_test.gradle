@@ -1,0 +1,64 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import java.security.MessageDigest
+import java.time.Duration
+
+// Keep vendor dependencies confined to this test task's runtime classpath.
+gradle.projectsEvaluated {
+    def core = rootProject.project(':core')
+    core.repositories.maven {
+        url = 'https://linkedin.jfrog.io/artifactory/zookeeper'
+        metadataSources { artifact() }
+        content { includeGroup 'com.linkedin.zookeeper' }
+    }
+    def vendor = core.configurations.detachedConfiguration(
+        core.dependencies.create('com.linkedin.zookeeper:zookeeper:3.6.3-23'),
+        core.dependencies.create('com.linkedin.zookeeper:zookeeper-jute:3.6.3-23'))
+    vendor.transitive = false
+    def expectedHashes = [
+        'zookeeper-3.6.3-23.jar': '1776e71b42089cb91e1ec4a31122c9e9e597a35a02b1f0e2fe1ae4b26a81925b',
+        'zookeeper-jute-3.6.3-23.jar': '88492e694a9fa0ff786272ccfdbb07b5aa1b53c59d695e7c3d62ceabf971297a'
+    ]
+    core.tasks.register('liZookeeperPaginationTest', Test) {
+        group = 'verification'
+        description = 'Test paginated topic reads with the LinkedIn ZooKeeper implementation.'
+        dependsOn core.tasks.named('testClasses')
+        testClassesDirs = core.sourceSets.test.output.classesDirs
+        classpath = core.files(vendor, core.sourceSets.test.runtimeClasspath.filter {
+            !(it.name ==~ /zookeeper(-jute)?-.+\.jar/)
+        })
+        filter { includeTestsMatching 'kafka.zk.LiZookeeperPaginationTest' }
+        useJUnitPlatform { includeEngines 'junit-jupiter' }
+        maxParallelForks = 1
+        maxHeapSize = '1g'
+        jvmArgs = rootProject.ext.defaultJvmArgs
+        timeout = Duration.ofMinutes(5)
+        systemProperty 'li.zookeeper.pagination.test', 'true'
+        systemProperty 'jute.maxbuffer', '1048576'
+        testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
+        doFirst {
+            vendor.files.each { file ->
+                def actual = MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()
+                if (actual != expectedHashes[file.name]) {
+                    throw new GradleException("ZooKeeper fixture checksum mismatch: ${file.name}")
+                }
+                logger.lifecycle("ZooKeeper fixture ${file.name} sha256=${actual}")
+            }
+        }
+    }
+}

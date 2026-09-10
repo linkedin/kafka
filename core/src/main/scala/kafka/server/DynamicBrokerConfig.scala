@@ -96,6 +96,7 @@ object DynamicBrokerConfig {
     Set(
       MetricConfigs.METRIC_REPORTER_CLASSES_CONFIG,
       KafkaConfig.LiProtocolBridgeModeEnableProp,
+      KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp,
       KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
       KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
       KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,
@@ -116,6 +117,7 @@ object DynamicBrokerConfig {
   private val ClusterLevelListenerConfigs = Set(SocketServerConfigs.MAX_CONNECTIONS_CONFIG, SocketServerConfigs.MAX_CONNECTION_CREATION_RATE_CONFIG, SocketServerConfigs.NUM_NETWORK_THREADS_CONFIG)
   private val ClusterLevelConfigs = Set(
     KafkaConfig.LiProtocolBridgeModeEnableProp,
+    KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp,
     KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp,
     KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp,
     KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp,

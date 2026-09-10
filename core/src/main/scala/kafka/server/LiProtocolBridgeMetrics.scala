@@ -22,6 +22,7 @@ import scala.jdk.CollectionConverters._
 
 object LiProtocolBridgeMetrics {
   val ModeEnabled = "ModeEnabled"
+  val TopicDeletionStateCleanupEnabled = "TopicDeletionStateCleanupEnabled"
   val FollowerRecoveryEnabled = "FollowerRecoveryEnabled"
   val RecommendedLeaderElectionEnabled = "RecommendedLeaderElectionEnabled"
   val ExcludePartitionsEnabled = "ExcludePartitionsEnabled"
@@ -45,7 +46,7 @@ object LiProtocolBridgeMetrics {
   val LeaderTransferEnabled = "LeaderTransferEnabled"
   val LegacyRequestMetricsEnabled = "LegacyRequestMetricsEnabled"
   val LogTruncationMetricsEnabled = "LogTruncationMetricsEnabled"
-  val MetricNames: Seq[String] = Seq(ModeEnabled, FollowerRecoveryEnabled,
+  val MetricNames: Seq[String] = Seq(ModeEnabled, TopicDeletionStateCleanupEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
@@ -64,6 +65,8 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
   private val tags = Map("broker-id" -> config.brokerId.toString).asJava
 
   metricsGroup.newGauge(ModeEnabled, () => enabled(config.liProtocolBridgeModeActive), tags)
+  metricsGroup.newGauge(TopicDeletionStateCleanupEnabled,
+    () => enabled(config.liProtocolBridgeTopicDeletionStateCleanupActive), tags)
   metricsGroup.newGauge(FollowerRecoveryEnabled,
     () => enabled(config.liProtocolBridgeFollowerRecoveryActive), tags)
   metricsGroup.newGauge(RecommendedLeaderElectionEnabled,

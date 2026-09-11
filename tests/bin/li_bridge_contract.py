@@ -24,7 +24,7 @@ import json
 import os
 
 CONTRACT_VERSION = 2
-SCENARIO_REVISION = 3
+SCENARIO_REVISION = 4
 MODE = "li.protocol.bridge.mode.enable"
 TOPIC_CLEANUP = "li.protocol.bridge.topic.deletion.state.cleanup.enable"
 # The Kafka registry and metric-name set are checked against this table by tests.

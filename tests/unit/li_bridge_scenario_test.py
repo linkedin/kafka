@@ -32,7 +32,7 @@ from li_bridge_preflight import parse_properties, zk_command
 class LiBridgeScenarioTest(unittest.TestCase):
     def test_scenario_defaults_validation_and_runtime_profile(self):
         default = scenario_spec({})
-        self.assertEqual(3, default["scenario_revision"])
+        self.assertEqual(4, default["scenario_revision"])
         self.assertEqual(default, scenario_spec({"SCALE_TOPIC_COUNT": "10"}))
         for key in ("SCALE_TOPIC_COUNT", "SCALE_PARTITION_COUNT", "RECOVERY_RECORD_COUNT", "RECOVERY_RECORD_SIZE"):
             for value in ("0", "-1", "bad", "2147483648"):

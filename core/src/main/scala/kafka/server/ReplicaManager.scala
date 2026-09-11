@@ -300,6 +300,8 @@ class ReplicaManager(val config: KafkaConfig,
 
   /* epoch of the controller that last changed the leader */
   @volatile private[server] var controllerEpoch: Int = KafkaController.InitialControllerEpoch
+  // Accessed under replicaStateChangeLock. A failed identity read must be retried.
+  private var bridgeMetadataReconciliationPending = false
   protected val localBrokerId = config.brokerId
   protected val allPartitions = new Pool[TopicPartition, HostedPartition](
     valueFactory = Some(tp => HostedPartition.Online(Partition(tp, time, this)))
@@ -1931,22 +1933,40 @@ class ReplicaManager(val config: KafkaConfig,
         val update = zkMetadataCache.updateMetadataAndGetResult(correlationId, updateMetadataRequest,
           config.liProtocolBridgeTopicDeletionStateCleanupActive)
         val deletedPartitions = update.deletedPartitions
+        if (update.replacedSnapshot) bridgeMetadataReconciliationPending = true
         controllerEpoch = updateMetadataRequest.controllerEpoch
         if (config.liProtocolBridgeTopicDeletionStateCleanupActive && !updateMetadataRequest.isKRaftController) {
           // A returning broker may have missed every deletion notification. Only a
           // complete image can identify those unassigned logs; incremental updates cannot.
-          val unassigned = if (update.replacedSnapshot) {
-            logManager.allLogs.map(_.topicPartition).filter { tp =>
-              !zkMetadataCache.getPartitionInfo(tp.topic, tp.partition).exists(_.replicas.contains(config.brokerId))
-            }.toSeq
-          } else Seq.empty
+          val localLogs = if (bridgeMetadataReconciliationPending) logManager.allLogs.toVector else Vector.empty
+          val unassigned = localLogs.iterator.map(_.topicPartition).filter { tp =>
+            !zkMetadataCache.getPartitionInfo(tp.topic, tp.partition).exists(_.replicas.contains(config.brokerId))
+          }.toSet
+          val assignedLogs = localLogs.filter(log => getPartition(log.topicPartition) == HostedPartition.None &&
+            !unassigned.contains(log.topicPartition))
+          val currentIds = BridgeTopicIdentity.read(assignedLogs.map(_.topicPartition.topic).toSet, zkClient)
+          val obsolete = assignedLogs.filter { log =>
+            BridgeTopicIdentity.isObsolete(log.topicPartition, log.topicId, currentIds(log.topicPartition.topic),
+              log.logEndOffset == 0L)
+          }.map(_.topicPartition)
+          // StopPartition retires both current and future logs. If just one copy has
+          // an obsolete identity, retain both for recovery rather than discard a valid copy.
+          val logsByPartition = localLogs.groupBy(_.topicPartition)
+          obsolete.distinct.foreach { tp =>
+            val copies = logsByPartition(tp)
+            if (!copies.forall(log => BridgeTopicIdentity.isObsolete(tp, log.topicId, currentIds(tp.topic),
+              log.logEndOffset == 0L)))
+              throw new KafkaStorageException(s"Conflicting current/future log identities for $tp; retain both for recovery")
+          }
           // Hosted replicas still use StopReplica, which also controls remote deletion.
-          val strays = (deletedPartitions ++ unassigned).filter(tp => getPartition(tp) == HostedPartition.None &&
-            logManager.getLog(tp).isDefined).map(tp => StopPartition(tp, deleteLocalLog = true)).toSet
+          val strays = (deletedPartitions ++ unassigned ++ obsolete).filter(tp => getPartition(tp) == HostedPartition.None &&
+            (logManager.getLog(tp).isDefined || logManager.getLog(tp, isFuture = true).isDefined))
+            .map(tp => StopPartition(tp, deleteLocalLog = true)).toSet
           if (strays.nonEmpty) {
             val failures = stopPartitions(strays)
             if (failures.nonEmpty) throw failures.head._2
           }
+          bridgeMetadataReconciliationPending = false
         }
         deletedPartitions
       }
@@ -1969,14 +1989,10 @@ class ReplicaManager(val config: KafkaConfig,
             s"epoch ${leaderAndIsrRequest.controllerEpoch}")
         }
       val topicIds = leaderAndIsrRequest.topicIds()
-      def topicIdFromRequest(topicName: String): Option[Uuid] = {
-        val topicId = topicIds.get(topicName)
-        // if invalid topic ID return None
-        if (topicId == null || topicId == Uuid.ZERO_UUID)
-          None
-        else
-          Some(topicId)
-      }
+      val identityRecovery = config.liProtocolBridgeTopicDeletionStateCleanupActive && !leaderAndIsrRequest.isKRaftController
+      var recoveredTopicIds = Map.empty[String, Uuid]
+      def topicIdFromRequest(topicName: String): Option[Uuid] =
+        Option(topicIds.get(topicName)).filter(_ != Uuid.ZERO_UUID).orElse(recoveredTopicIds.get(topicName))
 
       val response = {
         if (leaderAndIsrRequest.controllerEpoch < controllerEpoch) {
@@ -2004,6 +2020,28 @@ class ReplicaManager(val config: KafkaConfig,
           }
 
           val responseMap = new mutable.HashMap[TopicPartition, Errors]
+          if (identityRecovery) {
+            // Missing wire IDs cannot establish a generation, even for an existing
+            // hosted replica. Batch the identity reads on the control path.
+            controllerEpoch = leaderAndIsrRequest.controllerEpoch
+            val topics = requestPartitionStates.map(_.topicName).toSet
+            recoveredTopicIds = BridgeTopicIdentity.read(topics, zkClient)
+            BridgeTopicIdentity.verifyWireIds(recoveredTopicIds, topicIds)
+            val obsolete = requestPartitionStates.flatMap { state =>
+              val tp = new TopicPartition(state.topicName, state.partitionIndex)
+              val obsoleteCopies = Seq(logManager.getLog(tp), logManager.getLog(tp, isFuture = true)).flatten.map { log =>
+                BridgeTopicIdentity.isObsolete(tp, log.topicId, topicIdFromRequest(tp.topic).get, log.logEndOffset == 0L)
+              }
+              if (obsoleteCopies.contains(true) && obsoleteCopies.contains(false))
+                throw new KafkaStorageException(s"Conflicting current/future log identities for $tp; retain both for recovery")
+              if (obsoleteCopies.contains(true)) Some(StopPartition(tp, deleteLocalLog = true)) else None
+            }.toSet
+            // Validate every identity before deleting any log or creating a Partition.
+            if (obsolete.nonEmpty) {
+              val failures = stopPartitions(obsolete)
+              if (failures.nonEmpty) throw failures.head._2
+            }
+          }
           controllerEpoch = leaderAndIsrRequest.controllerEpoch
 
           val partitions = new mutable.HashSet[Partition]()

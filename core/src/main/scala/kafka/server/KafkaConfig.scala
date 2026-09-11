@@ -1319,6 +1319,9 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
 
   @nowarn("cat=deprecation")
   private def validateValues(): Unit = {
+    if (liProtocolBridgeTopicDeletionStateCleanupActive && !usesTopicId)
+      throw new ConfigException(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, true,
+        "requires topic IDs (inter.broker.protocol.version 2.8 or newer)")
     if (nodeId != brokerId) {
       throw new ConfigException(s"You must set `${KRaftConfigs.NODE_ID_CONFIG}` to the same value as `${ServerConfigs.BROKER_ID_CONFIG}`.")
     }

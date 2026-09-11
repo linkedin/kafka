@@ -816,10 +816,22 @@ class KafkaZkClient private[zk] (
   }
 
   /**
-   * Gets the topic IDs for the given topics.
-   * @param topics the topics we wish to retrieve the Topic IDs for
-   * @return the Topic IDs
+   * Return existing topic znodes and their optional IDs. Missing znodes are omitted;
+   * an existing znode without an ID remains present with None. Propagate read errors.
    */
+  def getTopicIdentities(topics: Set[String]): Map[String, Option[Uuid]] = {
+    val requests = topics.toSeq.map(topic => GetDataRequest(TopicZNode.path(topic), ctx = Some(topic)))
+    retryRequestsUntilConnected(requests).flatMap { response =>
+      val topic = response.ctx.get.asInstanceOf[String]
+      response.resultCode match {
+        case Code.OK => Some(topic -> TopicZNode.decode(topic, response.data).topicId)
+        case Code.NONODE => None
+        case _ => throw response.resultException.get
+      }
+    }.toMap
+  }
+
+  /** Return the known topic IDs, omitting missing topics and topics without IDs. */
   def getTopicIdsForTopics(topics: Set[String]): Map[String, Uuid] = {
     val getDataRequests = topics.map(topic => GetDataRequest(TopicZNode.path(topic), ctx = Some(topic)))
     val getDataResponses = retryRequestsUntilConnected(getDataRequests.toSeq)

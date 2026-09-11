@@ -229,7 +229,7 @@ jobs:
     env:
       # Checkout fixes the companion source for this run. Record its commit and
       # archive hash; release CI separately requires approved commit hashes.
-      LI_BRIDGE_LEGACY_REF: ${{ vars.LI_BRIDGE_LEGACY_REF || '3.0-li-bridge/full-metadata-log-recovery' }}
+      LI_BRIDGE_LEGACY_REF: ${{ vars.LI_BRIDGE_LEGACY_REF || '3.0-li-bridge/topic-identity-recovery' }}
     steps:
       - uses: actions/checkout@v4
         with:

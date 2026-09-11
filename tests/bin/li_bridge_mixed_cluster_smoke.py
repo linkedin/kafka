@@ -389,11 +389,12 @@ class Migration:
         self.start_broker(1, "3.9")
         self.until("recovery ledger final ISR", self.healthy)
 
-    def offline_name_reuse(self, offline):
+    def offline_name_reuse(self, offline, assigned_before_return):
         survivor = 1 - offline
         offline_generation = self.generations[offline]
         survivor_generation = self.generations[survivor]
-        topic = f"bridge-offline-name-reuse-{offline_generation}"
+        placement = "assigned-at-create" if assigned_before_return else "reassigned-after-return"
+        topic = f"bridge-offline-name-reuse-{offline_generation}-{placement}"
         self.force_controller(survivor)
         self.create(topic, f"{survivor}:{offline}")
         self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 1, 64)
@@ -420,17 +421,19 @@ class Migration:
         self.until("name deleted while former replica offline", lambda:
                    topic not in (self.admin("kafka-topics.sh", "--list", check=False) or "").splitlines() and
                    "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"))
-        self.create(topic, str(survivor))
+        assignment = f"{survivor}:{offline}" if assigned_before_return else str(survivor)
+        self.create(topic, assignment)
         self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 2, 128)
         self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128)
         self.start_broker(offline, offline_generation)
         self.until("rejoined broker ISR recovery", self.healthy)
-        reassign([survivor, offline])
+        if not assigned_before_return:
+            reassign([survivor, offline])
         self.stop(f"broker-{survivor}", hard=True)
         self.until("rejoined replica promoted", lambda: f"Leader: {offline}" in
                    (self.admin("kafka-topics.sh", "--describe", "--topic", topic, check=False) or ""), 60)
         # Exit on a changed record immediately; retrying could hide old bytes.
-        self.until(f"offline name-reuse {offline_generation} records verified after promotion", lambda:
+        self.until(f"offline name-reuse {offline_generation} {placement} records verified after promotion", lambda:
                    self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128) is not None)
         self.start_broker(survivor, survivor_generation)
         self.until("offline name-reuse final ISR recovery", self.healthy)
@@ -545,8 +548,9 @@ class Migration:
         self.checkpoint("mixed")
         self.resources_at("mixed-old-clients-complete")
         self.recovery()
-        self.offline_name_reuse(0)
-        self.offline_name_reuse(1)
+        for offline in (0, 1):
+            for assigned_before_return in (False, True):
+                self.offline_name_reuse(offline, assigned_before_return)
         self.cancellation()
         self.truncation()
         self.checkpoint("mixed")

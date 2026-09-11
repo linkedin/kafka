@@ -217,14 +217,18 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
             self.assertFalse(AUDITOR.audit(root)["passed"])
 
     def test_old_scenario_revision_does_not_qualify_offline_name_reuse(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.create_evidence(root)
-            path = root / "mixed-process/run-summary.json"
-            data = json.loads(path.read_text())
-            data["scenario"].pop("scenario_revision")
-            self.write_json(path, data)
-            self.assertFalse(AUDITOR.audit(root)["passed"])
+        for revision in (None, 3):
+            with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.create_evidence(root)
+                path = root / "mixed-process/run-summary.json"
+                data = json.loads(path.read_text())
+                if revision is None:
+                    data["scenario"].pop("scenario_revision")
+                else:
+                    data["scenario"]["scenario_revision"] = revision
+                self.write_json(path, data)
+                self.assertFalse(AUDITOR.audit(root)["passed"])
 
     def supplied_evidence(self, root):
         archives = self.create_evidence(root)
@@ -361,18 +365,19 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertTrue(any(missing_operation in issue for issue in result["issues"]))
 
-    def test_offline_name_reuse_requires_both_record_verifications(self):
+    def test_offline_name_reuse_requires_all_placement_checks(self):
         for generation in ("3.0", "3.9"):
-            with self.subTest(generation=generation), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                self.create_evidence(root)
-                timings = root / "mixed-process/timings.tsv"
-                operation = f"offline name-reuse {generation} records verified after promotion"
-                timings.write_text("".join(line for line in timings.read_text().splitlines(True)
-                                           if not line.startswith(operation + "\t")))
-                result = AUDITOR.audit(root)
-                self.assertFalse(result["passed"])
-                self.assertTrue(any(operation in issue for issue in result["issues"]))
+            for placement in ("assigned-at-create", "reassigned-after-return"):
+                with self.subTest(generation=generation, placement=placement), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    self.create_evidence(root)
+                    timings = root / "mixed-process/timings.tsv"
+                    operation = f"offline name-reuse {generation} {placement} records verified after promotion"
+                    timings.write_text("".join(line for line in timings.read_text().splitlines(True)
+                                               if not line.startswith(operation + "\t")))
+                    result = AUDITOR.audit(root)
+                    self.assertFalse(result["passed"])
+                    self.assertTrue(any(operation in issue for issue in result["issues"]))
 
     def test_invalid_utf8_is_an_issue_not_an_auditor_crash(self):
         for filename in ("verification-summary.json", "commands.tsv", "mixed-process/protocol-selection.log"):

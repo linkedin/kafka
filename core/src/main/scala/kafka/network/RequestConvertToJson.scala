@@ -85,6 +85,9 @@ object RequestConvertToJson {
       case req: ListClientMetricsResourcesRequest => ListClientMetricsResourcesRequestDataJsonConverter.write(req.data, request.version)
       case req: ListGroupsRequest => ListGroupsRequestDataJsonConverter.write(req.data, request.version)
       case req: ListOffsetsRequest => ListOffsetsRequestDataJsonConverter.write(req.data, request.version)
+      case req: LiControlledShutdownSkipSafetyCheckRequest =>
+        LiControlledShutdownSkipSafetyCheckRequestDataJsonConverter.write(req.data, request.version)
+      case req: LiMoveControllerRequest => LiMoveControllerRequestDataJsonConverter.write(req.data, request.version)
       case req: ListPartitionReassignmentsRequest => ListPartitionReassignmentsRequestDataJsonConverter.write(req.data, request.version)
       case req: ListTransactionsRequest => ListTransactionsRequestDataJsonConverter.write(req.data, request.version)
       case req: MetadataRequest => MetadataRequestDataJsonConverter.write(req.data, request.version)
@@ -180,6 +183,9 @@ object RequestConvertToJson {
       case res: ListClientMetricsResourcesResponse => ListClientMetricsResourcesResponseDataJsonConverter.write(res.data, version)
       case res: ListGroupsResponse => ListGroupsResponseDataJsonConverter.write(res.data, version)
       case res: ListOffsetsResponse => ListOffsetsResponseDataJsonConverter.write(res.data, version)
+      case res: LiControlledShutdownSkipSafetyCheckResponse =>
+        LiControlledShutdownSkipSafetyCheckResponseDataJsonConverter.write(res.data, version)
+      case res: LiMoveControllerResponse => LiMoveControllerResponseDataJsonConverter.write(res.data, version)
       case res: ListPartitionReassignmentsResponse => ListPartitionReassignmentsResponseDataJsonConverter.write(res.data, version)
       case res: ListTransactionsResponse => ListTransactionsResponseDataJsonConverter.write(res.data, version)
       case res: MetadataResponse => MetadataResponseDataJsonConverter.write(res.data, version)

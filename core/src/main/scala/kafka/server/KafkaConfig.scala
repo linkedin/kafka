@@ -459,6 +459,7 @@ object KafkaConfig {
   val LiAsyncFetcherEnableProp = "li.async.fetcher.enable"
   val LiCombinedControlRequestEnableProp = "li.combined.control.request.enable"
   val LiProtocolBridgeModeEnableProp = "li.protocol.bridge.mode.enable"
+  val LiProtocolBridgeConfigMetricsEnableProp = "li.protocol.bridge.config.metrics.enable"
   val LiProtocolBridgeTopicDeletionStateCleanupEnableProp =
     "li.protocol.bridge.topic.deletion.state.cleanup.enable"
   val LiUpdateMetadataDelayMsProp = "li.update.metadata.delay.ms"
@@ -1287,6 +1288,8 @@ object KafkaConfig {
       .define(LiAsyncFetcherEnableProp, BOOLEAN, Defaults.LiAsyncFetcherEnabled, HIGH, LiAsyncFetcherEnableDoc)
       .define(LiCombinedControlRequestEnableProp, BOOLEAN, Defaults.LiCombinedControlRequestEnabled, HIGH, LiCombinedControlRequestEnableDoc)
       .define(LiProtocolBridgeModeEnableProp, BOOLEAN, Defaults.LiProtocolBridgeModeEnabled, HIGH, LiProtocolBridgeModeEnableDoc)
+      .define(LiProtocolBridgeConfigMetricsEnableProp, BOOLEAN, false, LOW,
+        "Register bridge configuration gauges on ZooKeeper brokers. Requires a broker restart.")
       .define(LiProtocolBridgeTopicDeletionStateCleanupEnableProp, BOOLEAN, false, HIGH,
         "Clear stale topic deletion state and reconcile the metadata cache " +
           "from the first full update of each ZooKeeper controller epoch. Enable on every broker together.")
@@ -1847,6 +1850,8 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val liAsyncFetcherEnable = getBoolean(KafkaConfig.LiAsyncFetcherEnableProp)
   def liCombinedControlRequestEnable = getBoolean(KafkaConfig.LiCombinedControlRequestEnableProp)
   def liProtocolBridgeModeEnable = getBoolean(KafkaConfig.LiProtocolBridgeModeEnableProp)
+  def liProtocolBridgeConfigMetricsActive: Boolean =
+    requiresZookeeper && getBoolean(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp)
   def liProtocolBridgeTopicDeletionStateCleanupActive: Boolean =
     requiresZookeeper && getBoolean(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp)
   def liUpdateMetadataDelayMs = getLong(KafkaConfig.LiUpdateMetadataDelayMsProp)

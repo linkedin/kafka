@@ -23,6 +23,7 @@ import scala.util.Try
 
 object LiProtocolBridgeMetrics {
   val ModeEnabled = "ModeEnabled"
+  val ConfigMetricsEnabled = "ConfigMetricsEnabled"
   val TopicDeletionStateCleanupEnabled = "TopicDeletionStateCleanupEnabled"
   val FollowerRecoveryEnabled = "FollowerRecoveryEnabled"
   val RecommendedLeaderElectionEnabled = "RecommendedLeaderElectionEnabled"
@@ -48,7 +49,7 @@ object LiProtocolBridgeMetrics {
   val LegacyRequestMetricsEnabled = "LegacyRequestMetricsEnabled"
   val LogTruncationMetricsEnabled = "LogTruncationMetricsEnabled"
 
-  val MetricNames: Seq[String] = Seq(ModeEnabled, TopicDeletionStateCleanupEnabled, FollowerRecoveryEnabled,
+  val MetricNames: Seq[String] = Seq(ModeEnabled, ConfigMetricsEnabled, TopicDeletionStateCleanupEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
@@ -64,41 +65,47 @@ final class LiProtocolBridgeMetrics(config: KafkaConfig) extends KafkaMetricsGro
 
   private val tags = Map("broker-id" -> config.brokerId.toString)
 
-  newGauge(ModeEnabled, () => if (config.liProtocolBridgeModeEnable) 1 else 0, tags)
-  newGauge(TopicDeletionStateCleanupEnabled,
-    () => if (config.liProtocolBridgeTopicDeletionStateCleanupActive) 1 else 0, tags)
-  // These behaviors are built in and ungated on the 3.0-li line. A value of one tells operators
-  // which equivalent default-off settings must be enabled on 3.9-li during the mixed roll.
-  Seq(FollowerRecoveryEnabled, RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled,
-    MoveControllerEnabled, ShutdownSafetyOverrideEnabled, PreferredControllerEnabled,
-    FederatedTopicsEnabled, DynamicTopicDeletionEnabled, RequestMetricBucketsEnabled,
-    RequestChannelWatchdogEnabled, ReassignmentCancellationSafetyEnabled,
-    ListOffsetsInstrumentationEnabled, ReplicaRequestTimeoutEnabled, OffsetsTopicConfigEnabled,
-    LeaderTransferEnabled, LegacyRequestMetricsEnabled, LogTruncationMetricsEnabled).foreach { name =>
-    newGauge(name, () => 1, tags)
+  private val registrationEnabled = config.liProtocolBridgeConfigMetricsActive
+  if (registrationEnabled) {
+    newGauge(ConfigMetricsEnabled, () => 1, tags)
+    newGauge(ModeEnabled, () => if (config.liProtocolBridgeModeEnable) 1 else 0, tags)
+    newGauge(TopicDeletionStateCleanupEnabled,
+      () => if (config.liProtocolBridgeTopicDeletionStateCleanupActive) 1 else 0, tags)
+    // These behaviors are built in and ungated on the 3.0-li line. A value of one tells operators
+    // which equivalent default-off settings must be enabled on 3.9-li during the mixed roll.
+    Seq(FollowerRecoveryEnabled, RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled,
+      MoveControllerEnabled, ShutdownSafetyOverrideEnabled, PreferredControllerEnabled,
+      FederatedTopicsEnabled, DynamicTopicDeletionEnabled, RequestMetricBucketsEnabled,
+      RequestChannelWatchdogEnabled, ReassignmentCancellationSafetyEnabled,
+      ListOffsetsInstrumentationEnabled, ReplicaRequestTimeoutEnabled, OffsetsTopicConfigEnabled,
+      LeaderTransferEnabled, LegacyRequestMetricsEnabled, LogTruncationMetricsEnabled).foreach { name =>
+      newGauge(name, () => 1, tags)
+    }
+    newGauge(RackIdMapperEnabled, () => {
+      val mapper = config.getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
+      if (mapper == null || mapper.isEmpty) 0 else 1
+    }, tags)
+    newGauge(ZookeeperPaginationEnabled,
+      () => if (config.liZookeeperPaginationEnable) 1 else 0, tags)
+    newGauge(ControllerInitializationThreads, () => config.liNumControllerInitThreads, tags)
+    newGauge(ProduceRequestInstrumentationEnabled,
+      () => if (config.longTailProduceRequestLogRatio > 0.0) 1 else 0, tags)
+    newGauge(MinimumLogRollEnabled, () => {
+      // This is a topic-level log setting, so KafkaConfig does not validate a broker-level original.
+      // Treat a malformed original as disabled rather than letting an MBean read fail.
+      val configuredValue = Option(config.originals.get(KafkaConfig.LiMinLogRollTimeMillisProp))
+        .flatMap(value => Try(value.toString.toLong).toOption)
+        .getOrElse(0L)
+      if (configuredValue > 0L) 1 else 0
+    }, tags)
+    newGauge(StaticDefaultQuotasEnabled, () => {
+      val producerDefault = config.producerQuotaBytesPerSecondDefault
+      val consumerDefault = config.consumerQuotaBytesPerSecondDefault
+      if (producerDefault < Long.MaxValue || consumerDefault < Long.MaxValue) 1 else 0
+    }, tags)
   }
-  newGauge(RackIdMapperEnabled, () => {
-    val mapper = config.getString(KafkaConfig.LiRackIdMapperClassNameForRackAwareReplicaAssignmentProp)
-    if (mapper == null || mapper.isEmpty) 0 else 1
-  }, tags)
-  newGauge(ZookeeperPaginationEnabled,
-    () => if (config.liZookeeperPaginationEnable) 1 else 0, tags)
-  newGauge(ControllerInitializationThreads, () => config.liNumControllerInitThreads, tags)
-  newGauge(ProduceRequestInstrumentationEnabled,
-    () => if (config.longTailProduceRequestLogRatio > 0.0) 1 else 0, tags)
-  newGauge(MinimumLogRollEnabled, () => {
-    // This is a topic-level log setting, so KafkaConfig does not validate a broker-level original.
-    // Treat a malformed original as disabled rather than letting an MBean read fail.
-    val configuredValue = Option(config.originals.get(KafkaConfig.LiMinLogRollTimeMillisProp))
-      .flatMap(value => Try(value.toString.toLong).toOption)
-      .getOrElse(0L)
-    if (configuredValue > 0L) 1 else 0
-  }, tags)
-  newGauge(StaticDefaultQuotasEnabled, () => {
-    val producerDefault = config.producerQuotaBytesPerSecondDefault
-    val consumerDefault = config.consumerQuotaBytesPerSecondDefault
-    if (producerDefault < Long.MaxValue || consumerDefault < Long.MaxValue) 1 else 0
-  }, tags)
 
-  override def close(): Unit = MetricNames.foreach(name => removeMetric(name, tags))
+  override def close(): Unit = {
+    if (registrationEnabled) MetricNames.foreach(name => removeMetric(name, tags))
+  }
 }

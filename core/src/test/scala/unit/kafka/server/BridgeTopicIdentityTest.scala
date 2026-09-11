@@ -51,16 +51,18 @@ class BridgeTopicIdentityTest {
   }
 
   @Test
-  def testIdentityReadRejectsMissingOrZeroIds(): Unit = {
+  def testExistingTopicRequiresAValidIdentity(): Unit = {
     val client = mock(classOf[KafkaZkClient])
     val topics = Set("identity")
-    for (ids <- Seq(Map.empty[String, Uuid], Map("identity" -> Uuid.ZERO_UUID))) {
-      when(client.getTopicIdsForTopics(topics)).thenReturn(ids)
+    for (id <- Seq(None, Some(Uuid.ZERO_UUID))) {
+      when(client.getTopicIdentities(topics)).thenReturn(Map("identity" -> id))
       assertThrows(classOf[KafkaStorageException], () => BridgeTopicIdentity.read(topics, Some(client)))
     }
-    val current = Map("identity" -> Uuid.randomUuid())
-    when(client.getTopicIdsForTopics(topics)).thenReturn(current)
-    assertEquals(current, BridgeTopicIdentity.read(topics, Some(client)))
+    val id = Uuid.randomUuid()
+    when(client.getTopicIdentities(topics)).thenReturn(Map("identity" -> Some(id)))
+    assertEquals(Map("identity" -> id), BridgeTopicIdentity.read(topics, Some(client)))
+    when(client.getTopicIdentities(topics)).thenReturn(Map.empty[String, Option[Uuid]])
+    assertEquals(Map.empty[String, Uuid], BridgeTopicIdentity.read(topics, Some(client)))
     assertEquals(Map.empty[String, Uuid], BridgeTopicIdentity.read(Set.empty, None))
     assertThrows(classOf[IllegalStateException], () => BridgeTopicIdentity.read(topics, None))
   }
@@ -80,7 +82,7 @@ class BridgeTopicIdentityTest {
   def testIdentityReadPreservesZooKeeperFailure(): Unit = {
     val client = mock(classOf[KafkaZkClient])
     val failure = new ConnectionLossException
-    when(client.getTopicIdsForTopics(Set("identity"))).thenAnswer(_ => throw failure)
+    when(client.getTopicIdentities(Set("identity"))).thenAnswer(_ => throw failure)
     assertSame(failure, assertThrows(classOf[ConnectionLossException], () =>
       BridgeTopicIdentity.read(Set("identity"), Some(client))))
   }

@@ -1506,8 +1506,9 @@ class ReplicaManager(val config: KafkaConfig,
             !unassigned.contains(log.topicPartition))
           val currentIds = BridgeTopicIdentity.read(assignedLogs.map(_.topicPartition.topic).toSet, zkClient)
           val obsolete = assignedLogs.filter { log =>
-            BridgeTopicIdentity.isObsolete(log.topicPartition, log.topicId, currentIds(log.topicPartition.topic),
-              log.logEndOffset == 0L)
+            currentIds.get(log.topicPartition.topic).exists { id =>
+              BridgeTopicIdentity.isObsolete(log.topicPartition, log.topicId, id, log.logEndOffset == 0L)
+            }
           }.map(_.topicPartition)
           // StopPartition retires both current and future logs. If just one copy has
           // an obsolete identity, retain both for recovery rather than discard a valid copy.
@@ -1526,7 +1527,7 @@ class ReplicaManager(val config: KafkaConfig,
             val failures = stopPartitions(strays)
             if (failures.nonEmpty) throw failures.head._2
           }
-          bridgeMetadataReconciliationPending = false
+          bridgeMetadataReconciliationPending = assignedLogs.exists(log => !currentIds.contains(log.topicPartition.topic))
         }
         deletedPartitions
       }
@@ -1547,7 +1548,7 @@ class ReplicaManager(val config: KafkaConfig,
       breakdown("acquireReplicaStateChangeLock") = intervalMarker.markTimeAndReturnLatestInterval(time.milliseconds())
 
       val controllerId = leaderAndIsrRequest.controllerId
-      val requestPartitionStates = leaderAndIsrRequest.partitionStates.asScala
+      var requestPartitionStates = leaderAndIsrRequest.partitionStates.asScala.toSeq
       breakdown("convertLeaderAndIsrRequestPartitionStates") = intervalMarker.markTimeAndReturnLatestInterval(time.milliseconds())
       stateChangeLogger.info(s"Handling LeaderAndIsr request correlationId $correlationId from controller " +
         s"$controllerId for ${requestPartitionStates.size} partitions")
@@ -1578,6 +1579,12 @@ class ReplicaManager(val config: KafkaConfig,
             val topics = requestPartitionStates.map(_.topicName).toSet
             recoveredTopicIds = BridgeTopicIdentity.read(topics, zkClient)
             BridgeTopicIdentity.verifyWireIds(recoveredTopicIds, topicIds)
+            // Deletion can overtake a queued update. Do not admit that topic, but
+            // let unrelated partitions in the batch make progress.
+            requestPartitionStates.filterNot(state => recoveredTopicIds.contains(state.topicName)).foreach { state =>
+              responseMap.put(new TopicPartition(state.topicName, state.partitionIndex), Errors.UNKNOWN_TOPIC_OR_PARTITION)
+            }
+            requestPartitionStates = requestPartitionStates.filter(state => recoveredTopicIds.contains(state.topicName))
             val obsolete = requestPartitionStates.flatMap { state =>
               val tp = new TopicPartition(state.topicName, state.partitionIndex)
               val obsoleteCopies = Seq(logManager.getLog(tp), logManager.getLog(tp, isFuture = true)).flatten.map { log =>
@@ -1722,7 +1729,7 @@ class ReplicaManager(val config: KafkaConfig,
           updateLeaderAndFollowerMetrics(followerTopicSet)
           breakdown("updateLeaderAndFollowerMetrics") = intervalMarker.markTimeAndReturnLatestInterval(time.milliseconds())
 
-          leaderAndIsrRequest.partitionStates.forEach { partitionState =>
+          requestPartitionStates.foreach { partitionState =>
             val topicPartition = new TopicPartition(partitionState.topicName, partitionState.partitionIndex)
             /*
            * If there is offline log directory, a Partition object may have been created by getOrCreatePartition()

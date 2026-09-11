@@ -26,14 +26,14 @@ private[server] object BridgeTopicIdentity {
   def read(topics: Set[String], client: Option[KafkaZkClient]): Map[String, Uuid] = {
     if (topics.isEmpty) return Map.empty
     val zk = client.getOrElse(throw new IllegalStateException("Bridge topic identity requires a ZooKeeper client"))
-    val ids = zk.getTopicIdsForTopics(topics)
-    val missing = topics.filter(topic => ids.get(topic).forall(_ == Uuid.ZERO_UUID))
-    if (missing.nonEmpty)
-      throw new KafkaStorageException(s"Cannot verify bridge topic identity for ${missing.toSeq.sorted.mkString(",")}")
-    ids.toMap
+    val identities = zk.getTopicIdentities(topics)
+    val unverified = identities.filter { case (_, id) => id.forall(_ == Uuid.ZERO_UUID) }.keys
+    if (unverified.nonEmpty)
+      throw new KafkaStorageException(s"Cannot verify bridge topic identity for ${unverified.toSeq.sorted.mkString(",")}")
+    identities.map { case (topic, id) => topic -> id.get }.toMap
   }
 
-  def verifyWireIds(current: Map[String, Uuid], requested: java.util.Map[String, Uuid]): Unit = {
+  def verifyWireIds(current: scala.collection.Map[String, Uuid], requested: java.util.Map[String, Uuid]): Unit = {
     current.foreach { case (topic, id) =>
       Option(requested.get(topic)).filter(_ != Uuid.ZERO_UUID).foreach { wireId =>
         if (wireId != id)

@@ -52,8 +52,8 @@ class BridgeStrayLogDeletionTest {
     val quotas = QuotaFactory.instantiate(config, metrics, time, "")
     val logs = TestUtils.createLogManager(config.logDirs.map(new File(_)))
     val zk = mock(classOf[KafkaZkClient])
-    when(zk.getTopicIdsForTopics(any[Set[String]])).thenAnswer { invocation =>
-      invocation.getArgument[Set[String]](0).map(_ -> currentTopicId).toMap
+    when(zk.getTopicIdentities(any[Set[String]])).thenAnswer { invocation =>
+      invocation.getArgument[Set[String]](0).map(_ -> Some(currentTopicId)).toMap
     }
     val manager = new ReplicaManager(config, metrics, time, Some(zk), new MockScheduler(time), logs, None,
       new java.util.concurrent.atomic.AtomicBoolean(false), quotas, new BrokerTopicStats,
@@ -168,11 +168,32 @@ class BridgeStrayLogDeletionTest {
   }
 
   @org.junit.jupiter.api.Test
+  def testDeletedTopicDoesNotBlockAnUnrelatedLeaderRequest(): Unit = withManager(enabled = true) { (_, manager) =>
+    val gone = new TopicPartition("bridge-gone", 0)
+    val live = new TopicPartition("bridge-live", 0)
+    addRecord(manager, gone)
+    when(manager.zkClient.get.getTopicIdentities(Set(gone.topic, live.topic)))
+      .thenReturn(Map(live.topic -> Some(currentTopicId)))
+    val states = Seq(gone, live).map { tp =>
+      new LeaderAndIsrPartitionState().setTopicName(tp.topic).setPartitionIndex(0)
+        .setControllerEpoch(1).setLeader(1).setLeaderEpoch(0).setIsNew(true)
+        .setReplicas(java.util.Arrays.asList(Int.box(1))).setIsr(java.util.Arrays.asList(Int.box(1)))
+    }
+    val request = new LeaderAndIsrRequest.Builder(2.toShort, 0, 1, 1L, 1L, states.asJava,
+      java.util.Collections.emptyMap[String, Uuid](), java.util.Collections.emptySet[org.apache.kafka.common.Node]()).build()
+    val response = manager.becomeLeaderOrFollower(0, request, (_, _) => ())
+    assertTrue(response.errorCounts().containsKey(org.apache.kafka.common.protocol.Errors.UNKNOWN_TOPIC_OR_PARTITION))
+    assertEquals(HostedPartition.None, manager.getPartition(gone))
+    assertEquals(1L, manager.logManager.getLog(gone).get.logEndOffset)
+    assertEquals(Some(currentTopicId), manager.logManager.getLog(live).get.topicId)
+  }
+
+  @org.junit.jupiter.api.Test
   def testIdentityFailureRetriesTheSameFullImage(): Unit = withManager(enabled = true) { (_, manager) =>
     val partition = new TopicPartition("bridge-retry-identity", 0)
     addRecord(manager, partition, Some(Uuid.randomUuid()))
-    when(manager.zkClient.get.getTopicIdsForTopics(Set(partition.topic)))
-      .thenReturn(Map.empty[String, Uuid], Map(partition.topic -> currentTopicId))
+    when(manager.zkClient.get.getTopicIdentities(Set(partition.topic)))
+      .thenReturn(Map(partition.topic -> None), Map(partition.topic -> Some(currentTopicId)))
     val request = update(1, Seq((partition, 1, List(1))))
     assertThrows(classOf[KafkaStorageException], () => manager.maybeUpdateMetadataCache(0, request))
     assertEquals(1L, manager.logManager.getLog(partition).get.logEndOffset)

@@ -23,14 +23,15 @@ import kafka.server.{BrokerFeatures, DelegationTokenManager, KafkaConfig}
 import kafka.utils.TestUtils
 import kafka.zk.{BrokerInfo, KafkaZkClient}
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.ControllerMovedException
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.server.metrics.KafkaMetricsGroup
 import org.apache.kafka.server.util.MockTime
 import org.junit.jupiter.api.Assertions.{assertEquals, assertSame, assertThrows, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
 import org.mockito.ArgumentMatchers
-import org.mockito.ArgumentMatchers.{any, anyString}
-import org.mockito.Mockito.{mock, mockConstruction, times, verify, verifyNoMoreInteractions, when}
+import org.mockito.ArgumentMatchers.{any, anyInt, anyString}
+import org.mockito.Mockito.{doAnswer, mock, mockConstruction, never, times, verify, verifyNoMoreInteractions, when}
 
 class KafkaControllerTest {
   var config: KafkaConfig = _
@@ -60,6 +61,70 @@ class KafkaControllerTest {
         }
       } finally construction.close()
     }
+  }
+
+  @Test
+  def testInterruptedDeletionRecoveryRetainsReplicasAndUnrelatedReassignments(): Unit = {
+    for (enabled <- Seq(false, true); deletionEnabled <- Seq(false, true)) {
+      val props = TestUtils.createBrokerConfig(1, TestUtils.MockZkConnect)
+      props.put(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, enabled.toString)
+      props.put(KafkaConfig.DeleteTopicEnableProp, deletionEnabled.toString)
+      val client = mock(classOf[KafkaZkClient])
+      val controller = new KafkaController(KafkaConfig.fromProps(props), client, new MockTime(), mock(classOf[Metrics]),
+        mock(classOf[BrokerInfo]), 0L, mock(classOf[DelegationTokenManager]), mock(classOf[BrokerFeatures]),
+        mock(classOf[ZkMetadataCache]))
+      val deleted = new TopicPartition("deleted", 0)
+      val live = new TopicPartition("live", 0)
+      val withState = new TopicPartition("with-state", 0)
+      val assignment = ReplicaAssignment(Seq(1, 2), Seq(2), Seq(1))
+      val context = controller.controllerContext
+      Seq(deleted, live, withState).foreach { tp =>
+        context.updatePartitionFullReplicaAssignment(tp, assignment)
+        context.partitionsBeingReassigned.add(tp)
+      }
+      context.putPartitionLeadershipInfo(withState, LeaderIsrAndControllerEpoch(LeaderAndIsr(1, List(1, 2)), 0))
+      when(client.reassignPartitionsInProgress).thenReturn(true)
+      when(client.getPartitionReassignment).thenReturn(Map(deleted -> Seq(2), live -> Seq(2)))
+      try {
+        controller.recoverInterruptedTopicDeletions(Set("deleted", "with-state"))
+        assertEquals(assignment, context.partitionFullReplicaAssignment(live))
+        assertEquals(assignment, context.partitionFullReplicaAssignment(withState))
+        assertTrue(context.partitionsBeingReassigned.contains(live))
+        assertTrue(context.partitionsBeingReassigned.contains(withState))
+        if (enabled && deletionEnabled) {
+          val retained = ReplicaAssignment(Seq(1, 2))
+          assertEquals(retained, context.partitionFullReplicaAssignment(deleted))
+          assertEquals(Set(live, withState), context.partitionsBeingReassigned.toSet)
+          verify(client).setTopicAssignment("deleted", None, Map(deleted -> retained), context.epochZkVersion)
+          verify(client).setOrCreatePartitionReassignment(Map(live -> Seq(2)), context.epochZkVersion)
+        } else {
+          assertEquals(assignment, context.partitionFullReplicaAssignment(deleted))
+          verify(client, never()).setTopicAssignment(anyString(), any(), any(), anyInt())
+        }
+      } finally controller.shutdown()
+    }
+  }
+
+  @Test
+  def testInterruptedDeletionWriteFailureDoesNotPublishNewAssignment(): Unit = {
+    val props = TestUtils.createBrokerConfig(1, TestUtils.MockZkConnect)
+    props.put(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, "true")
+    val client = mock(classOf[KafkaZkClient])
+    val controller = new KafkaController(KafkaConfig.fromProps(props), client, new MockTime(), mock(classOf[Metrics]),
+      mock(classOf[BrokerInfo]), 0L, mock(classOf[DelegationTokenManager]), mock(classOf[BrokerFeatures]),
+      mock(classOf[ZkMetadataCache]))
+    val tp = new TopicPartition("deleted", 0)
+    val assignment = ReplicaAssignment(Seq(1, 2), Seq(2), Seq(1))
+    controller.controllerContext.updatePartitionFullReplicaAssignment(tp, assignment)
+    controller.controllerContext.partitionsBeingReassigned.add(tp)
+    val failure = new ControllerMovedException("fenced")
+    doAnswer(_ => throw failure).when(client).setTopicAssignment(anyString(), any(), any(), anyInt())
+    try {
+      assertSame(failure, assertThrows(classOf[ControllerMovedException],
+        () => controller.recoverInterruptedTopicDeletions(Set("deleted"))))
+      assertEquals(assignment, controller.controllerContext.partitionFullReplicaAssignment(tp))
+      assertTrue(controller.controllerContext.partitionsBeingReassigned.contains(tp))
+    } finally controller.shutdown()
   }
 
   @Test

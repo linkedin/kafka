@@ -1115,8 +1115,31 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
+  private[controller] def recoverInterruptedTopicDeletions(topicsToBeDeleted: Set[String]): Unit = {
+    if (!config.liProtocolBridgeTopicDeletionStateCleanupActive || !isTopicDeletionEnabled) return
+    // A 3.0 controller can stop during recursive topic deletion, leaving reassignment
+    // fields in the topic parent after the partition's leader/ISR znode was removed.
+    // Preserve every assigned replica for deletion; do not resume that reassignment.
+    val interrupted = controllerContext.partitionsBeingReassigned.iterator.filter { tp =>
+      topicsToBeDeleted.contains(tp.topic) && controllerContext.partitionLeadershipInfo(tp).isEmpty
+    }.toVector
+    interrupted.foreach { tp =>
+      val assignment = ReplicaAssignment(controllerContext.partitionReplicaAssignment(tp))
+      val topicAssignments = controllerContext.partitionFullReplicaAssignmentForTopic(tp.topic) + (tp -> assignment)
+      zkClient.setTopicAssignment(tp.topic, controllerContext.topicIds.get(tp.topic),
+        topicAssignments.toMap, controllerContext.epochZkVersion)
+      controllerContext.updatePartitionFullReplicaAssignment(tp, assignment)
+    }
+    if (interrupted.nonEmpty) {
+      val interruptedSet = interrupted.toSet
+      maybeRemoveFromZkReassignment((tp, _) => interruptedSet.contains(tp))
+      controllerContext.partitionsBeingReassigned --= interrupted
+    }
+  }
+
   private def fetchTopicDeletionsInProgress(): (Set[String], Set[String]) = {
     val topicsToBeDeleted = zkClient.getTopicDeletions.toSet
+    recoverInterruptedTopicDeletions(topicsToBeDeleted)
     val topicsWithOfflineReplicas = controllerContext.allTopics.filter { topic => {
       val replicasForTopic = controllerContext.replicasForTopic(topic)
       replicasForTopic.exists(r => !controllerContext.isReplicaOnline(r.replica, r.topicPartition))

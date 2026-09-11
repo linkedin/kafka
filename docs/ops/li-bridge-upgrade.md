@@ -23,7 +23,7 @@ limitations under the License.
 
 The implementation base is Apache **3.9.2** with the reviewed LI bridge stack. Pin the final internal `3.9.2.N`, matching `3.0.1.N`, wrapper commit, archive checksums, JDKs and ZooKeeper runtime in the release record. A maintenance-baseline change requires a new qualification run; do not substitute a newer tag during rollout.
 
-The current implementation is the split stack through `3.9-li-bridge/interrupted-deletion-recovery`, with the companion `3.0-li-bridge/interrupted-deletion-recovery` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
+The current implementation is the split stack through `3.9-li-bridge/verifier-process-isolation`, with the companion `3.0-li-bridge/interrupted-deletion-recovery` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
 
 **Clients do not change.** The supported producer, consumer, transactional client, Streams application, Connect worker, LI AdminClient and operational-tool artifacts/configuration must remain unchanged across every phase. Discovery must name their deployed version floor and owners. One 3.0 test archive is not proof for every externally deployed client. The latest qualification still has an unresolved cold-producer metadata timeout with an offline bootstrap broker. Record the deployed LI clients' `li.client.cluster.metadata.expire.time.ms` setting and test cold startup with unavailable bootstrap entries. Diagnostic replays and an existing config opt-out are not release approval or permission to change clients during the roll.
 
@@ -176,7 +176,7 @@ Repeat config arguments for **every** live broker. Reports distinguish `configur
 
 ## Qualification before the first canary
 
-Run qualification against independently built archives, then repeat it against the actual published archives and official wrapper dependencies. Retain checksums, source identities, commands, phase results and logs.
+Run qualification against independently built archives, then repeat it against the actual published archives and official wrapper dependencies. Retain checksums, source identities, commands, phase results and logs. Gradle commands use `--no-daemon`; the verifier must not stop unrelated builds through a shared daemon registry.
 
 ```bash
 JAVA_HOME=/path/to/jdk17 \
@@ -240,7 +240,7 @@ Automatically stop for unexpected control versions, post-fence API 1001 traffic,
 
 ## PR inventory and merge order
 
-All 47 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
+All 48 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
 
 Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 during the dependency reorder because their new heads were contained in their former base branches. No release branch was merged. Their restored, separate reviews are 579 and 578.
 
@@ -293,12 +293,13 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [593](https://github.com/linkedin/kafka/pull/593) | mandatory native offline-deletion checks, scenario revision 5 — verification |
 | [594](https://github.com/linkedin/kafka/pull/594) | default-off placement, controller diagnostics and instrumentation audit — operations/verification |
 | [597](https://github.com/linkedin/kafka/pull/597) | 3.9 interrupted deletion and mandatory scenario-revision-6 checks — controller/verification |
+| [598](https://github.com/linkedin/kafka/pull/598) | verifier process isolation — verification |
 
 Merge 558 into `3.9-li` and 559 into `3.0-li` first. They have different release bases, so do not put them in one dependent Git stack. Rebase/retarget 575 to `3.0-li` and 543 to `3.9-li`; do not merge feature work into temporary CI branches.
 
 The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588 → 592 → 595 → 596**. The stack rooted at PR 543 has the 3.9 order:
 
-**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593 → 594 → 597**.
+**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593 → 594 → 597 → 598**.
 
 Retarget remaining layers after each independent merge. Wrapper `1764cc95` contains the diagnostic opt-in, ACL test repair (`6ddf2a87`) and cleanup mapping/tests (`1a9ecccf`); its source suite passes 133 tests. Add the approved wrapper/dependency/security PR and named deployment-gate owner to the release record.
 

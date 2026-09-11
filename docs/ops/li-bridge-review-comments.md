@@ -17,7 +17,7 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 47 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 48 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
 
 ## Later qualification findings
 
@@ -32,6 +32,8 @@ All 62 original threads have replies with published source decisions. A fresh Gr
 | F26: merged non-delete response reaches deletion callback | [595](https://github.com/linkedin/kafka/pull/595) uses the native response delete bit under cleanup. [596](https://github.com/linkedin/kafka/pull/596) also makes direct native v4 responses echo that bit. Before/after handler serialization and controller tests cover both boundaries. | Final qualification must include the direct and combined paths. |
 | F27: interrupted deletion breaks controller startup | [596](https://github.com/linkedin/kafka/pull/596)/[597](https://github.com/linkedin/kafka/pull/597) retain all replicas, clear only marked missing-state reassignments, and finish acknowledged deletion under cleanup. Both generations pass the maintained native startup and exact-record cases; scenario revision 6 rejects missing evidence. | Scoped bundles are not full-pair qualification. |
 | F28: old producer times out obtaining recreated-topic metadata | Latest PR 594 CI failure is retained. The unchanged client jar reproduces a 60-second metadata stall in a deterministic network fixture. The existing zero-expiry setting also passes a separate real-broker experiment with both survivor generations. The migration profile and deadlines are unchanged. | Client-floor decision and full final-pair qualification remain open. |
+
+The verifier isolation finding is tracked in [598](https://github.com/linkedin/kafka/pull/598): all Gradle invocations remain single-use, and the global daemon-stop commands are removed. Its command-plan regression fails before and passes after. No functional qualification check is removed.
 
 ## PR 541
 

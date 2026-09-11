@@ -20,7 +20,7 @@ import com.yammer.metrics.core.Gauge
 import kafka.utils.TestUtils
 import org.apache.kafka.server.config.ReplicationConfigs
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.util.Properties
@@ -29,10 +29,57 @@ import scala.jdk.CollectionConverters._
 class LiProtocolBridgeMetricsTest {
 
   @Test
+  def testNoMetricsWithoutOptIn(): Unit = {
+    val brokerId = 988
+    val config = KafkaConfig(TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect))
+    val metrics = new LiProtocolBridgeMetrics(config)
+    try assertTrue(metricValues(brokerId).isEmpty)
+    finally metrics.close()
+  }
+
+  @Test
+  def testGateRequiresRestartAndDisabledClosePreservesOtherMetrics(): Unit = {
+    val brokerId = 989
+    val props = TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect)
+    props.put(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp, "true")
+    val config = KafkaConfig(props)
+    config.dynamicConfig.initialize(None, None)
+    val metrics = new LiProtocolBridgeMetrics(config)
+    try {
+      assertFalse(DynamicBrokerConfig.AllDynamicConfigs.contains(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp))
+      val update = new Properties
+      update.put(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp, "false")
+      config.dynamicConfig.updateDefaultConfig(update)
+      assertTrue(config.liProtocolBridgeConfigMetricsActive)
+      props.remove(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp)
+      new LiProtocolBridgeMetrics(KafkaConfig(props)).close()
+      assertEquals(LiProtocolBridgeMetrics.MetricNames.toSet, metricValues(brokerId).keySet)
+      assertEquals(1, metricValues(brokerId)(LiProtocolBridgeMetrics.ConfigMetricsEnabled))
+    } finally metrics.close()
+    assertTrue(metricValues(brokerId).isEmpty)
+  }
+
+  @Test
+  def testKRaftDoesNotRegisterBridgeMetrics(): Unit = {
+    val props = new Properties
+    Map("broker.id" -> "990", "node.id" -> "990", "process.roles" -> "broker,controller",
+      "controller.quorum.voters" -> "990@localhost:19093", "controller.listener.names" -> "CONTROLLER",
+      "listeners" -> "PLAINTEXT://localhost:19092,CONTROLLER://localhost:19093",
+      "listener.security.protocol.map" -> "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT",
+      KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp -> "true").foreach { case (key, value) => props.put(key, value) }
+    val config = KafkaConfig(props)
+    assertFalse(config.liProtocolBridgeConfigMetricsActive)
+    val metrics = new LiProtocolBridgeMetrics(config)
+    try assertTrue(metricValues(990).isEmpty)
+    finally metrics.close()
+  }
+
+  @Test
   def testMetricsFollowDynamicFlags(): Unit = {
     val brokerId = 987
     val brokerProps = TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect)
     brokerProps.put(ReplicationConfigs.INTER_BROKER_PROTOCOL_VERSION_CONFIG, "3.0")
+    brokerProps.put(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp, "true")
     val config = KafkaConfig(brokerProps)
     config.dynamicConfig.initialize(None, None)
     val metrics = new LiProtocolBridgeMetrics(config)
@@ -40,8 +87,10 @@ class LiProtocolBridgeMetricsTest {
     try {
       val initialValues = metricValues(brokerId)
       assertEquals(1, initialValues(LiProtocolBridgeMetrics.ControllerInitializationThreads))
-      assertTrue(initialValues.filterNot(_._1 == LiProtocolBridgeMetrics.ControllerInitializationThreads)
-        .values.forall(_ == 0))
+      assertEquals(1, initialValues(LiProtocolBridgeMetrics.ConfigMetricsEnabled))
+      assertTrue(initialValues.filterNot { case (name, _) =>
+        name == LiProtocolBridgeMetrics.ControllerInitializationThreads || name == LiProtocolBridgeMetrics.ConfigMetricsEnabled
+      }.values.forall(_ == 0))
 
       val props = new Properties
       Seq(

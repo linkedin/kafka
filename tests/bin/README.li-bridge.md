@@ -51,6 +51,10 @@ The wrapper's declared Kafka and Scala versions must match the 3.9 archive. Ever
 
 Source compilation and focused source tests still run. `BRIDGE_VERIFY_FULL=1` adds the complete clients, server, and storage suites. The mixed-process test runs the retained archives.
 
+## Diagnostic metrics opt-in
+
+Both broker generations default `li.protocol.bridge.config.metrics.enable` to false. Set it to true in each broker's startup configuration to register the bridge-state gauges. The setting is ZooKeeper-only and requires a restart. It does not enable protocol or data-path behavior; those flags remain separate. The process runner enables it explicitly, and preflight requires it in every migration phase, including dormant mode. A disabled instance does not remove another instance's registered gauges during cleanup.
+
 ## Evidence and resume
 
 Archives are copied under `EVIDENCE_DIR/archives` with content-addressed names. `archive-30.json` and `archive-39.json` record versions, source metadata, and jar hashes. `wrapper-artifacts.json` records the wrapper's resolved Kafka files.

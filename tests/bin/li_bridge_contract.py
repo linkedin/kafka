@@ -27,10 +27,12 @@ CONTRACT_VERSION = 2
 SCENARIO_REVISION = 4
 MODE = "li.protocol.bridge.mode.enable"
 TOPIC_CLEANUP = "li.protocol.bridge.topic.deletion.state.cleanup.enable"
+CONFIG_METRICS = "li.protocol.bridge.config.metrics.enable"
 # The Kafka registry and metric-name set are checked against this table by tests.
 # (config suffix, effective metric, retained in the minimum compatibility profile)
 FEATURES = (
     ("mode", "ModeEnabled", True),
+    ("config.metrics", "ConfigMetricsEnabled", True),
     ("topic.deletion.state.cleanup", "TopicDeletionStateCleanupEnabled", True),
     ("follower.recovery", "FollowerRecoveryEnabled", True),
     ("recommended.leader.election", "RecommendedLeaderElectionEnabled", True),
@@ -88,7 +90,7 @@ def required_gates(phase, generation, all_gates=False):
     if generation == "3.0":
         # The dormant binary may still have every new flag off. Enable cleanup before
         # entering the common protocol, then keep it enabled through the native bake.
-        return () if phase == "dormant" else (TOPIC_CLEANUP,)
+        return (CONFIG_METRICS,) if phase == "dormant" else (CONFIG_METRICS, TOPIC_CLEANUP)
     gates = BRIDGE_GATES if all_gates else MIXED_REQUIRED_GATES
     return tuple(gate for gate in gates if gate != MODE)
 

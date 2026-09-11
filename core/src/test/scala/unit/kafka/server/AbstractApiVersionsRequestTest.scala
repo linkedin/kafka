@@ -101,7 +101,9 @@ abstract class AbstractApiVersionsRequestTest(cluster: ClusterInstance) {
       )
     }
 
-    assertEquals(expectedApis.size, apiVersionsResponse.data.apiKeys.size,
+    // These fixtures keep LI private APIs disabled through the default compatibility settings.
+    val expectedEnabledApiCount = expectedApis.iterator.asScala.count(_.apiKey < 1000)
+    assertEquals(expectedEnabledApiCount, apiVersionsResponse.data.apiKeys.size,
       "API keys in ApiVersionsResponse must match API keys supported by broker.")
 
     val defaultApiVersionsResponse = if (!cluster.isKRaftTest) {
@@ -112,7 +114,8 @@ abstract class AbstractApiVersionsRequestTest(cluster: ClusterInstance) {
       TestUtils.createApiVersionsResponse(0, expectedApis)
     }
 
-    for (expectedApiVersion: ApiVersion <- defaultApiVersionsResponse.data.apiKeys.asScala) {
+    for (expectedApiVersion: ApiVersion <- defaultApiVersionsResponse.data.apiKeys.asScala
+         if expectedApiVersion.apiKey < 1000) {
       val actualApiVersion = apiVersionsResponse.apiVersion(expectedApiVersion.apiKey)
       assertNotNull(actualApiVersion, s"API key ${expectedApiVersion.apiKey()} is supported by broker, but not received in ApiVersionsResponse.")
       assertEquals(expectedApiVersion.apiKey, actualApiVersion.apiKey, "API key must be supported by the broker.")

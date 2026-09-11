@@ -21,6 +21,7 @@ import org.apache.kafka.common.protocol.types.Schema;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -83,9 +84,8 @@ public class ApiKeysTest {
                 apisMissingScope.add(apiKey);
             }
         }
-        // These wire definitions stay unadvertised until the broker handlers are added.
-        assertEquals(EnumSet.of(ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK, ApiKeys.LI_MOVE_CONTROLLER),
-            apisMissingScope, "Only the pending control RPC definitions may lack listener scopes");
+        assertEquals(Collections.emptySet(), apisMissingScope,
+            "Found some APIs missing scope definition");
     }
 
     @Test

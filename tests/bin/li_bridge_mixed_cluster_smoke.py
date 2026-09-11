@@ -173,9 +173,20 @@ class Migration:
             self.timings.append((label, round(time.monotonic() - start, 3), "failed"))
             raise
 
-    def zk(self, command):
+    def zk(self, command, timeout=30):
         return self.command([self.homes["3.9"] / "bin/zookeeper-shell.sh", f"127.0.0.1:{self.zk_port}"],
-                            input_text=command + "\n", check=False, timeout=30, allow_missing=True) or ""
+                            input_text=command + "\n", check=False, timeout=timeout, allow_missing=True) or ""
+
+    def zookeeper_ready(self):
+        process = self.processes["zookeeper"]
+        if process.poll() is not None:
+            raise AssertionError(f"ZooKeeper exited during startup: {process.returncode}")
+        try:
+            return "[zookeeper]" in self.zk("ls /", timeout=5)
+        except subprocess.TimeoutExpired:
+            # A socket may open before the server has loaded its database. Retry only
+            # this startup probe; do not hide timeouts in the migration itself.
+            return False
 
     def registered(self, identifier):
         return '"version"' in self.zk(f"get /brokers/ids/{identifier}")
@@ -378,6 +389,52 @@ class Migration:
         self.start_broker(1, "3.9")
         self.until("recovery ledger final ISR", self.healthy)
 
+    def offline_name_reuse(self, offline):
+        survivor = 1 - offline
+        offline_generation = self.generations[offline]
+        survivor_generation = self.generations[survivor]
+        topic = f"bridge-offline-name-reuse-{offline_generation}"
+        self.force_controller(survivor)
+        self.create(topic, f"{survivor}:{offline}")
+        self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 1, 64)
+        self.stop(f"broker-{offline}", hard=True)
+        self.until(f"{offline_generation} former replica offline for name reuse", lambda: not self.registered(offline), 60)
+
+        def reassign(replicas):
+            path = self.work / "offline-name-reuse-reassignment.json"
+            path.write_text(json.dumps({"version": 1, "partitions": [
+                {"topic": topic, "partition": 0, "replicas": replicas}]}))
+            self.admin("kafka-reassign-partitions.sh", "--reassignment-json-file", path, "--execute")
+            def complete():
+                description = self.admin("kafka-topics.sh", "--describe", "--topic", topic, check=False) or ""
+                match = re.search(r"Replicas:\s+([0-9,]+)\s+Isr:\s+([0-9,]+)", description)
+                if not match:
+                    return False
+                assigned = list(map(int, match[1].split(",")))
+                in_sync = set(map(int, match[2].split(",")))
+                return assigned == replicas and in_sync == set(replicas)
+            self.until(f"offline name-reuse assignment {replicas}", complete)
+
+        reassign([survivor])
+        self.admin("kafka-topics.sh", "--delete", "--topic", topic)
+        self.until("name deleted while former replica offline", lambda:
+                   topic not in (self.admin("kafka-topics.sh", "--list", check=False) or "").splitlines() and
+                   "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"))
+        self.create(topic, str(survivor))
+        self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 2, 128)
+        self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128)
+        self.start_broker(offline, offline_generation)
+        self.until("rejoined broker ISR recovery", self.healthy)
+        reassign([survivor, offline])
+        self.stop(f"broker-{survivor}", hard=True)
+        self.until("rejoined replica promoted", lambda: f"Leader: {offline}" in
+                   (self.admin("kafka-topics.sh", "--describe", "--topic", topic, check=False) or ""), 60)
+        # Exit on a changed record immediately; retrying could hide old bytes.
+        self.until(f"offline name-reuse {offline_generation} records verified after promotion", lambda:
+                   self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128) is not None)
+        self.start_broker(survivor, survivor_generation)
+        self.until("offline name-reuse final ISR recovery", self.healthy)
+
     def cancellation(self):
         self.force_controller(1)
         self.start_broker(2, "3.9")
@@ -444,7 +501,7 @@ class Migration:
         write_properties(self.work / "zookeeper.properties", {"clientPort": self.zk_port,
                          "dataDir": self.work / "zk-data", "maxClientCnxns": 0, "admin.enableServer": "false"})
         self.start("zookeeper", [self.homes["3.9"] / "bin/zookeeper-server-start.sh", self.work / "zookeeper.properties"])
-        self.until("ZooKeeper startup", lambda: "[]" in self.zk("ls /brokers/ids") or "[zookeeper]" in self.zk("ls /"), 60)
+        self.until("ZooKeeper startup", self.zookeeper_ready, 60)
 
     def run(self):
         self.prepare()
@@ -486,6 +543,8 @@ class Migration:
         self.checkpoint("mixed")
         self.resources_at("mixed-old-clients-complete")
         self.recovery()
+        self.offline_name_reuse(0)
+        self.offline_name_reuse(1)
         self.cancellation()
         self.truncation()
         self.checkpoint("mixed")

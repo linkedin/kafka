@@ -66,7 +66,8 @@ REQUIRED_TIMING_OPERATIONS: Tuple[str, ...] = (
     "canary rollback to 3.0",
     "all-3.9 rollback to 3.0",
     "hard controller recovery",
-) + tuple(f"old clients phase {phase}" for phase in PHASES)
+) + tuple(f"old clients phase {phase}" for phase in PHASES) + tuple(
+    f"offline name-reuse {generation} records verified after promotion" for generation in ("3.0", "3.9"))
 
 REQUIRED_RESOURCE_PHASES: Tuple[str, ...] = (
     "mixed-metadata-loaded",

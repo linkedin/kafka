@@ -82,9 +82,11 @@ The fixture sets a 1 MiB client and server response limit. It checks complete re
 
 The verifier runs this fixture as the `vendor-pagination` stage. The packaged-runtime probe and broker startup check separately reject enabled pagination with a stock client. The isolated fixture does **not** select the deployed dependency or qualify an untested server version.
 
-## Phase and workload evidence (contract version 2)
+## Phase and workload evidence (contract version 2, scenario revision 3)
 
 The shell entry point runs `li_bridge_mixed_cluster_smoke.py`. The test starts all-3.0 with bridge mode off, LI async fetching on and combined control on. It tests activation and backout, both binary rollback paths, hard failures, replica recovery, and deletion followed by name reuse. It then tests native control at IBP 3.0 and a separate IBP 3.9 roll.
+
+Scenario revision 3 also keeps a former replica offline through reassignment, deletion and name reuse. It checks the replacement topic, brings the old replica back, reassigns it into ISR, promotes it, and verifies the new bytes. Both broker generations must pass. An initial full metadata image may retire unassigned logs; same-epoch incremental updates must not. Evidence from an older scenario revision does not cover this case.
 
 The same old clients and Connect worker stay alive throughout. A second old Admin client keeps creating, expanding, cancelling, shrinking and deleting a topic while brokers roll. Private APIs run with both old and new jars. The record checks compare contents, not just counts. Ordinary traffic is limited to one record pair every 100 ms so the in-memory test ledger stays bounded; this is not a throughput benchmark.
 

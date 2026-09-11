@@ -31,6 +31,7 @@ from li_bridge_preflight import parse_properties, zk_command
 class LiBridgeScenarioTest(unittest.TestCase):
     def test_scenario_defaults_validation_and_runtime_profile(self):
         default = scenario_spec({})
+        self.assertEqual(3, default["scenario_revision"])
         self.assertEqual(default, scenario_spec({"SCALE_TOPIC_COUNT": "10"}))
         for key in ("SCALE_TOPIC_COUNT", "SCALE_PARTITION_COUNT", "RECOVERY_RECORD_COUNT", "RECOVERY_RECORD_SIZE"):
             for value in ("0", "-1", "bad", "2147483648"):
@@ -40,6 +41,20 @@ class LiBridgeScenarioTest(unittest.TestCase):
         self.assertNotEqual(default, scenario_spec({"KAFKA_HEAP_OPTS": "-Xmx2g"}))
         self.assertNotEqual(default, scenario_spec({"LI_BRIDGE_JAVA_30_HOME": "/jdk11"}))
         self.assertEqual({"dormant", "legacy-bridge", "mixed", "all-39-bridge", "native", "ibp-39"}, set(PHASES))
+
+    def test_zookeeper_startup_retries_a_probe_timeout_but_not_a_dead_server(self):
+        runner = object.__new__(Migration)
+        process = mock.Mock()
+        process.poll.return_value = None
+        runner.processes = {"zookeeper": process}
+        with mock.patch.object(runner, "zk", side_effect=[subprocess.TimeoutExpired(["zk"], 5), "[zookeeper]\n"]) as probe:
+            self.assertFalse(runner.zookeeper_ready())
+            self.assertTrue(runner.zookeeper_ready())
+            probe.assert_called_with("ls /", timeout=5)
+        process.poll.return_value = 1
+        process.returncode = 1
+        with self.assertRaisesRegex(AssertionError, "exited during startup"):
+            runner.zookeeper_ready()
 
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]

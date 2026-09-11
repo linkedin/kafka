@@ -1928,14 +1928,20 @@ class ReplicaManager(val config: KafkaConfig,
         throw new ControllerMovedException(stateChangeLogger.messageWithPrefix(stateControllerEpochErrorMessage))
       } else {
         val zkMetadataCache = metadataCache.asInstanceOf[ZkMetadataCache]
-        val deletedPartitions = zkMetadataCache.updateMetadata(correlationId, updateMetadataRequest,
+        val update = zkMetadataCache.updateMetadataAndGetResult(correlationId, updateMetadataRequest,
           config.liProtocolBridgeTopicDeletionStateCleanupActive)
+        val deletedPartitions = update.deletedPartitions
         controllerEpoch = updateMetadataRequest.controllerEpoch
         if (config.liProtocolBridgeTopicDeletionStateCleanupActive && !updateMetadataRequest.isKRaftController) {
-          // A canceled reassignment can leave a loaded log without a hosted replica.
-          // Retire these local strays on metadata deletion. Hosted replicas still use
-          // StopReplica, which also controls deletion of remote data.
-          val strays = deletedPartitions.filter(tp => getPartition(tp) == HostedPartition.None &&
+          // A returning broker may have missed every deletion notification. Only a
+          // complete image can identify those unassigned logs; incremental updates cannot.
+          val unassigned = if (update.replacedSnapshot) {
+            logManager.allLogs.map(_.topicPartition).filter { tp =>
+              !zkMetadataCache.getPartitionInfo(tp.topic, tp.partition).exists(_.replicas.contains(config.brokerId))
+            }.toSeq
+          } else Seq.empty
+          // Hosted replicas still use StopReplica, which also controls remote deletion.
+          val strays = (deletedPartitions ++ unassigned).filter(tp => getPartition(tp) == HostedPartition.None &&
             logManager.getLog(tp).isDefined).map(tp => StopPartition(tp, deleteLocalLog = true)).toSet
           if (strays.nonEmpty) {
             val failures = stopPartitions(strays)

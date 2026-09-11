@@ -24,7 +24,7 @@ import kafka.server.metadata.ZkConfigRepository
 import kafka.utils._
 import kafka.utils.Implicits._
 import kafka.zk.{AdminZkClient, KafkaZkClient}
-import org.apache.kafka.admin.AdminUtils
+import org.apache.kafka.admin.{AdminUtils, BrokerMetadata}
 import org.apache.kafka.clients.admin.{AlterConfigOp, ScramMechanism}
 import org.apache.kafka.common.Uuid
 import org.apache.kafka.common.config.{ConfigDef, ConfigException, ConfigResource}
@@ -124,6 +124,16 @@ class ZkAdminManager(val config: KafkaConfig,
     }
   }
 
+  private def mapRackIds(brokers: Iterable[BrokerMetadata]): Seq[BrokerMetadata] = {
+    if (config.liProtocolBridgeRackIdMapperActive) {
+      brokers.map { broker =>
+        new BrokerMetadata(broker.id, broker.rack.map(config.rackIdMapperForReplicaAssignment.apply))
+      }.toSeq
+    } else {
+      brokers.toSeq
+    }
+  }
+
   private def maybePopulateMetadataAndConfigs(metadataAndConfigs: Map[String, CreatableTopicResult],
                                               topicName: String,
                                               configs: Properties,
@@ -170,7 +180,7 @@ class ZkAdminManager(val config: KafkaConfig,
       zkClient.getPreferredControllerList.toSet
     else
       Set.empty[Int]
-    val brokers = liveBrokers.filterNot(broker => preferredControllerIds.contains(broker.id))
+    val brokers = mapRackIds(liveBrokers.filterNot(broker => preferredControllerIds.contains(broker.id)))
     val metadata = toCreate.values.map(topic =>
       try {
         if (metadataCache.contains(topic.name))
@@ -320,7 +330,7 @@ class ZkAdminManager(val config: KafkaConfig,
       zkClient.getPreferredControllerList.toSet
     else
       Set.empty[Int]
-    val allBrokers = brokerMetadatas.filterNot(broker => preferredControllerIds.contains(broker.id))
+    val allBrokers = mapRackIds(brokerMetadatas.filterNot(broker => preferredControllerIds.contains(broker.id)))
     val allBrokerIds = allBrokers.map(_.id)
 
     // 1. map over topics creating assignment and calling AdminUtils

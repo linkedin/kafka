@@ -191,9 +191,10 @@ class TopicDeletionManagerTest {
 
   @Test
   def testBridgeDeletionWaitsForOfflineReplicaAfterControllerFailover(): Unit = {
-    Seq(false, true).foreach { bridge =>
+    for (bridge <- Seq(false, true); cleanup <- Seq(false, true)) {
       val properties = TestUtils.createBrokerConfig(brokerId, "zkConnect")
       properties.put(KafkaConfig.LiProtocolBridgeModeEnableProp, bridge.toString)
+      properties.put(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, cleanup.toString)
       val config = KafkaConfig.fromProps(properties)
       val client = mock(classOf[DeletionClient])
       val context = initContext(Seq(1, 2), Set("foo"), numPartitions = 1, replicationFactor = 1)
@@ -209,9 +210,9 @@ class TopicDeletionManagerTest {
       val topicPartitions = context.partitionsForTopic("foo")
       val topicReplicas = context.replicasForTopic("foo")
       manager.tryTopicDeletion()
-      if (bridge) {
-        // Common control versions cannot send a full-state cleanup on rejoin. Keep the
-        // assignment/znode until the actual replica deletion is acknowledged and notify caches.
+      if (bridge || cleanup) {
+        // Keep the assignment until deletion is acknowledged, including native-mode backout.
+        // The controller must notify online caches even when every replica is offline.
         verify(client).sendMetadataUpdate(topicPartitions)
         verify(client, never()).deleteTopic("foo", context.epochZkVersion)
         assertTrue(context.topicsToBeDeleted.contains("foo"))
@@ -220,6 +221,8 @@ class TopicDeletionManagerTest {
         manager.resumeDeletionForTopics(Set("foo"))
         assertEquals(topicReplicas, context.replicasInState("foo", ReplicaDeletionStarted))
         manager.completeReplicaDeletion(topicReplicas)
+      } else {
+        verify(client, never()).sendMetadataUpdate(topicPartitions)
       }
       verify(client).deleteTopic("foo", context.epochZkVersion)
       assertTrue(context.partitionsForTopic("foo").isEmpty)

@@ -1291,8 +1291,8 @@ object KafkaConfig {
       .define(LiProtocolBridgeConfigMetricsEnableProp, BOOLEAN, false, LOW,
         "Register bridge configuration gauges on ZooKeeper brokers. Requires a broker restart.")
       .define(LiProtocolBridgeTopicDeletionStateCleanupEnableProp, BOOLEAN, false, HIGH,
-        "Clear stale topic deletion state and reconcile the metadata cache " +
-          "from the first full update of each ZooKeeper controller epoch. Enable on every broker together.")
+        "Wait for replica deletion acknowledgements, clear stale deletion state and recover metadata/log identity. " +
+          "Enable on every ZooKeeper broker together and retain after bridge mode is disabled.")
       .define(LiUpdateMetadataDelayMsProp, LONG, Defaults.LiUpdateMetadataDelayMs, atLeast(0), LOW, LiUpdateMetadataDelayMsDoc)
       .define(LiDropFetchFollowerEnableProp, BOOLEAN, Defaults.LiDropFetchFollowerEnable, LOW, LiDropFetchFollowerEnableDoc)
       .define(LiDenyAlterIsrProp, BOOLEAN, Defaults.LiDenyAlterIsr, HIGH, LiDenyAlterIsrDoc)

@@ -17,7 +17,16 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads were inspected and now have replies with published source decisions. Resolved status alone was not accepted as proof. Final readback, new-comment and coverage checks remain required.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 37 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+
+## Later qualification findings
+
+| Finding | Published response and evidence | Remaining limit |
+|---|---|---|
+| [F18: offline replica misses deletion](https://github.com/linkedin/kafka/pull/576#issuecomment-5629453741) | Paired complete-image recovery in 583/584; unassigned/leaderless/incremental tests and exact records after promotion. | Assignment does not establish topic identity; also require F19. |
+| [F19: recreated topic already assigned to returning replica](https://github.com/linkedin/kafka/pull/584#issuecomment-5631079569) | Paired identity recovery in 585/586; missing/zero IDs, errors, retries, current/future copies and mixed-batch tests. [Qualification update](https://github.com/linkedin/kafka/pull/586#issuecomment-5638005151). | All four revision-4 record checks passed, but full final-source and wrapper qualification remain open. |
+| [F20: rotated protocol logs omitted](https://github.com/linkedin/kafka/pull/584#issuecomment-5638004839) | PR 584 retains and scans hourly rotations; 586 is restacked on it. New positive and negative tests fail before the fix and pass afterward. | The previous failed CI job stays failed. Re-run the corrected collector. |
+| [F21: churn exits during controller movement](https://github.com/linkedin/kafka/pull/586#issuecomment-5638182322) | PR 584 fixes the workload retry policy without changing the upstream broker response. Tests with both client archives require controller retries and reject data/auth/record errors; the process setup runs them for both generations. | All 71 Python tests pass. Full migration and wrapper qualification remain required. |
 
 ## PR 541
 

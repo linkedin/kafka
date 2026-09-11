@@ -848,21 +848,20 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
     val stopReplicaRequestVersion = ControllerChannelManager.stopReplicaRequestVersion(
       config.interBrokerProtocolVersion, bridgeMode)
 
-    /**
-     * For StopReplica request version < 4, we rely on the isPartitionDeleted function to check a partition's delete flag,
-     * this may not be always correct considering a later request's callback may overwrite an earlier
-     * request's callback inside the {@link ControllerRequestMerger#addStopReplicaRequest) method.
-     * For StopReplica request version 4 and above, we rely on the delete field inside the StopReplica response to
-     * check a partition's delete flag, which should be always correct.
-     */
+    // The merger may use a newer request's callback for an older response. With
+    // cleanup enabled, native v4 responses identify actual deletion responses.
+    // Older wire versions still need the request predicate; keep the disabled path unchanged.
     def responseCallback(brokerId: Int, isPartitionDeleted: TopicPartition => Boolean)
                         (response: AbstractResponse): Unit = {
       val stopReplicaResponse = response.asInstanceOf[StopReplicaResponse]
       val partitionErrorsForDeletingTopics = mutable.Map.empty[TopicPartition, Errors]
       stopReplicaResponse.partitionErrors.forEach { pe =>
         val tp = new TopicPartition(pe.topicName, pe.partitionIndex)
-        if (controllerContext.isTopicDeletionInProgress(pe.topicName) &&
-          (isPartitionDeleted(tp) || pe.deletePartition())) {
+        val deletesPartition = if (config.liProtocolBridgeTopicDeletionStateCleanupActive && stopReplicaRequestVersion >= 4)
+          pe.deletePartition()
+        else
+          isPartitionDeleted(tp) || pe.deletePartition()
+        if (controllerContext.isTopicDeletionInProgress(pe.topicName) && deletesPartition) {
           partitionErrorsForDeletingTopics += tp -> Errors.forCode(pe.errorCode)
         }
       }

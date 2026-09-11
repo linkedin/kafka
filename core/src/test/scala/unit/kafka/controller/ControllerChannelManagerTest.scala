@@ -618,6 +618,40 @@ class ControllerChannelManagerTest {
   }
 
   @Test
+  def testRecoveryUsesNativeResponseDeleteFlagInsteadOfMergedCallback(): Unit = {
+    for (bridge <- Seq(false, true); cleanup <- Seq(false, true)) {
+      val context = initContext(Seq(1, 2, 3), 1, 3, Set("foo"))
+      val properties = new Properties
+      properties.putAll(createConfig(ApiVersion.latestVersion, bridge).originals())
+      properties.put(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, cleanup.toString)
+      val batch = new MockControllerBrokerRequestBatch(context, KafkaConfig.fromProps(properties))
+      val partition = new TopicPartition("foo", 0)
+      context.queueTopicDeletion(Set("foo"))
+      context.beginTopicDeletion(Set("foo"))
+      batch.newBatch()
+      context.putPartitionLeadershipInfo(partition, LeaderIsrAndControllerEpoch(LeaderAndIsr(1, List(1, 2, 3)), controllerEpoch))
+      batch.addStopReplicaRequestForBrokers(Seq(2), partition, deletePartition = true)
+      batch.sendRequestsToBrokers(controllerEpoch)
+      val callback = batch.sentRequests(2).head.responseCallback
+      val error = new StopReplicaPartitionError().setTopicName("foo").setPartitionIndex(0)
+        .setDeletePartition(false).setErrorCode(Errors.FENCED_LEADER_EPOCH.code)
+      callback(new StopReplicaResponse(new StopReplicaResponseData().setPartitionErrors(List(error).asJava)))
+      // Native responses carry the actual delete bit even when a newer delete
+      // request supplied the callback for this older non-delete merged response.
+      assertEquals(if (cleanup && !bridge) 0 else 1, batch.sentEvents.size)
+      batch.sentEvents.clear()
+      for (deletionError <- Seq(Errors.NONE, Errors.FENCED_LEADER_EPOCH)) {
+        batch.sentEvents.clear()
+        error.setDeletePartition(true).setErrorCode(deletionError.code)
+        callback(new StopReplicaResponse(new StopReplicaResponseData().setPartitionErrors(List(error).asJava)))
+        assertEquals(1, batch.sentEvents.size)
+        val event = batch.sentEvents.head.asInstanceOf[TopicDeletionStopReplicaResponseReceived]
+        assertEquals(deletionError, event.partitionErrors(partition))
+      }
+    }
+  }
+
+  @Test
   def testMixedDeleteAndNotDeleteStopReplicaRequests(): Unit = {
     testMixedDeleteAndNotDeleteStopReplicaRequests(ApiVersion.latestVersion,
       ApiKeys.STOP_REPLICA.latestVersion)

@@ -17,7 +17,7 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 37 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 41 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
 
 ## Later qualification findings
 

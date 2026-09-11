@@ -24,7 +24,7 @@ import json
 import os
 
 CONTRACT_VERSION = 2
-SCENARIO_REVISION = 5
+SCENARIO_REVISION = 6
 MODE = "li.protocol.bridge.mode.enable"
 TOPIC_CLEANUP = "li.protocol.bridge.topic.deletion.state.cleanup.enable"
 CONFIG_METRICS = "li.protocol.bridge.config.metrics.enable"

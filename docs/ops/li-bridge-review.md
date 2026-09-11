@@ -19,15 +19,15 @@ limitations under the License.
 
 ## Current verdict
 
-**Do not deploy this candidate without final-source qualification and the release approvals.** A complete local full-verifier run now passes, including scenario revision 5, native offline deletion, all four name-reuse cases and the matching wrapper. Later default-off audits and a failed CI run exposed the F25/F26 gaps. Their repairs are published, but the combined final pair still needs qualification. The inventory covers 45 open PRs. Earlier passing or failed bundles retain their original source and coverage limits.
+**Do not deploy this candidate without final-source qualification and the release approvals.** The retained scenario-5 full-verifier pass predates F25–F27. The interrupted-deletion repairs and mandatory scenario-6 checks are now published, but only their scoped before/after process tests have passed. A separate old-client metadata timeout remains open. The inventory covers 47 open PRs. Earlier passing or failed bundles retain their original source and coverage limits.
 
 The findings below record what the initial review and later tests found. Instructions in an original finding describe the repair that was needed; use the current disposition and evidence sections for status. This is not a line-by-line approval of every Kafka change.
 
 ### Reviewed revisions
 
 - Workspace plan: `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. Canonical runbook: `docs/ops/li-bridge-upgrade.md`.
-- Current 3.9 implementation and qualification: PR 594, `3.9-li-bridge/default-off-audit`, including the quota repair in PR 590 and mandatory native deletion in PR 593.
-- Current 3.0 source: PR 595, `427e1d993f1eaed9cf13c2d441889f2f7abea81f`.
+- Current 3.9 implementation and qualification: PR 597, `3.9-li-bridge/interrupted-deletion-recovery`, including F25 and mandatory scenario-6 checks.
+- Current 3.0 source: PR 596, `8086d1796816bd2383844b7b9f9b05ebd8b33c9b`.
 - CI: PR 558, `3e799b08ea`; PR 559, `a86214e2da`.
 - Wrapper: `1764cc95bfa21e19d3ff89e0164e5896808b5507`, including the diagnostic opt-in and the earlier ACL test fix.
 
@@ -307,7 +307,7 @@ The audit also found three added `KafkaController` diagnostic gauges registered 
 
 Finally, the shared disabled produce-instrumentation object retained partition references and could be read by a logger activated after the request started. It now ignores partition setters, and the logger skips uncollected requests. The getter/setter JVM methods remain. Before tests caught retained state and request access after activation; enabled stage/partition tests and both disabled-path tests pass after repair.
 
-The affected suites pass on Scala 2.12 and 2.13; all 82 Python tests pass. The focused verifier now includes the complete raw-admin suite and the existing replica-timeout/offsets-topic configuration tests. `docs/ops/li-bridge-gate-audit.md` maps the reviewed runtime boundaries to configuration and tests. Final-source qualification must cover these fixes rather than reuse the ongoing predecessor run.
+The affected suites pass on Scala 2.12 and 2.13; all 82 Python tests pass. The focused verifier now includes the complete raw-admin suite and the existing replica-timeout/offsets-topic configuration tests. `docs/ops/li-bridge-gate-audit.md` maps the reviewed runtime boundaries to configuration and tests. Final-source qualification must cover these fixes rather than reuse a predecessor run.
 
 ### F26 — P1: Merged non-delete responses can poison deletion state
 
@@ -315,11 +315,27 @@ PR 593's failed CI run selected the repaired 3.0 archive and passed the native o
 
 The 3.0 merger keeps one callback per request type while queued partition states may produce several responses. The StopReplica callback ORed its captured delete predicate with the response bit. A later delete request's predicate could therefore misclassify an earlier non-delete response. PR 595 uses the authoritative native-v4 response delete bit under the cleanup gate. Older wire versions keep the request-predicate fallback; cleanup disabled keeps existing behavior.
 
-The four-configuration regression fails before the repair and passes after. Genuine deletion failures and acknowledgements are still forwarded. The complete controller-channel, bridge-send-thread and deletion suites pass. Paired CI now selects the response-fenced 3.0 branch. The failed CI evidence remains failed; final qualification must cover this repair.
+The four-configuration regression fails before the repair and passes after. The later native startup test exposed another boundary: direct StopReplica responses did not set the v4 deletion bit. PR 596 now echoes actual request intent under cleanup, including deletion failures. Older wire versions and cleanup-off behavior remain unchanged. The new handler test failed before and passes after a real v4 serialization round trip. The complete selected 3.0 suites pass 171 tests with no failures/errors and one existing disabled `testAlterReplicaLogDirs` case. Actual RAT and the archive build pass. The failed evidence remains failed.
+
+### F27 — P1: Interrupted deletion repeatedly breaks controller startup
+
+`/tmp/li-final-default-off-full` failed while producing recovery records 200–399. The controller repeatedly tried to resume a reassignment whose topic parent remained but whose leader/ISR znode had been removed during deletion. The deletion marker was still present. RPCProducerIdManager logged repeated AllocateProducerIds timeouts during the failed producer command.
+
+PRs 596/597 recover only marked deletions with missing leader state, under cleanup and while deletion is enabled. They retain every replica, persist the plain assignment with controller fencing, and remove only selected reassignment entries. Unmarked topics, partitions with leader state and disabled paths remain unchanged. Ordinary replica acknowledgements still control deletion.
+
+Real-broker probes failed on both generations before the repair. The maintained mode-off prelude also caught the direct-response gap described in F26. With both repairs it finishes deletion, recreates the name and verifies exact old-client records on both generations. The focused 3.9 suites pass on Scala 2.12 and 2.13. Scenario revision 6 makes both generations' deletion and record rows mandatory; negative fixtures reject revision 5 or any missing row. All 84 Python tests pass. Scoped bundles deliberately keep their complete-migration status false.
+
+### F28 — Open: Old-client bootstrap waits need qualification
+
+PR 594's newer CI used the F26-fixed 3.0 archive but failed a different check: a newly started old producer could not obtain metadata for a recreated topic within 60 seconds. The controller stayed active, the new replica became leader at offset 0, and the broker logged adding the partition to its metadata cache. Do not attribute this failure to F27.
+
+Six diagnostic replays passed, but old-client logs exposed a 30-second interval before sending metadata despite an available bootstrap connection. The existing LI 3.0 client can enter bootstrap re-resolution after an initial failed update: its last successful refresh starts at zero. That path randomly selects a bootstrap entry without the normal ready/backoff selection. Probes against the unchanged client jar confirm that the default one-hour expiry selects this path after an initial failure. With a fixed valid random offset, it selects a disconnected node still in reconnect backoff despite a ready node. The existing zero setting selects the ready node. A second deterministic probe uses the actual DefaultMetadataUpdater: the default path sends no metadata request to the ready node for 60 seconds of simulated time; zero sends one immediately.
+
+This is not yet a proven resolution of the 60-second CI failure. No client binary/profile or test deadline has been changed to hide it. The existing zero setting also passed a separate real-broker experiment: the unchanged client jar produced and verified recreated-topic records with each broker generation as the survivor while the other bootstrap broker was offline. This is not the migration profile or full qualification. Decide whether this existing setting may be a pre-upgrade client prerequisite, then record the deployed floor and owner decision before closing the finding. A config opt-out is not automatic approval to change deployed clients.
 
 ## PR dispositions and dependency audit
 
-Every PR below has a distinct migration or CI purpose. Keep these scopes, but do not treat publication, a resolved thread or a green job as release approval. New review layers are drafts. The controller/ZooKeeper, security, storage and operational changes still need the corresponding owners' review.
+Every PR below has a distinct migration or CI purpose. Keep these scopes, but do not treat publication, a resolved thread or a green job as release approval. Publication does not mean that a layer is approved. The controller/ZooKeeper, security, storage and operational changes still need the corresponding owners' review.
 
 | PR | Responsibility / reviewer |
 |---|---|
@@ -332,6 +348,7 @@ Every PR below has a distinct migration or CI purpose. Keep these scopes, but do
 | [588](https://github.com/linkedin/kafka/pull/588) | 3.0 diagnostic-metrics opt-in — observability |
 | [592](https://github.com/linkedin/kafka/pull/592) | 3.0 deletion acknowledgement fencing during native backout — controller |
 | [595](https://github.com/linkedin/kafka/pull/595) | native StopReplica response classification under cleanup — controller |
+| [596](https://github.com/linkedin/kafka/pull/596) | 3.0 interrupted deletion and direct native deletion responses — controller |
 | [558](https://github.com/linkedin/kafka/pull/558) | 3.9 CI/publication — release engineering |
 | [543](https://github.com/linkedin/kafka/pull/543) | 3.9 outbound bridge — protocol/controller |
 | [544](https://github.com/linkedin/kafka/pull/544) | old wire/client/recovery compatibility — protocol/replication |
@@ -368,12 +385,13 @@ Every PR below has a distinct migration or CI purpose. Keep these scopes, but do
 | [591](https://github.com/linkedin/kafka/pull/591) | release-input negative tests and final audit records — verification/release |
 | [593](https://github.com/linkedin/kafka/pull/593) | mandatory native offline-deletion checks, scenario revision 5 — verification |
 | [594](https://github.com/linkedin/kafka/pull/594) | default-off placement, controller diagnostics and instrumentation audit — operations/verification |
+| [597](https://github.com/linkedin/kafka/pull/597) | 3.9 interrupted deletion and mandatory scenario-revision-6 checks — controller/verification |
 
 Merge CI 558/559 into their own release branches first. Then retarget the upgrade stack bottoms as described in the runbook. Never force a Git dependency between the 3.0 and 3.9 CI branches. When reordering again, change PR bases before pushing a head that becomes an ancestor of its former base; GitHub can otherwise auto-close and delete that branch.
 
-The oversized original scopes were split. Control wire definitions are in 565 (503 lines), handlers in 545 (845); storage metrics are in 566 (221), broker metrics/watchdog wiring in 551 (910); workload helpers precede runner 553 (754). The new evidence auditor, verifier and release gate are separate layers. All 36 implementation/CI diffs were below 1,000 changed lines at readback. This documentation follow-up stays separate from the 863-line original runbook PR.
+The oversized original scopes were split. Control wire definitions are in 565 (503 lines), handlers in 545 (845); storage metrics are in 566 (221), broker metrics/watchdog wiring in 551 (910); workload helpers precede runner 553 (754). The new evidence auditor, verifier and release gate are separate layers. All 47 PR diffs were below 1,000 changed lines at the latest readback. This documentation follow-up stays separate from the 863-line original runbook PR.
 
-The original 62 review threads now have replies with published source decisions and code/test references. See `docs/ops/li-bridge-review-comments.md`. The static `LeaderTransferManager.noOp()` call is valid: javap confirms the forwarder, and the Java builder compiles. Empty, malformed, negative and unordered metric bucket lists are rejected. The earlier claim that empty lists were supported has been corrected against the actual source and test assertion. The latest readback covers 41 PRs and finds all 62 expected replies, no mismatches and no new review threads. The later F18/F19 issue comments are retained and have follow-up code and qualification records. Re-fetch after the final publication; comment status is not proof that the code is correct.
+The original 62 review threads now have replies with published source decisions and code/test references. See `docs/ops/li-bridge-review-comments.md`. The static `LeaderTransferManager.noOp()` call is valid: javap confirms the forwarder, and the Java builder compiles. Empty, malformed, negative and unordered metric bucket lists are rejected. The earlier claim that empty lists were supported has been corrected against the actual source and test assertion. The latest readback covers 47 PRs and finds all 62 expected replies, no mismatches and no new review threads. The later F18/F19 issue comments are retained and have follow-up code and qualification records. Re-fetch after the final publication; comment status is not proof that the code is correct.
 
 ## Verification and remaining requirements
 
@@ -383,24 +401,24 @@ This prompt-to-artifact checklist separates observed results from open requireme
 
 | Requirement | Artifact and verification surface | Evidence / open work |
 |---|---|---|
-| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 45 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
-| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. Stack 582 has 35 upgrade PRs; stack 581 has eight. CI 558/559 remain on independent release histories. No release branch was merged. |
-| Apply the requested label | GitHub labels | All 43 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
+| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 47 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
+| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. GitHub stack 582 has 36 upgrade PRs; stack 581 has nine. Both new members were appended and read back. CI 558/559 remain on independent release histories. No release branch was merged. |
+| Apply the requested label | GitHub labels | All 45 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
 | Keep PRs below 1,000 changed lines, preferably near 500 | Additions plus deletions, not file length | Established diffs passed the limit; recheck the new metrics follow-ups after publication. The largest established diffs are 981 and 963 lines. |
 | Use plain, direct English | Plan, review, comment replies and workflow comments | Final wording/link review remains required. Historical findings are not current deployment instructions. |
 | Gate every Kafka behavior change | `KafkaConfig`, `DynamicBrokerConfig`, runtime call sites, metrics, wrapper mapping | 24 default-off 3.9 gates. F18/F19 use the cleanup gate; ISR retry repair uses bridge mode; F22 separately gates diagnostic registration. Dedicated disabled/activation tests pass. The gate-audit matrix records runtime call sites, non-Boolean configuration opt-ins and native behavior; verify it against final published source and final-source test results. |
 | Select symmetric v2/v5/v1 control | Schemas, controller selectors, wire fixtures and retained logs | Both generations have fixtures and real-process coverage. F20 makes rotated log checks fail closed too. Final-source process qualification remains required. |
 | Fence activation and preserve callbacks | `RequestSendThreadBridgeTest` | Blocked dequeue, sustained queue and admitted-deletion callback tests pass. Controller restart remains mandatory. |
-| Enforce all six phases and unchanged clients | `li_bridge_contract.py`, preflight, persistent client/Streams/Connect and private-API helpers | 82 Python tests pass. Native control stays at IBP 3.0 before the separate IBP roll. One 3.0 archive is not the deployed client/tool floor. |
+| Enforce all six phases and unchanged clients | `li_bridge_contract.py`, preflight, persistent client/Streams/Connect and private-API helpers | 84 Python tests pass. F28's cold-bootstrap qualification remains open. Native control stays at IBP 3.0 before the separate IBP roll. One 3.0 archive is not the deployed client/tool floor. |
 | Prove persisted rollback and recovery | Process runner, record helper, timings and JUnit | Historical full run covers canary/all-3.9 rollback, cancellation, crashes and truncation. Repeat against the final source; registration or ISR alone is not proof. |
-| Prove deletion and name reuse | `TopicDeletionManager`, `ZkMetadataCache`, `ReplicaManager`, `BridgeTopicIdentity` | Gated F12/F13/F15/F17/F18/F19 repairs have tests. Revision 4 requires four post-promotion record checks. They passed in the current scoped checks, but do not replace complete qualification. |
+| Prove deletion and name reuse | `TopicDeletionManager`, `ZkMetadataCache`, `ReplicaManager`, `BridgeTopicIdentity` | Gated F12/F13/F15/F17/F18/F19 repairs have tests. Revision 6 retains all four post-promotion record checks and adds both generations' interrupted-deletion startup cases. Scoped before/after checks pass but do not replace complete qualification. |
 | Handle version-changing ISR retries | `BridgeAlterPartitionRetryTest` | One queued builder crosses versions 3/1 and activation without reusing mutated request data. Earlier failed logs remain failed evidence. |
 | Collect real runtime/configuration/state | Live inventory, runtime probe and negative-input tests | Disposable-cluster collection passes. Production binaries, settings, state dispositions, owners and client/tool floor remain required inputs. |
 | Qualify pagination with the loaded runtime | `KafkaZkClient`, five vendor-client tests and release runtime probe | Startup rejects an unsupported client. Vendor tests pass. The actual deployed client/Jute/server pairing remains a release gate. |
 | Follow Google shell style, including comments | Four wrappers, all extracted workflow Bash blocks, ShellCheck, shfmt, syntax/length checks | The refreshed audit checks exact reviewed source revisions: 54 changed-workflow blocks and four wrappers pass ShellCheck, shfmt, syntax, no-tab and 80-column checks. Unmodified upstream Docker workflows are outside these PRs; the broader diagnostic results are retained separately. |
 | Preserve wrapper/API compatibility | Factory mapping tests, ACL tests, complete wrapper suite and jar comparison | The current 133-test suite passes with matching main jars, stable main/test-classifier hashes and unchanged source. Wrapper commit 1764cc95 is published. The required Mint refresh produced a fresh dependency spec; no TTL or artifact-identity bypass was used. |
 | Qualify real archives and reject incomplete evidence | `verify_li_bridge.sh`, `audit_li_bridge_evidence.py`, `verify_li_bridge_release.sh` and negative fixtures | Earlier full verifier passed but predates F18/F19. The metrics-gated full run failed during the process phase after its earlier stages passed. Eight new release-input tests cover missing inputs, malformed identifiers, mismatched/unknown archive metadata, dirty/wrong checkouts, forced full mode and rejection before launch. A real-archive identity-only check also passes; neither it nor the fixtures grant release approval. |
-| Address every review comment with evidence | Comment ledger, source/test decisions, GraphQL readback | All original 62 replies verified across 41 PRs; no new review threads. Later issue findings have published fixes and explicit qualification limits. Re-fetch after final publication. |
+| Address every review comment with evidence | Comment ledger, source/test decisions, GraphQL readback | All original 62 replies verified across 47 PRs; no new review threads. Later issue findings have published fixes and explicit qualification limits. Re-fetch after final publication. |
 | Keep the three documents consistent | Workspace files and `docs/ops/li-bridge-{upgrade,review,review-comments}.md` | This follow-up synchronizes the records. Verify relative links and actual PR/source/evidence state before calling the review complete. |
 | Preserve side-task PR 2039 | ADU worktree, commit history and formatting checks | Rebased/pushed on master at `ae007420`; formatting is one separate commit and is idempotent. Functional patches remain unchanged. |
 
@@ -423,7 +441,7 @@ Later evidence supersedes the inventory and coverage limits of those historical 
 - `/tmp/li-scenario-4-batch-fixed`: all four offline-reuse record checks passed, but the complete run failed at the native checkpoint. The old metadata-churn helper exited on `ControllerMovedException` during controller movement. Its progress had advanced to 221 cycles. The unchanged upstream fence and helper retry gap are covered by F21; do not waive this failed run. The summary records `passed=false` and unchanged source. Rotated logs omitted by that older collector are retained separately in `/tmp/li-scenario-4-batch-fixed-rotated-logs.tgz`.
 - `/tmp/li-log-rotation-before.log`: both new rotation regressions fail before F20. `/tmp/li-log-rotation-restacked.log`: all 70 Python tests pass afterward.
 - `/tmp/li-churn-retry-before-{3.0,3.9}.log`: real client error classes expose the missing controller retry and incorrectly retryable storage/corruption errors. `/tmp/li-churn-retry-after-{3.0,3.9}.log` and `/tmp/li-churn-retry-restacked-python.log` pass with the repair.
-- `/tmp/li-review-readback-result.json`: 41 PRs, 62 original threads, no missing/mismatched replies and no new threads at that readback.
+- `/tmp/li-review-readback-result.json`: 47 PRs, 62 original threads, no missing/mismatched replies and no new threads at that readback.
 
 The complete revision-4 process run `/tmp/li-scenario-4-churn-fixed` passed on clean `d8f255f8a4` / `1a5d02403b`, with all four name-reuse checks, unchanged source and an issue-free process audit. It includes F20/F21 but predates F22. The real `mint --no-metrics dependency create-dependency-spec --detect-variant --overwrite` command has now refreshed the wrapper metadata successfully. An invocation without `--overwrite` returned success without refreshing the expired file; that no-op was not accepted as freshness evidence.
 
@@ -433,9 +451,11 @@ The complete revision-4 process run `/tmp/li-scenario-4-churn-fixed` passed on c
 
 `/tmp/li-native-offline-deletion-before/target-result.json` retains the real-broker failure. The corresponding fixed target and `/tmp/li-native-deletion-runner-target/target-result.json` pass, while their complete-migration statuses remain false. `/tmp/li-native-deletion-after.log` passes the 18 focused controller/cache tests. `/tmp/li-native-deletion-tools-publish-tests.log` passes 82 Python tests.
 
-`/tmp/li-native-backout-full` passed all full-verifier stages on clean 6ea4d367d2 / 0e15a67639 / wrapper 1764cc95, including scenario revision 5 and an issue-free final audit. It predates F25/F26. The new `/tmp/li-final-default-off-full` run covers F25 but still uses the pre-F26 3.0 archive. The CI failure at `/tmp/li-ci-593-small-evidence` exposed the response-classification gap despite that local pass.
+`/tmp/li-native-backout-full` passed all full-verifier stages on clean 6ea4d367d2 / 0e15a67639 / wrapper 1764cc95, including scenario revision 5 and an issue-free final audit. It predates F25/F26. `/tmp/li-final-default-off-full` covers F25 but uses the pre-F26 3.0 archive; it failed recovery production and exposed F27. The CI failure at `/tmp/li-ci-593-small-evidence` exposed the response-classification gap despite that local pass.
 
-No complete bundle yet covers all final default-off and response-fencing repairs together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
+`/tmp/li-f27-native-echo-fixed` passes the maintained interrupted-deletion cases for both generations on 8086d17968 / c1091c6d27. Its summary remains an incomplete migration. `/tmp/li-f27-contract-before.log` retains six expected negative-fixture failures; `/tmp/li-f27-contract-after.log` passes all 84 tests. The latest PR 594 failed artifact is `/tmp/li-ci-594-f26-small-evidence`; `/tmp/li-reuse-metadata-diagnostic`, `/tmp/li-bootstrap-expiry-probe.log` and `/tmp/li-bootstrap-selection-probe.log` and `/tmp/li-bootstrap-progress-probe.log` record the bounded F28 investigation. `/tmp/li-expiry-off-profile-probe` retains the successful separate config experiment and its exact one-property helper diff; its complete-migration status remains false.
+
+No complete bundle yet covers all final default-off, response-fencing and interrupted-deletion repairs together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
 
 ### Inputs still required before production
 

@@ -23,9 +23,9 @@ limitations under the License.
 
 The implementation base is Apache **3.9.2** with the reviewed LI bridge stack. Pin the final internal `3.9.2.N`, matching `3.0.1.N`, wrapper commit, archive checksums, JDKs and ZooKeeper runtime in the release record. A maintenance-baseline change requires a new qualification run; do not substitute a newer tag during rollout.
 
-The current implementation is the split stack through `3.9-li-bridge/default-off-audit`, with the companion `3.0-li-bridge/stop-response-fencing` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
+The current implementation is the split stack through `3.9-li-bridge/interrupted-deletion-recovery`, with the companion `3.0-li-bridge/interrupted-deletion-recovery` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
 
-**Clients do not change.** The supported producer, consumer, transactional client, Streams application, Connect worker, LI AdminClient and operational-tool artifacts/configuration must remain unchanged across every phase. Discovery must name their deployed version floor and owners. One 3.0 test archive is not proof for every externally deployed client.
+**Clients do not change.** The supported producer, consumer, transactional client, Streams application, Connect worker, LI AdminClient and operational-tool artifacts/configuration must remain unchanged across every phase. Discovery must name their deployed version floor and owners. One 3.0 test archive is not proof for every externally deployed client. The latest qualification still has an unresolved cold-producer metadata timeout with an offline bootstrap broker. Record the deployed LI clients' `li.client.cluster.metadata.expire.time.ms` setting and test cold startup with unavailable bootstrap entries. Diagnostic replays and an existing config opt-out are not release approval or permission to change clients during the roll.
 
 ## Why we need two bridge-capable binaries
 
@@ -46,6 +46,8 @@ Deletion recovery also needs a shared rule. With `li.protocol.bridge.topic.delet
 Assignment alone does not prove that a log belongs to a recreated topic. The cleanup gate also reads the existing ZooKeeper topic ID on the control path and persists identity before accepting records in a new bridge log. Only a known obsolete generation may be retired. Retain unidentified nonempty logs and conflicting current/future copies for an operator recovery decision; never force a new ID onto unverified data. The gate requires an IBP with topic IDs; this migration requires IBP 3.0. Account for the added control-path ZooKeeper reads in capacity qualification.
 
 Enable the setting on every broker and verify its gauge before restarting the controller. Keep it enabled after bridge mode is disabled. On 3.0, either bridge mode or the cleanup gate requires actual replica deletion acknowledgements; an offline replica is not proof of deletion. Qualification must cover both broker generations and assignment to a recreated topic both before and after a former replica returns. Promotion and exact record contents, not ISR or offsets alone, prove recovery.
+
+The cleanup gate also recovers a marked deletion interrupted after removal of its leader/ISR znode. Both controllers clear the stale reassignment fields while preserving every assigned replica, then finish ordinary acknowledged deletion. The 3.0 native v4 response must echo deletion intent even without combined control; otherwise the fenced callback can drop a real acknowledgement.
 
 Broker-to-controller ISR updates also need a bridge-mode retry fix on 3.9. A queued `AlterPartition` request must build from fresh data when controller failover changes the negotiated version. Check bridge mode when building each retry, including requests queued before activation; do not reuse data changed by an earlier version's builder.
 
@@ -109,7 +111,7 @@ Two additional settings are not members of the 24-gate bundle: `li.zookeeper.pag
 
 - Leave `li.async.fetcher.enable=true` and `li.combined.control.request.enable=true` on legacy brokers if that is their existing production configuration. The bridge suppresses merging independently. Preflight rejects these obsolete implementations on **3.9 only**.
 - Test Apache's replacement fetcher against the enabled LI async fetcher, not the old default synchronous path. Test recovery and truncation first. Then measure throughput, thread use and lag at production scale.
-- In bridge mode, deletion must wait for every replica to acknowledge `StopReplica`, including replicas that were offline. LI's native fast-delete path can remove ZooKeeper state before sending a metadata deletion update. Without full-state control messages, that leaves ghost topics or orphaned replicas. Do not force-delete the ZooKeeper entry to bypass this wait. The old fast-delete behavior is unchanged while bridge mode is off.
+- In bridge mode, deletion must wait for every replica to acknowledge `StopReplica`, including replicas that were offline. LI's native fast-delete path can remove ZooKeeper state before sending a metadata deletion update. Without full-state control messages, that leaves ghost topics or orphaned replicas. Do not force-delete the ZooKeeper entry to bypass this wait. The old fast-delete behavior is unchanged only when both bridge mode and the cleanup gate are off.
 - Preserve LI local-offset timestamp `-104` and error 1107 alongside Apache `-4` and 109. Bridge followers emit LI-compatible values without advertising unsupported ListOffsets v8 on 3.0. Native outbound recovery uses Apache values. Retained inbound compatibility does not migrate remote storage.
 - Remote storage must be confirmed unused, including previously written topic/plugin/remote metadata and objects. Otherwise stop and create a separate conversion/compatibility plan.
 - Corrupted-file dropping and delayed corrupt elections are not ported. Require `li.drop.corrupted.files.enable=false`, `li.leader.election.on.corruption.wait.ms=0`, and an approved disposition for corrupted-broker state. An empty znode alone is insufficient.
@@ -188,8 +190,9 @@ tests/bin/verify_li_bridge.sh
 
 For the protected release gate, use `tests/bin/verify_li_bridge_release.sh` with published `KAFKA_30_SHA256`, `KAFKA_39_SHA256`, approved full `KAFKA_30_COMMIT`, `KAFKA_39_COMMIT`, and `WRAPPER_COMMIT` in addition to the inputs above. It rejects dirty/unapproved checkouts, archive/source/checksum mismatches and partial verification, and runs a strict final audit.
 
-Run the process test through `tests/bin/li_bridge_mixed_cluster_smoke.sh`. Require scenario revision 5; earlier passing bundles do not cover native all-offline deletion and all offline name-reuse cases. The preflight/state data format remains contract version 2. Setup checks the workload retry policy against both client archives: controller transitions may retry, but data and authorization errors must fail. The runner applies the phase rules, limits command runtime and retains current and rotated failure logs. It tests:
+Run the process test through `tests/bin/li_bridge_mixed_cluster_smoke.sh`. Require scenario revision 6; earlier passing bundles do not cover interrupted deletion on both generations, native all-offline deletion and all offline name-reuse cases. The preflight/state data format remains contract version 2. Setup checks the workload retry policy against both client archives: controller transitions may retry, but data and authorization errors must fail. The runner applies the phase rules, limits command runtime and retains current and rotated failure logs. It tests:
 
+- interrupted deletion startup on each generation with cleanup enabled and mode off, followed by recreation and exact record checks;
 - all-3.0 dormant operation with combined control and async fetching enabled;
 - activation and all-3.0 backout while metadata mutations continue, with an old-controller restart at each boundary;
 - both mixed controller/leader directions;
@@ -237,7 +240,7 @@ Automatically stop for unexpected control versions, post-fence API 1001 traffic,
 
 ## PR inventory and merge order
 
-All 45 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
+All 47 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
 
 Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 during the dependency reorder because their new heads were contained in their former base branches. No release branch was merged. Their restored, separate reviews are 579 and 578.
 
@@ -252,6 +255,7 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [588](https://github.com/linkedin/kafka/pull/588) | 3.0 diagnostic-metrics opt-in — observability |
 | [592](https://github.com/linkedin/kafka/pull/592) | 3.0 deletion acknowledgement fencing during native backout — controller |
 | [595](https://github.com/linkedin/kafka/pull/595) | native StopReplica response classification under cleanup — controller |
+| [596](https://github.com/linkedin/kafka/pull/596) | 3.0 interrupted deletion and direct native deletion responses — controller |
 | [558](https://github.com/linkedin/kafka/pull/558) | 3.9 CI/publication — release engineering |
 | [543](https://github.com/linkedin/kafka/pull/543) | 3.9 outbound bridge — protocol/controller |
 | [544](https://github.com/linkedin/kafka/pull/544) | old wire/client/recovery compatibility — protocol/replication |
@@ -288,13 +292,14 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [591](https://github.com/linkedin/kafka/pull/591) | release-input negative tests and final audit records — verification/release |
 | [593](https://github.com/linkedin/kafka/pull/593) | mandatory native offline-deletion checks, scenario revision 5 — verification |
 | [594](https://github.com/linkedin/kafka/pull/594) | default-off placement, controller diagnostics and instrumentation audit — operations/verification |
+| [597](https://github.com/linkedin/kafka/pull/597) | 3.9 interrupted deletion and mandatory scenario-revision-6 checks — controller/verification |
 
 Merge 558 into `3.9-li` and 559 into `3.0-li` first. They have different release bases, so do not put them in one dependent Git stack. Rebase/retarget 575 to `3.0-li` and 543 to `3.9-li`; do not merge feature work into temporary CI branches.
 
-The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588 → 592 → 595**. The stack rooted at PR 543 has the 3.9 order:
+The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588 → 592 → 595 → 596**. The stack rooted at PR 543 has the 3.9 order:
 
-**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593 → 594**.
+**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593 → 594 → 597**.
 
-Retarget remaining layers after each independent merge. The wrapper branch contains the ACL test repair (`6ddf2a87`) and cleanup mapping/tests (`1a9ecccf`); its source suite passes 132 tests. Add the approved wrapper/dependency/security PR and named deployment-gate owner to the release record.
+Retarget remaining layers after each independent merge. Wrapper `1764cc95` contains the diagnostic opt-in, ACL test repair (`6ddf2a87`) and cleanup mapping/tests (`1a9ecccf`); its source suite passes 133 tests. Add the approved wrapper/dependency/security PR and named deployment-gate owner to the release record.
 
 Publish the final matching archives and all required modules/test classifiers, regenerate wrapper dependency metadata from official artifacts, and run final-artifact qualification again. Automatic publication of an intermediate stack commit is not permission to deploy it. Remove temporary compatibility only after telemetry, caller owners and a separate retirement decision establish that it is safe.

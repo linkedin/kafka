@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import re
 import subprocess
 import sys
@@ -32,7 +33,7 @@ from li_bridge_preflight import parse_properties, zk_command
 class LiBridgeScenarioTest(unittest.TestCase):
     def test_scenario_defaults_validation_and_runtime_profile(self):
         default = scenario_spec({})
-        self.assertEqual(5, default["scenario_revision"])
+        self.assertEqual(6, default["scenario_revision"])
         self.assertEqual(default, scenario_spec({"SCALE_TOPIC_COUNT": "10"}))
         for key in ("SCALE_TOPIC_COUNT", "SCALE_PARTITION_COUNT", "RECOVERY_RECORD_COUNT", "RECOVERY_RECORD_SIZE"):
             for value in ("0", "-1", "bad", "2147483648"):
@@ -126,18 +127,47 @@ class LiBridgeScenarioTest(unittest.TestCase):
             for call in command.call_args_list:
                 self.assertIn("LiBridgeMetadataChurnRetryTest.java", [Path(arg).name for arg in call.args[0]])
 
-    def test_native_offline_deletion_runs_before_client_phases(self):
+    def test_interrupted_deletion_requires_seed_and_exact_recreated_records(self):
+        runner = object.__new__(Migration)
+        runner.bootstrap, runner.timings = "127.0.0.1:29092", []
+        def zk(command):
+            return "Created " + command.split()[1] if command.startswith("create ") else "Node does not exist"
+        with mock.patch.object(runner, "zk", side_effect=zk) as command, \
+                mock.patch.object(runner, "start_broker") as start, mock.patch.object(runner, "stop"), \
+                mock.patch.object(runner, "until", side_effect=lambda _, predicate, timeout: self.assertTrue(predicate())), \
+                mock.patch.object(runner, "create"), mock.patch.object(runner, "admin"), \
+                mock.patch.object(runner, "java") as java:
+            runner.interrupted_deletion_recovery("3.9")
+        seed = next(call.args[0] for call in command.call_args_list
+                    if call.args[0].startswith("create /brokers/topics/bridge-interrupted-delete-3.9 "))
+        assignment = json.loads(seed.split(" ", 2)[2])
+        self.assertEqual({"0": [1, 0]}, assignment["partitions"])
+        self.assertEqual({"0": [1]}, assignment["adding_replicas"])
+        self.assertEqual({"0": [0]}, assignment["removing_replicas"])
+        start.assert_has_calls([mock.call(1, "3.9", mode=False), mock.call(0, "3.9", mode=False)])
+        java.assert_has_calls([mock.call("LiBridgeRecords", action, runner.bootstrap,
+                                        "bridge-interrupted-delete-3.9", 0, 2, 128)
+                               for action in ("produce", "verify")])
+        self.assertIn(("interrupted deletion 3.9 records verified", 0, "passed"), runner.timings)
+        with mock.patch.object(runner, "zk", return_value="NoAuth"), \
+                mock.patch.object(runner, "start_broker") as start:
+            with self.assertRaisesRegex(AssertionError, "Could not seed"):
+                runner.interrupted_deletion_recovery("3.0")
+            start.assert_not_called()
+
+    def test_deletion_preludes_run_before_client_phases(self):
         runner = object.__new__(Migration)
         runner.scenario = scenario_spec({})
         runner.bootstrap = "127.0.0.1:29092"
         calls = []
         with mock.patch.object(runner, "prepare"), mock.patch.object(runner, "start_broker"), \
                 mock.patch.object(runner, "until"), mock.patch.object(runner, "java"), \
+                mock.patch.object(runner, "interrupted_deletion_recovery", side_effect=calls.append), \
                 mock.patch.object(runner, "native_offline_deletion", side_effect=lambda: calls.append("deletion")), \
                 mock.patch.object(runner, "start_clients", side_effect=InterruptedError("fixture stop")):
             with self.assertRaisesRegex(InterruptedError, "fixture stop"):
                 runner.run()
-        self.assertEqual(["deletion"], calls)
+        self.assertEqual(["3.0", "3.9", "deletion"], calls)
 
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]

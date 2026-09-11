@@ -17,7 +17,7 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 41 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 47 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
 
 ## Later qualification findings
 
@@ -29,7 +29,9 @@ All 62 original threads have replies with published source decisions. A fresh Gr
 | [F21: churn exits during controller movement](https://github.com/linkedin/kafka/pull/586#issuecomment-5638182322) | PR 584 fixes the workload retry policy without changing the upstream broker response. [Test and code update](https://github.com/linkedin/kafka/pull/584#issuecomment-5638482746). | The complete revision-4 process run and audit pass; final F22/wrapper qualification remains required. |
 | F22: bridge-state MBeans register by default | Paired [588](https://github.com/linkedin/kafka/pull/588)/[589](https://github.com/linkedin/kafka/pull/589) add a default-off diagnostics flag. Tests cover disabled registration, enabled readings, restart scope, KRaft and cleanup. | All 72 Python tests pass. The matching-jar wrapper suite now passes 133 tests; the complete final-source verifier remains open. |
 | [F24: dormant-backout churn stalls](https://github.com/linkedin/kafka/pull/589#issuecomment-5639716967) | [592](https://github.com/linkedin/kafka/pull/592) keeps acknowledgement fencing while cleanup remains enabled; [593](https://github.com/linkedin/kafka/pull/593) requires native offline deletion in scenario revision 5. Unit and real-broker probes fail before and pass after. | Targets remain partial migrations. Complete final-source qualification is still required. |
-| F26: merged non-delete response reaches deletion callback | [595](https://github.com/linkedin/kafka/pull/595) uses the native response delete bit under cleanup, preserving the old-wire fallback and genuine deletion errors. The before regression fails; controller/callback/deletion suites pass after repair. | Updated paired CI and final qualification remain required. |
+| F26: merged non-delete response reaches deletion callback | [595](https://github.com/linkedin/kafka/pull/595) uses the native response delete bit under cleanup. [596](https://github.com/linkedin/kafka/pull/596) also makes direct native v4 responses echo that bit. Before/after handler serialization and controller tests cover both boundaries. | Final qualification must include the direct and combined paths. |
+| F27: interrupted deletion breaks controller startup | [596](https://github.com/linkedin/kafka/pull/596)/[597](https://github.com/linkedin/kafka/pull/597) retain all replicas, clear only marked missing-state reassignments, and finish acknowledged deletion under cleanup. Both generations pass the maintained native startup and exact-record cases; scenario revision 6 rejects missing evidence. | Scoped bundles are not full-pair qualification. |
+| F28: old producer times out obtaining recreated-topic metadata | Latest PR 594 CI failure is retained. The unchanged client jar reproduces a 60-second metadata stall in a deterministic network fixture. The existing zero-expiry setting also passes a separate real-broker experiment with both survivor generations. The migration profile and deadlines are unchanged. | Client-floor decision and full final-pair qualification remain open. |
 
 ## PR 541
 

@@ -15,12 +15,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Runtime gate audit — review evidence draft
+# Runtime gate audit — review evidence
 
 Scope: upgrade-stack runtime changes relative to `3.9-li`, plus the paired 3.0
 bridge changes. This records code paths, not a claim that all release tests passed.
-The current full verifier uses 6ea4d367d2 and predates the final default-off fixes
-being tested in `/tmp/li-admin-placement-gate`.
+The retained full-verifier pass uses 6ea4d367d2 and predates F25–F27. PRs 596/597
+add interrupted-deletion recovery and mandatory scenario-6 evidence. Scoped tests
+pass; the final pair and the separate old-client metadata failure remain open.
 
 All suffixes below use `li.protocol.bridge.<suffix>.enable`. The 3.9 Active getters
 require empty process.roles as well as the Boolean flag. Every Boolean defaults
@@ -30,18 +31,18 @@ listed separately from actions taken by the broker.
 | Gate | Runtime boundary / disabled behavior | Verification surface |
 |---|---|---|
 | mode | ControllerChannelManager snapshots the flag once per batch and chooses v2/v5/v1; false uses the original metadata-version branches. RemoteLeaderEndPoint uses -104 only with follower recovery too. AlterPartition retries copy mutable data only while the flag is active. | ControllerChannelManagerTest; BridgeAlterPartitionRetryTest; protocol fixtures; retained process-selection logs |
-| config.metrics | LiProtocolBridgeMetrics registers/removes gauges only when opted in. Final fix extends the same opt-in to the three new KafkaController diagnostic gauges; native gauges remain. | LiProtocolBridgeMetricsTest; KafkaControllerTest.testCompatibilityControllerMetricsRequireOptIn; shutdown ownership tests |
-| topic.deletion.state.cleanup | New-controller complete metadata images, cache replacement, unhosted-log reconciliation and topic-ID recovery occur only under cleanup. KRaft requests are excluded. 3.0 deletion acknowledgement fencing persists when mode is off but cleanup stays on. | BridgeMetadataCacheEpochTest; BridgeTopicIdentityTest; BridgeStrayLogDeletionTest; TopicDeletionManagerTest; native deletion real-broker before/after probes and scenario revision 5 |
+| config.metrics | LiProtocolBridgeMetrics registers/removes gauges only when opted in. PR 594 extends the same opt-in to the three new KafkaController diagnostic gauges; native gauges remain. | LiProtocolBridgeMetricsTest; KafkaControllerTest.testCompatibilityControllerMetricsRequireOptIn; shutdown ownership tests |
+| topic.deletion.state.cleanup | New-controller complete metadata images, cache replacement, unhosted-log reconciliation and topic-ID recovery occur only under cleanup. KRaft requests are excluded. 3.0 acknowledgement fencing persists when mode is off; direct native v4 responses echo deletion intent. Marked deletions with missing leader state clear reassignment flags but retain all replicas before ordinary acknowledged deletion. | BridgeMetadataCacheEpochTest; BridgeTopicIdentityTest; BridgeStrayLogDeletionTest; TopicDeletionManagerTest; BridgeInterruptedDeletionTest; KafkaControllerTest; KafkaApisTest native response round trip; scenario revision 6 |
 | follower.recovery | KafkaApis admits the private -104 query and emits 1107 only through this flag. Generic timestamp helpers alone do not admit a wire request. | KafkaApisTest; BridgeProtocolConstantsTest; both recovery directions |
 | recommended.leader.election | KafkaApis rejects election type 2 when disabled. KRaft ControllerApis always rejects it. The election helper restricts the target to live ISR members. | LiControllerOperationsTest; controller/partition tests |
 | metadata.exclude.partitions | KafkaApis requires both the request field and the feature flag before suppressing partition metadata. | KafkaApisTest; request/response wire fixtures |
 | move.controller | ApiVersionManager filters advertisement/admission; KafkaApis requires CLUSTER_ACTION and the feature before deleting the controller znode. | ApiVersionManagerTest; LiControllerOperationsTest; unchanged private-API clients |
 | shutdown.safety.override | Advertisement and handler admission are gated; override grant is broker-epoch fenced. Previously admitted work has its documented lifecycle. | LiShutdownSafetyTest; LiControllerOperationsTest |
-| preferred.controller | KafkaServer registers/watches preferred IDs and KafkaController changes election/fallback/shutdown behavior only under the flag. ZkAdminManager's broker API filters through it. Final raw AdminZkClient fix makes optional config explicitly opt in too. | AdminZkClientTest (none/false/true plus manual assignment); controller and shutdown tests |
+| preferred.controller | KafkaServer registers/watches preferred IDs and KafkaController changes election/fallback/shutdown behavior only under the flag. ZkAdminManager's broker API filters through it. The raw AdminZkClient fix makes optional config explicitly opt in too. | AdminZkClientTest (none/false/true plus manual assignment); controller and shutdown tests |
 | federated.topics | Handler gate precedes ZooKeeper operations. Create/delete require topic authorization; list requires cluster describe. Extra startup roots are conditional. | KafkaApisTest; LiKafkaAdminClientTest; private API fixtures |
 | rack.id.mapper | KafkaConfig loads a nonempty configured mapper only with the gate; otherwise identity mapping. | RackIdMapperTest |
 | dynamic.topic.deletion | Only the gated controller watcher changes deletion pause state. A paused operation retains admitted callbacks. False uses the native delete.topic.enable state. | LiDynamicTopicDeletionTest; TopicDeletionManagerTest |
-| produce.request.instrumentation | New per-request collector only while enabled; Disabled does not collect stages. Final fix makes it ignore partition setters and prevents later activation from logging an uncollected request. Logger also checks the dynamic flag. | ProduceRequestInstrumentationTest; acks=0/callback source checks |
+| produce.request.instrumentation | New per-request collector only while enabled; Disabled does not collect stages. PR 594 makes it ignore partition setters and prevents later activation from logging an uncollected request. Logger also checks the dynamic flag. | ProduceRequestInstrumentationTest; acks=0/callback source checks |
 | request.metric.buckets | RequestChannel creates size/time buckets only from the gated optional config. Empty maps produce no additional request groups. Empty or malformed configured boundary lists are rejected, not supported as a disabling syntax. | RequestMetricBucketsTest; KafkaConfigTest boundary cases |
 | request.channel.watchdog | Data-plane histogram, health scheduler and PoisonPill construction/actions are gated. Old constructors default the watchdog off. | RequestChannelWatchdogTest; KafkaServerTest interval case; PoisonPillProcessTest |
 | minimum.log.roll | KafkaConfig passes zero when disabled. Storage's explicit li.min.log.roll.ms also defaults zero. Old RollParams constructor supplies zero. Size/index/relative-offset rolling checks remain separate. | LogSegmentTest in full storage suite; configuration tests |

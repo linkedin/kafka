@@ -66,6 +66,10 @@ REQUIRED_TIMING_OPERATIONS: Tuple[str, ...] = (
     "canary rollback to 3.0",
     "all-3.9 rollback to 3.0",
     "hard controller recovery",
+    "native offline deletion metadata tombstone",
+    "native offline deletion retains assignment until acknowledgement",
+    "native offline deletion removes assignment after acknowledgement",
+    "native offline deletion recreated records verified",
 ) + tuple(f"old clients phase {phase}" for phase in PHASES) + tuple(
     f"offline name-reuse {generation} {placement} records verified after promotion"
     for generation in ("3.0", "3.9") for placement in ("assigned-at-create", "reassigned-after-return"))

@@ -32,7 +32,7 @@ from li_bridge_preflight import parse_properties, zk_command
 class LiBridgeScenarioTest(unittest.TestCase):
     def test_scenario_defaults_validation_and_runtime_profile(self):
         default = scenario_spec({})
-        self.assertEqual(4, default["scenario_revision"])
+        self.assertEqual(5, default["scenario_revision"])
         self.assertEqual(default, scenario_spec({"SCALE_TOPIC_COUNT": "10"}))
         for key in ("SCALE_TOPIC_COUNT", "SCALE_PARTITION_COUNT", "RECOVERY_RECORD_COUNT", "RECOVERY_RECORD_SIZE"):
             for value in ("0", "-1", "bad", "2147483648"):
@@ -125,6 +125,19 @@ class LiBridgeScenarioTest(unittest.TestCase):
             self.assertEqual(2, command.call_count)
             for call in command.call_args_list:
                 self.assertIn("LiBridgeMetadataChurnRetryTest.java", [Path(arg).name for arg in call.args[0]])
+
+    def test_native_offline_deletion_runs_before_client_phases(self):
+        runner = object.__new__(Migration)
+        runner.scenario = scenario_spec({})
+        runner.bootstrap = "127.0.0.1:29092"
+        calls = []
+        with mock.patch.object(runner, "prepare"), mock.patch.object(runner, "start_broker"), \
+                mock.patch.object(runner, "until"), mock.patch.object(runner, "java"), \
+                mock.patch.object(runner, "native_offline_deletion", side_effect=lambda: calls.append("deletion")), \
+                mock.patch.object(runner, "start_clients", side_effect=InterruptedError("fixture stop")):
+            with self.assertRaisesRegex(InterruptedError, "fixture stop"):
+                runner.run()
+        self.assertEqual(["deletion"], calls)
 
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]

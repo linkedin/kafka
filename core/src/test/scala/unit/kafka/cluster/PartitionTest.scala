@@ -2148,6 +2148,53 @@ class PartitionTest extends AbstractPartitionTest {
   }
 
   @Test
+  def testLeaderTransferSelectsLowestInSyncFollower(): Unit = {
+    configRepository.setTopicConfig(topicPartition.topic, TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "4")
+    val log = logManager.getOrCreateLog(topicPartition, topicId = None)
+    seedLogData(log, numRecords = 10, leaderEpoch = 4)
+
+    val lowestInSyncFollower = brokerId + 1
+    val otherInSyncFollower = brokerId + 2
+    val outOfSyncFollower = brokerId + 3
+    val replicas = Seq(brokerId, otherInSyncFollower, lowestInSyncFollower, outOfSyncFollower)
+    val leaderTransferManager = mock(classOf[LeaderTransferManager])
+    val transferPartition = new Partition(
+      topicPartition,
+      replicaLagTimeMaxMs = ReplicationConfigs.REPLICA_LAG_TIME_MAX_MS_DEFAULT,
+      interBrokerProtocolVersion = MetadataVersion.latestTesting,
+      localBrokerId = brokerId,
+      () => defaultBrokerEpoch(brokerId),
+      time,
+      alterPartitionListener,
+      delayedOperations,
+      metadataCache,
+      logManager,
+      alterPartitionManager,
+      leaderTransferEnabled = true,
+      leaderTransferManager = leaderTransferManager)
+    transferPartition.createLogIfNotExists(isNew = false, isFutureReplica = false, offsetCheckpoints, None)
+    assertTrue(transferPartition.makeLeader(
+      new LeaderAndIsrPartitionState()
+        .setControllerEpoch(0)
+        .setLeader(brokerId)
+        .setLeaderEpoch(5)
+        .setIsr(replicas.map(Int.box).asJava)
+        .setPartitionEpoch(1)
+        .setReplicas(replicas.map(Int.box).asJava)
+        .setIsNew(true),
+      offsetCheckpoints,
+      None))
+
+    fetchFollower(transferPartition, replicaId = otherInSyncFollower, fetchOffset = log.logEndOffset)
+    fetchFollower(transferPartition, replicaId = lowestInSyncFollower, fetchOffset = log.logEndOffset)
+    time.sleep(transferPartition.replicaLagTimeMaxMs + 1)
+    transferPartition.maybeTransferToNewLeader()
+
+    verify(leaderTransferManager).submit(topicPartition, lowestInSyncFollower)
+    verifyNoMoreInteractions(leaderTransferManager)
+  }
+
+  @Test
   def testMaybeShrinkIsr(): Unit = {
     val log = logManager.getOrCreateLog(topicPartition, topicId = None)
     seedLogData(log, numRecords = 10, leaderEpoch = 4)

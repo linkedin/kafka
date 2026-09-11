@@ -22,6 +22,7 @@ are used. This is functional qualification, not production capacity or security 
 
 import contextlib
 import csv
+import base64
 import datetime
 import json
 import os
@@ -509,6 +510,32 @@ class Migration:
         self.start("zookeeper", [self.homes["3.9"] / "bin/zookeeper-server-start.sh", self.work / "zookeeper.properties"])
         self.until("ZooKeeper startup", self.zookeeper_ready, 60)
 
+    def interrupted_deletion_recovery(self, generation):
+        # Seed the state left when recursive deletion stopped after removing the
+        # partition's leader/ISR znode, but before removing its topic parent.
+        topic = f"bridge-interrupted-delete-{generation}"
+        for path in ("/brokers", "/brokers/topics", "/admin", "/admin/delete_topics"):
+            self.zk(f"create {path}")
+        assignment = {"version": 3, "topic_id": base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="),
+                      "partitions": {"0": [1, 0]}, "adding_replicas": {"0": [1]}, "removing_replicas": {"0": [0]}}
+        for path, data in ((f"/brokers/topics/{topic}", json.dumps(assignment, separators=(",", ":"))),
+                           (f"/admin/delete_topics/{topic}", "")):
+            if f"Created {path}" not in self.zk(f"create {path} {data}"):
+                raise AssertionError(f"Could not seed interrupted deletion: {path}")
+        self.start_broker(1, generation, mode=False)
+        self.start_broker(0, generation, mode=False)
+        self.until(f"interrupted deletion {generation} assignment removed", lambda:
+                   "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"), 60)
+        self.create(topic, "1")
+        self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 2, 128)
+        self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128)
+        self.timings.append((f"interrupted deletion {generation} records verified", 0, "passed"))
+        self.admin("kafka-topics.sh", "--delete", "--topic", topic)
+        self.until(f"interrupted deletion {generation} fixture removed", lambda:
+                   "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"), 60)
+        self.stop("broker-0")
+        self.stop("broker-1")
+
     def native_offline_deletion(self):
         topic = "bridge-native-offline-delete"
         self.create(topic, "0")
@@ -539,6 +566,8 @@ class Migration:
 
     def run(self):
         self.prepare()
+        for generation in ("3.0", "3.9"):
+            self.interrupted_deletion_recovery(generation)
         self.start_broker(0, "3.0", mode=False)
         self.until("3.0 controller election", lambda: self.controller(0), 60)
         self.start_broker(1, "3.0", mode=False)

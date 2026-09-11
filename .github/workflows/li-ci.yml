@@ -229,7 +229,7 @@ jobs:
     env:
       # Checkout fixes the companion source for this run. Record its commit and
       # archive hash; release CI separately requires approved commit hashes.
-      LI_BRIDGE_LEGACY_REF: ${{ vars.LI_BRIDGE_LEGACY_REF || '3.0-li-bridge/stop-response-fencing' }}
+      LI_BRIDGE_LEGACY_REF: ${{ vars.LI_BRIDGE_LEGACY_REF || '3.0-li-bridge/interrupted-deletion-recovery' }}
     steps:
       - uses: actions/checkout@v4
         with:

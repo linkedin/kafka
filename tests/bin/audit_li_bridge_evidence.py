@@ -72,7 +72,9 @@ REQUIRED_TIMING_OPERATIONS: Tuple[str, ...] = (
     "native offline deletion recreated records verified",
 ) + tuple(f"old clients phase {phase}" for phase in PHASES) + tuple(
     f"offline name-reuse {generation} {placement} records verified after promotion"
-    for generation in ("3.0", "3.9") for placement in ("assigned-at-create", "reassigned-after-return"))
+    for generation in ("3.0", "3.9") for placement in ("assigned-at-create", "reassigned-after-return")) + tuple(
+    f"interrupted deletion {generation} {check}"
+    for generation in ("3.0", "3.9") for check in ("assignment removed", "records verified"))
 
 REQUIRED_RESOURCE_PHASES: Tuple[str, ...] = (
     "mixed-metadata-loaded",

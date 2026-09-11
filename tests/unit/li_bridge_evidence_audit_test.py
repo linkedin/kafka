@@ -216,8 +216,8 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
             self.write_json(path, data)
             self.assertFalse(AUDITOR.audit(root)["passed"])
 
-    def test_old_scenario_revision_does_not_qualify_offline_name_reuse(self):
-        for revision in (None, 3, 4):
+    def test_old_scenario_revision_does_not_qualify_deletion_recovery(self):
+        for revision in (None, 3, 4, 5):
             with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.create_evidence(root)
@@ -380,6 +380,20 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
                 result = AUDITOR.audit(root)
                 self.assertFalse(result["passed"])
                 self.assertTrue(any(operation in issue for issue in result["issues"]))
+
+    def test_interrupted_deletion_requires_both_generations_and_record_checks(self):
+        for generation in ("3.0", "3.9"):
+            for check in ("assignment removed", "records verified"):
+                with self.subTest(generation=generation, check=check), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    self.create_evidence(root)
+                    timings = root / "mixed-process/timings.tsv"
+                    operation = f"interrupted deletion {generation} {check}"
+                    timings.write_text("".join(line for line in timings.read_text().splitlines(True)
+                                               if not line.startswith(operation + "\t")))
+                    result = AUDITOR.audit(root)
+                    self.assertFalse(result["passed"])
+                    self.assertTrue(any(operation in issue for issue in result["issues"]))
 
     def test_offline_name_reuse_requires_all_placement_checks(self):
         for generation in ("3.0", "3.9"):

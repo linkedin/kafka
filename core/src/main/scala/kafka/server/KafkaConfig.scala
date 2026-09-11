@@ -2239,6 +2239,9 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   validateValues()
 
   private def validateValues(): Unit = {
+    if (liProtocolBridgeTopicDeletionStateCleanupActive && !usesTopicId)
+      throw new ConfigException(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, true,
+        "requires topic IDs (inter.broker.protocol.version 2.8 or newer)")
     if (requiresZookeeper) {
       if (zkConnect == null) {
         throw new ConfigException(s"Missing required configuration `${KafkaConfig.ZkConnectProp}` which has no default value.")

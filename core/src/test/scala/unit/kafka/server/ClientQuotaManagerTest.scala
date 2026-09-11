@@ -157,6 +157,33 @@ class ClientQuotaManagerTest extends BaseClientQuotaManagerTest {
   }
 
   @Test
+  def testExplicitLargeQuotaKeepsNativeWindowCalculation(): Unit = {
+    val manager = new ClientQuotaManager(config, metrics, Fetch, time, "")
+    val session = new Session(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "userA"), InetAddress.getLocalHost)
+    try {
+      for (bound <- Seq(Long.MaxValue.toDouble, Long.MaxValue.toDouble * 2)) {
+        manager.updateQuota(Some("userA"), None, None, Some(new Quota(bound, true)))
+        val expected = bound * (config.numQuotaSamples - 1) * config.quotaWindowSizeSeconds
+        assertEquals(expected, manager.getMaxValueInQuotaWindow(session, "client1"), 0.0)
+      }
+    } finally manager.shutdown()
+  }
+
+  @Test
+  def testStaticDefaultIsOnlyAWindowLimitFallback(): Unit = {
+    val fallback = new ClientQuotaManagerConfig(4, 1, 10L)
+    val manager = new ClientQuotaManager(fallback, metrics, Fetch, time, "")
+    val session = new Session(new KafkaPrincipal(KafkaPrincipal.USER_TYPE, "userA"), InetAddress.getLocalHost)
+    try {
+      assertEquals(30.0, manager.getMaxValueInQuotaWindow(session, "client1"), 0.0)
+      manager.updateQuota(Some("userA"), None, None, Some(new Quota(Long.MaxValue.toDouble, true)))
+      assertEquals(Long.MaxValue.toDouble * 3, manager.getMaxValueInQuotaWindow(session, "client1"), 0.0)
+      manager.updateQuota(Some("userA"), None, None, None)
+      assertEquals(30.0, manager.getMaxValueInQuotaWindow(session, "client1"), 0.0)
+    } finally manager.shutdown()
+  }
+
+  @Test
   def testGetMaxValueInQuotaWindowWithNonDefaultQuotaWindow(): Unit = {
     val numFullQuotaWindows = 3   // 3 seconds window (vs. 10 seconds default)
     val nonDefaultConfig = new ClientQuotaManagerConfig(numFullQuotaWindows + 1)

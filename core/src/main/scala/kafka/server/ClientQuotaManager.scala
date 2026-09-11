@@ -271,11 +271,11 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   def getMaxValueInQuotaWindow(session: Session, clientId: String): Double = {
     if (quotasEnabled) {
       val clientSensors = getOrCreateQuotaSensors(session, clientId)
-      val limit = quotaLimit(clientSensors.metricTags.asJava)
-      if (limit < Long.MaxValue)
-        limit * (config.numQuotaSamples - 1) * config.quotaWindowSizeSeconds
-      else
-        Double.MaxValue
+      val staticDefault = if (config.quotaDefault < Long.MaxValue) Some(config.quotaDefault.toDouble) else None
+      Option(quotaCallback.quotaLimit(clientQuotaType, clientSensors.metricTags.asJava))
+        .map(_.toDouble).orElse(staticDefault)
+        .map(_ * (config.numQuotaSamples - 1) * config.quotaWindowSizeSeconds)
+        .getOrElse(Double.MaxValue)
     } else {
       Double.MaxValue
     }

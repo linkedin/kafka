@@ -222,6 +222,70 @@ jobs:
             transaction-coordinator:integrationTest \
             tools:tools-api:unitTest tools:tools-api:integrationTest
 
+  bridge-process:
+    name: bridge-process
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      # Checkout fixes the companion source for this run. Record its commit and
+      # archive hash; release CI separately requires approved commit hashes.
+      LI_BRIDGE_LEGACY_REF: ${{ vars.LI_BRIDGE_LEGACY_REF || '3.0-li-bridge/stray-log-cleanup' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Checkout independent legacy source
+        uses: actions/checkout@v4
+        with:
+          repository: linkedin/kafka
+          ref: ${{ env.LI_BRIDGE_LEGACY_REF }}
+          path: legacy-source
+          fetch-depth: 0
+      - name: Record the fixed companion revision
+        working-directory: legacy-source
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD)"
+          git checkout --detach "${revision}"
+          echo "Legacy companion for this run: ${revision}"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: gradle
+      - name: Build independent 3.0 archive
+        working-directory: legacy-source
+        run: ./gradlew --no-daemon --max-workers=2 -PscalaVersion=2.12 core:releaseTarGz
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build current 3.9 archive
+        run: ./gradlew --no-daemon --max-workers=2 -PscalaVersion=2.12 core:releaseTarGz
+      - name: Qualify activation, rollback, mixed/native protocols and old clients
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/bridge-process-evidence
+        run: |
+          set -euo pipefail
+          old_dist="${GITHUB_WORKSPACE}/legacy-source/core/build/distributions"
+          new_dist="${GITHUB_WORKSPACE}/core/build/distributions"
+          export KAFKA_30_TGZ="${old_dist}/kafka_2.12-3.0.1-SNAPSHOT.tgz"
+          export KAFKA_39_TGZ="${new_dist}/kafka_2.12-3.9.2.tgz"
+          export LI_BRIDGE_JAVA_30_HOME="${JAVA_HOME_11_X64}"
+          tests/bin/li_bridge_mixed_cluster_smoke.sh
+          python3 tests/bin/audit_li_bridge_evidence.py \
+            --process-only --require-archives \
+            --evidence-dir "${EVIDENCE_DIR}" \
+            --output-json "${EVIDENCE_DIR}/process-audit.json"
+      - name: Retain process qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-process-evidence
+          path: ${{ runner.temp }}/bridge-process-evidence
+          if-no-files-found: error
+
   scala-2-13-compile:
     name: scala_2.13
     runs-on: ubuntu-latest

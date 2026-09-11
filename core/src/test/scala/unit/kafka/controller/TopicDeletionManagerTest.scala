@@ -50,6 +50,30 @@ class TopicDeletionManagerTest {
   private val deletionClient = mock(classOf[DeletionClient])
 
   @Test
+  def testTopicNameReuseCleanupRequiresItsFlag(): Unit = {
+    assertFalse(config.liProtocolBridgeTopicDeletionStateCleanupActive)
+    Seq(false, true).foreach { enabled =>
+      val props = TestUtils.createBrokerConfig(brokerId, "zkConnect")
+      props.put(KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp, enabled.toString)
+      val context = initContext(Seq(1, 2), Set("foo"), 1, 2)
+      val replicas = new MockReplicaStateMachine(context)
+      replicas.startup()
+      val partitions = new MockPartitionStateMachine(context,
+        uncleanLeaderElectionEnabled = false, isLeaderRecoverySupported = true)
+      partitions.startup()
+      val manager = new TopicDeletionManager(KafkaConfig.fromProps(props), context,
+        replicas, partitions, mock(classOf[DeletionClient]))
+      manager.init(Set.empty, Set.empty)
+      manager.enqueueTopicsForDeletion(Set("foo"))
+      manager.markTopicIneligibleForDeletion(Set("foo"), "reassignment completed during deletion")
+      manager.completeReplicaDeletion(context.replicasForTopic("foo"))
+      assertTrue(context.partitionsForTopic("foo").isEmpty)
+      assertEquals(!enabled, context.topicsIneligibleForDeletion.contains("foo"),
+        "Only the enabled cleanup flag may change the existing deletion behavior")
+    }
+  }
+
+  @Test
   def testInitialization(): Unit = {
     val controllerContext = initContext(
       brokers = Seq(1, 2, 3),

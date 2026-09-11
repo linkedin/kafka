@@ -462,12 +462,23 @@ class ZkMetadataCache(
   // Note: if this ZK broker is migrating to KRaft, a singular UMR may sometimes both delete a
   // partition and re-create a new partition with that same name. In that case, it will not appear
   // in the return value of this function.
+  private var lastMetadataControllerEpoch = -1
+
+  // Preserve the existing JVM method for callers that do not enable bridge cleanup.
+  def updateMetadata(correlationId: Int, request: UpdateMetadataRequest): Seq[TopicPartition] =
+    updateMetadata(correlationId, request, reconcileOnControllerChange = false)
+
   def updateMetadata(
     correlationId: Int,
-    originalUpdateMetadataRequest: UpdateMetadataRequest
+    originalUpdateMetadataRequest: UpdateMetadataRequest,
+    reconcileOnControllerChange: Boolean
   ): Seq[TopicPartition] = {
     var updateMetadataRequest = originalUpdateMetadataRequest
     inWriteLock(partitionMetadataLock) {
+      // Upgraded ZK controllers send a full first update for each epoch. Keep the
+      // existing KRaft migration path separate, and keep same-epoch updates incremental.
+      val replaceMetadata = reconcileOnControllerChange && !updateMetadataRequest.isKRaftController &&
+        updateMetadataRequest.controllerEpoch > lastMetadataControllerEpoch
       if (
         updateMetadataRequest.isKRaftController &&
         updateMetadataRequest.updateType() == AbstractControlRequest.Type.FULL
@@ -546,7 +557,7 @@ class ZkMetadataCache(
       }
 
       val topicIds = mutable.Map.empty[String, Uuid]
-      topicIds ++= metadataSnapshot.topicIds
+      if (!replaceMetadata) topicIds ++= metadataSnapshot.topicIds
       val (newTopicIds, newZeroIds) = updateMetadataRequest.topicStates().asScala
         .map(topicState => (topicState.topicName(), topicState.topicId()))
         .partition { case (_, topicId) => topicId != Uuid.ZERO_UUID }
@@ -554,16 +565,31 @@ class ZkMetadataCache(
       topicIds ++= newTopicIds.toMap
 
       val deletedPartitions = new java.util.LinkedHashSet[TopicPartition]
+      if (replaceMetadata) {
+        val incoming = updateMetadataRequest.partitionStates.asScala.map(state =>
+          new TopicPartition(state.topicName, state.partitionIndex)).toSet
+        metadataSnapshot.partitionStates.forKeyValue { (topic, partitions) =>
+          partitions.keysIterator.foreach { partition =>
+            val tp = new TopicPartition(topic, partition.toInt)
+            if (!incoming.contains(tp)) deletedPartitions.add(tp)
+          }
+        }
+      }
       if (!updateMetadataRequest.partitionStates.iterator.hasNext) {
-        metadataSnapshot = MetadataSnapshot(metadataSnapshot.partitionStates, topicIds.toMap,
+        val partitions = if (replaceMetadata)
+          mutable.AnyRefMap.empty[String, mutable.LongMap[UpdateMetadataPartitionState]]
+        else metadataSnapshot.partitionStates
+        metadataSnapshot = MetadataSnapshot(partitions, topicIds.toMap,
           controllerIdOpt, aliveBrokers, aliveNodes)
       } else {
         //since kafka may do partial metadata updates, we start by copying the previous state
         val partitionStates = new mutable.AnyRefMap[String, mutable.LongMap[UpdateMetadataPartitionState]](metadataSnapshot.partitionStates.size)
-        metadataSnapshot.partitionStates.forKeyValue { (topic, oldPartitionStates) =>
-          val copy = new mutable.LongMap[UpdateMetadataPartitionState](oldPartitionStates.size)
-          copy ++= oldPartitionStates
-          partitionStates(topic) = copy
+        if (!replaceMetadata) {
+          metadataSnapshot.partitionStates.forKeyValue { (topic, oldPartitionStates) =>
+            val copy = new mutable.LongMap[UpdateMetadataPartitionState](oldPartitionStates.size)
+            copy ++= oldPartitionStates
+            partitionStates(topic) = copy
+          }
         }
 
         val traceEnabled = stateChangeLogger.isTraceEnabled
@@ -587,12 +613,15 @@ class ZkMetadataCache(
                 s"UpdateMetadata request sent by controller $controllerId epoch $controllerEpoch with correlation id $correlationId")
           }
         }
-        val cachedPartitionsCount = newStates.size - deletedPartitions.size
+        val cachedPartitionsCount = if (replaceMetadata)
+          newStates.count(_.leader != LeaderAndIsr.LeaderDuringDelete)
+        else newStates.size - deletedPartitions.size
         stateChangeLogger.info(s"Add $cachedPartitionsCount partitions and deleted ${deletedPartitions.size} partitions from metadata cache " +
           s"in response to UpdateMetadata request sent by controller $controllerId epoch $controllerEpoch with correlation id $correlationId")
 
         metadataSnapshot = MetadataSnapshot(partitionStates, topicIds.toMap, controllerIdOpt, aliveBrokers, aliveNodes)
       }
+      lastMetadataControllerEpoch = math.max(lastMetadataControllerEpoch, updateMetadataRequest.controllerEpoch)
       deletedPartitions.asScala.toSeq
     }
   }

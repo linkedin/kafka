@@ -248,6 +248,11 @@ class TopicDeletionManager(config: KafkaConfig,
     // controller will remove this replica from the state machine as well as its partition assignment cache
     replicaStateMachine.handleStateChanges(replicasForDeletedTopic.toSeq, NonExistentReplica)
     client.deleteTopic(topic, controllerContext.epochZkVersion)
+    if (config.liProtocolBridgeTopicDeletionStateCleanupActive) {
+      // A reassignment can block deletion just before its last callback succeeds.
+      // Do not let a later topic with the same name inherit that old block.
+      controllerContext.topicsIneligibleForDeletion -= topic
+    }
     controllerContext.removeTopic(topic)
   }
 

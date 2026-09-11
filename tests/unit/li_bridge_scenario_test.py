@@ -16,6 +16,7 @@
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -55,6 +56,51 @@ class LiBridgeScenarioTest(unittest.TestCase):
         process.returncode = 1
         with self.assertRaisesRegex(AssertionError, "exited during startup"):
             runner.zookeeper_ready()
+
+    def test_protocol_selection_and_errors_include_rotated_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = object.__new__(Migration)
+            runner.work = Path(directory)
+            runner.evidence = runner.work / "evidence"
+            runner.evidence.mkdir()
+            enabled = "LI protocol bridge mode enabled: LeaderAndIsr=v2, UpdateMetadata=v5, StopReplica=v1"
+            for generation in ("3.0", "3.9"):
+                logs = runner.work / f"broker-0-{generation}-logs"
+                logs.mkdir()
+                (logs / "controller.log.2026-09-11-07").write_text(enabled)
+                (logs / "controller.log").write_text("LI protocol bridge mode disabled")
+            runner.verify_protocol_logs()
+            self.assertEqual(2, (runner.evidence / "protocol-selection.log").read_text().count(enabled))
+            rotated = logs / "server.log.2026-09-11-07"
+            for error in ("UnsupportedVersionException", "Error parsing LeaderAndIsr", "unknown api key"):
+                with self.subTest(error=error):
+                    rotated.write_text(error)
+                    with self.assertRaisesRegex(AssertionError, "Protocol error"):
+                        runner.verify_protocol_logs()
+            rotated.unlink()
+            (logs / "controller.log.2026-09-11-07").unlink()
+            with self.assertRaisesRegex(AssertionError, "Missing 3.9 controller bridge selection"):
+                runner.verify_protocol_logs()
+
+    def test_failure_archive_retains_rotated_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = object.__new__(Migration)
+            runner.work = Path(directory)
+            runner.evidence = runner.work / "evidence"
+            runner.evidence.mkdir()
+            runner.processes, runner.source_hashes, runner.archives = {}, {}, {}
+            runner.handles, runner.timings, runner.resources = [], [], []
+            runner.started = "2026-09-11T07:00:00+00:00"
+            runner.scenario = scenario_spec({})
+            rotated = runner.work / "broker-0-3.9-logs/controller.log.2026-09-11-07"
+            rotated.parent.mkdir()
+            rotated.write_text("retained failure detail")
+            with mock.patch.object(runner, "diagnostics"), mock.patch.dict("os.environ", {"EVIDENCE_INCLUDE_LOGS": "1"}):
+                self.assertFalse(runner.finish(False))
+            with tarfile.open(runner.evidence / "process-logs.tgz") as archive:
+                data = archive.extractfile(str(rotated.relative_to(runner.work))).read()
+            self.assertEqual(b"retained failure detail", data)
+            self.assertTrue(rotated.exists())
 
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]

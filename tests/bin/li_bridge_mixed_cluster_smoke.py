@@ -587,7 +587,9 @@ class Migration:
     def verify_protocol_logs(self):
         selected = []
         for generation in ("3.0", "3.9"):
-            logs = "\n".join(path.read_text(errors="replace") for path in self.work.glob(f"broker-*-{generation}-logs/controller.log"))
+            # Hourly rotation must not erase a protocol decision or hide an error.
+            paths = sorted(self.work.glob(f"broker-*-{generation}-logs/controller.log*"))
+            logs = "\n".join(path.read_text(errors="replace") for path in paths)
             enabled = "LI protocol bridge mode enabled: LeaderAndIsr=v2, UpdateMetadata=v5, StopReplica=v1"
             if enabled not in logs:
                 raise AssertionError(f"Missing {generation} controller bridge selection")
@@ -595,7 +597,7 @@ class Migration:
         (self.evidence / "protocol-selection.log").write_text("\n".join(selected))
         if not any("LI protocol bridge mode disabled" in line for line in selected):
             raise AssertionError("Native control selection missing")
-        for path in list(self.work.glob("broker-*.log")) + list(self.work.glob("broker-*-logs/*.log")):
+        for path in list(self.work.glob("broker-*.log*")) + list(self.work.glob("broker-*-logs/*.log*")):
             if re.search(r"UnsupportedVersionException|Error parsing.*(?:LeaderAndIsr|UpdateMetadata|StopReplica)|unknown api key",
                          path.read_text(errors="replace"), re.IGNORECASE):
                 raise AssertionError(f"Protocol error in {path}")
@@ -651,7 +653,7 @@ class Migration:
         (self.evidence / "run-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True))
         if os.environ.get("EVIDENCE_INCLUDE_LOGS", "1") == "1":
             with tarfile.open(self.evidence / "process-logs.tgz", "w:gz") as archive:
-                for path in self.work.rglob("*.log"):
+                for path in self.work.rglob("*.log*"):
                     if not path.is_relative_to(self.evidence):
                         archive.add(path, arcname=str(path.relative_to(self.work)))
         # Preserve failures and default in-work evidence. Never silently erase the only proof.

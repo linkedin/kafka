@@ -49,7 +49,7 @@ tests/bin/verify_li_bridge.sh
 
 The wrapper's declared Kafka and Scala versions must match the 3.9 archive. Every resolved main Kafka jar must match a jar in that archive byte for byte. Test classifiers must use the selected version. Their hashes are recorded. The verifier checks the resolved files before and after wrapper testing.
 
-Source compilation and focused source tests still run. `BRIDGE_VERIFY_FULL=1` adds the complete clients, server, and storage suites. The mixed-process test runs the retained archives.
+Source compilation and focused source tests still run. `BRIDGE_VERIFY_FULL=1` adds the complete clients, server, and storage suites. The mixed-process test runs the retained archives. Gradle commands use `--no-daemon`; the verifier does not run global `--stop` commands that could interrupt unrelated builds.
 
 ## Diagnostic metrics opt-in
 

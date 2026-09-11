@@ -48,8 +48,6 @@ REQUIRED_COMMANDS: Tuple[str, ...] = (
     "wrapper-tests",
     "wrapper-artifacts-unchanged",
     "release-39",
-    "stop-kafka-gradle",
-    "stop-wrapper-gradle",
     "mixed-process",
 )
 

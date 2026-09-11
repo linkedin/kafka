@@ -311,6 +311,17 @@ class KafkaZkClientTest extends QuorumTestHarness {
   }
 
   @Test
+  def testTopicIdentitiesDistinguishDeletedAndUnidentifiedTopics(): Unit = {
+    zkClient.createTopLevelPaths()
+    val id = Uuid.randomUuid()
+    zkClient.createTopicAssignment("identified", Some(id), Map(new TopicPartition("identified", 0) -> Seq(1)))
+    zkClient.createTopicAssignment("unidentified", None, Map(new TopicPartition("unidentified", 0) -> Seq(1)))
+    val topics = Set("identified", "unidentified", "deleted")
+    assertEquals(Map("identified" -> Some(id), "unidentified" -> None), zkClient.getTopicIdentities(topics))
+    assertEquals(Map("identified" -> id), zkClient.getTopicIdsForTopics(topics))
+  }
+
+  @Test
   def testGetAllTopicsInClusterTriggersWatch(): Unit = {
     zkClient.createTopLevelPaths()
     val latch = registerChildChangeHandler(1)

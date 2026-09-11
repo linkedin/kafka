@@ -104,8 +104,12 @@ class AdminZkClient(zkClient: KafkaZkClient,
     }
   }
 
-  private def getAssignmentExcludedBrokerIds(): Set[Int] =
-    getMaintenanceBrokerList() ++ zkClient.getPreferredControllerList
+  private def getAssignmentExcludedBrokerIds(): Set[Int] = {
+    val preferredControllers = if (kafkaConfig.exists(_.liProtocolBridgePreferredControllerActive))
+      zkClient.getPreferredControllerList
+    else Seq.empty
+    getMaintenanceBrokerList() ++ preferredControllers
+  }
 
   /**
    * Create topic and optionally validate its parameters. Note that this method is used by the

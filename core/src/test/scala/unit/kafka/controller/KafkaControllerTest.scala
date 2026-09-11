@@ -42,6 +42,27 @@ class KafkaControllerTest {
   }
 
   @Test
+  def testCompatibilityControllerMetricsRequireOptIn(): Unit = {
+    for (enabled <- Seq(false, true)) {
+      val props = TestUtils.createBrokerConfig(1, TestUtils.MockZkConnect)
+      props.put(KafkaConfig.LiProtocolBridgeConfigMetricsEnableProp, enabled.toString)
+      val construction = mockConstruction(classOf[KafkaMetricsGroup])
+      try {
+        val controller = new KafkaController(KafkaConfig.fromProps(props), mock(classOf[KafkaZkClient]),
+          new MockTime(), mock(classOf[Metrics]), mock(classOf[BrokerInfo]), 0L,
+          mock(classOf[DelegationTokenManager]), mock(classOf[BrokerFeatures]), mock(classOf[ZkMetadataCache]))
+        controller.shutdown()
+        val group = construction.constructed.get(0)
+        val diagnostics = Seq("ActivePreferredControllerCount", "StandbyPreferredControllerCount", "MaintenanceBrokerCount")
+        diagnostics.foreach { name =>
+          verify(group, times(if (enabled) 1 else 0)).newGauge(ArgumentMatchers.eq(name), any())
+          verify(group, times(if (enabled) 1 else 0)).removeMetric(name)
+        }
+      } finally construction.close()
+    }
+  }
+
+  @Test
   def testRemoveMetricsOnClose(): Unit = {
     val mockMetricsGroupCtor = mockConstruction(classOf[KafkaMetricsGroup])
     try {

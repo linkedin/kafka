@@ -89,12 +89,13 @@ object KafkaController extends Logging {
   private val ZkMigrationStateMetricName = "ZkMigrationState"
   private val SumOfTopicNameLengthMetricName = "SumOfTopicNameLength"
 
+  private[controller] val CompatibilityMetricNames = Set(ActivePreferredControllerCountMetricName,
+    StandbyPreferredControllerCountMetricName, MaintenanceBrokerCountMetricName)
+
   // package private for testing
   private[controller] val MetricNames = Set(
     ZkMigrationStateMetricName,
     ActiveControllerCountMetricName,
-    ActivePreferredControllerCountMetricName,
-    StandbyPreferredControllerCountMetricName,
     OfflinePartitionsCountMetricName,
     PreferredReplicaImbalanceCountMetricName,
     ControllerStateMetricName,
@@ -105,7 +106,6 @@ object KafkaController extends Logging {
     TopicsIneligibleToDeleteCountMetricName,
     ReplicasIneligibleToDeleteCountMetricName,
     ActiveBrokerCountMetricName,
-    MaintenanceBrokerCountMetricName,
     FencedBrokerCountMetricName
   )
 
@@ -219,10 +219,15 @@ class KafkaController(val config: KafkaConfig,
 
   metricsGroup.newGauge(ZkMigrationStateMetricName, () => ZkMigrationState.ZK.value().intValue())
   metricsGroup.newGauge(ActiveControllerCountMetricName, () => if (isActive) 1 else 0)
-  metricsGroup.newGauge(ActivePreferredControllerCountMetricName,
-    () => if (isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
-  metricsGroup.newGauge(StandbyPreferredControllerCountMetricName,
-    () => if (!isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
+  private val configMetricsEnabled = config.liProtocolBridgeConfigMetricsActive
+  if (configMetricsEnabled) {
+    metricsGroup.newGauge(ActivePreferredControllerCountMetricName,
+      () => if (isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
+    metricsGroup.newGauge(StandbyPreferredControllerCountMetricName,
+      () => if (!isActive && config.liProtocolBridgePreferredControllerActive && config.preferredController) 1 else 0)
+    metricsGroup.newGauge(MaintenanceBrokerCountMetricName,
+      () => if (isActive) config.maintenanceBrokerList.size else 0)
+  }
   metricsGroup.newGauge(OfflinePartitionsCountMetricName, () => offlinePartitionCount)
   metricsGroup.newGauge(PreferredReplicaImbalanceCountMetricName, () => preferredReplicaImbalanceCount)
   metricsGroup.newGauge(ControllerStateMetricName, () => state.value)
@@ -233,8 +238,6 @@ class KafkaController(val config: KafkaConfig,
   metricsGroup.newGauge(TopicsIneligibleToDeleteCountMetricName, () => ineligibleTopicsToDeleteCount)
   metricsGroup.newGauge(ReplicasIneligibleToDeleteCountMetricName, () => ineligibleReplicasToDeleteCount)
   metricsGroup.newGauge(ActiveBrokerCountMetricName, () => activeBrokerCount)
-  metricsGroup.newGauge(MaintenanceBrokerCountMetricName,
-    () => if (isActive) config.maintenanceBrokerList.size else 0)
   // FencedBrokerCount metric is always 0 in the ZK controller.
   metricsGroup.newGauge(FencedBrokerCountMetricName, () => 0)
   if (config.liProtocolBridgeLegacyRequestMetricsActive)
@@ -605,6 +608,8 @@ class KafkaController(val config: KafkaConfig,
 
   private def removeMetrics(): Unit = {
     KafkaController.MetricNames.foreach(metricsGroup.removeMetric)
+    if (configMetricsEnabled)
+      KafkaController.CompatibilityMetricNames.foreach(metricsGroup.removeMetric)
     if (config.liProtocolBridgeLegacyRequestMetricsActive)
       metricsGroup.removeMetric(KafkaController.SumOfTopicNameLengthMetricName)
   }

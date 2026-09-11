@@ -1175,8 +1175,30 @@ class KafkaController(val config: KafkaConfig,
     }
   }
 
+  private[controller] def recoverInterruptedTopicDeletions(topicsToBeDeleted: Set[String]): Unit = {
+    if (!config.liProtocolBridgeTopicDeletionStateCleanupActive || !topicDeletionManager.isDeleteTopicEnabled) return
+    // Preserve every assigned replica for a marked deletion whose leader/ISR znode
+    // disappeared during recursive cleanup. Resuming its reassignment cannot succeed.
+    val interrupted = controllerContext.partitionsBeingReassigned.iterator.filter { tp =>
+      topicsToBeDeleted.contains(tp.topic) && controllerContext.partitionLeadershipInfo(tp).isEmpty
+    }.toVector
+    interrupted.foreach { tp =>
+      val assignment = ReplicaAssignment(controllerContext.partitionReplicaAssignment(tp))
+      val topicAssignments = controllerContext.partitionFullReplicaAssignmentForTopic(tp.topic) + (tp -> assignment)
+      zkClient.setTopicAssignment(tp.topic, controllerContext.topicIds.get(tp.topic),
+        topicAssignments.toMap, controllerContext.epochZkVersion)
+      controllerContext.updatePartitionFullReplicaAssignment(tp, assignment)
+    }
+    if (interrupted.nonEmpty) {
+      val interruptedSet = interrupted.toSet
+      maybeRemoveFromZkReassignment((tp, _) => interruptedSet.contains(tp))
+      controllerContext.partitionsBeingReassigned --= interrupted
+    }
+  }
+
   private def fetchTopicDeletionsInProgress(): (Set[String], Set[String]) = {
     val topicsToBeDeleted = zkClient.getTopicDeletions.toSet
+    recoverInterruptedTopicDeletions(topicsToBeDeleted)
     val topicsForWhichPartitionReassignmentIsInProgress = controllerContext.partitionsBeingReassigned.map(_.topic)
     val topicsIneligibleForDeletion = topicsForWhichPartitionReassignmentIsInProgress
     info(s"List of topics to be deleted: ${topicsToBeDeleted.mkString(",")}")

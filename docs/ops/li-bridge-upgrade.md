@@ -23,7 +23,7 @@ limitations under the License.
 
 The implementation base is Apache **3.9.2** with the reviewed LI bridge stack. Pin the final internal `3.9.2.N`, matching `3.0.1.N`, wrapper commit, archive checksums, JDKs and ZooKeeper runtime in the release record. A maintenance-baseline change requires a new qualification run; do not substitute a newer tag during rollout.
 
-The current implementation is the split stack through `3.9-li-bridge/topic-identity-recovery`, with the companion `3.0-li-bridge/topic-identity-recovery` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
+The current implementation is the split stack through `3.9-li-bridge/config-metrics-gate`, with the companion `3.0-li-bridge/config-metrics-gate` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
 
 **Clients do not change.** The supported producer, consumer, transactional client, Streams application, Connect worker, LI AdminClient and operational-tool artifacts/configuration must remain unchanged across every phase. Discovery must name their deployed version floor and owners. One 3.0 test archive is not proof for every externally deployed client.
 
@@ -70,13 +70,14 @@ For a phase change, supply `--previous-phase` to preflight and retain both repor
 
 ## Feature contract and lifecycle
 
-Kafka's 23 LI compatibility gates default false. The wrapper explicitly enables the production profile. With `--require-all-gates`, every gate below except the phase-dependent mode gate must stay true on 3.9 **including native and final-IBP phases**. Turning bridge mode off is not permission to turn off operational compatibility.
+Kafka's 24 LI compatibility gates default false. The wrapper explicitly enables the production profile. With `--require-all-gates`, every gate below except the phase-dependent mode gate must stay true on 3.9 **including native and final-IBP phases**. Turning bridge mode off is not permission to turn off operational compatibility.
 
-All names below have the prefix `li.protocol.bridge.` and suffix `.enable`. Effective gauges are under `kafka.server:type=LiProtocolBridgeMetrics,broker-id=<id>`.
+All names below have the prefix `li.protocol.bridge.` and suffix `.enable`. Effective gauges are under `kafka.server:type=LiProtocolBridgeMetrics,broker-id=<id>`. Set `config.metrics` to true in each broker's startup configuration before entering the dormant qualification phase. This opt-in registers the diagnostic gauges; it does not enable protocol or data-path behavior.
 
 | Setting suffix | Effective gauge | Change scope | Owner / disposition |
 |---|---|---|---|
 | `mode` | `ModeEnabled` | cluster dynamic; controller restart fence | Protocol: temporary control versions and version-changing ISR retries |
+| `config.metrics` | `ConfigMetricsEnabled` | restart | Observability: explicit registration of bridge-state MBeans on both generations |
 | `topic.deletion.state.cleanup` | `TopicDeletionStateCleanupEnabled` | cluster dynamic; enable on all brokers before controller restart | Controller: clear deletion blocks and replace stale metadata on a new controller epoch |
 | `follower.recovery` | `FollowerRecoveryEnabled` | cluster dynamic | Replication: retain until old recovery callers are retired |
 | `recommended.leader.election` | `RecommendedLeaderElectionEnabled` | cluster dynamic | Controller: retain old election type 2 |
@@ -102,7 +103,7 @@ All names below have the prefix `li.protocol.bridge.` and suffix `.enable`. Effe
 
 Per-broker dynamic overrides of cluster-dynamic compatibility gates are rejected. The smoke profile intentionally enables only wire/tool compatibility and cancellation safety; it is not the complete production wrapper profile. Wrapper qualification and live admission use the full profile.
 
-Two additional settings are not members of the 23-gate bundle: `li.zookeeper.pagination.enable` and `li.num.controller.init.threads`. Record their effective values and `ZookeeperPaginationEnabled` / `ControllerInitializationThreads` gauges. The documented source profile enables pagination and uses ten controller-init threads; confirm live values.
+Two additional settings are not members of the 24-gate bundle: `li.zookeeper.pagination.enable` and `li.num.controller.init.threads`. Record their effective values and `ZookeeperPaginationEnabled` / `ControllerInitializationThreads` gauges. The documented source profile enables pagination and uses ten controller-init threads; confirm live values.
 
 ### Generation-specific behavior
 
@@ -235,7 +236,7 @@ Automatically stop for unexpected control versions, post-fence API 1001 traffic,
 
 ## PR inventory and merge order
 
-All 37 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
+All 39 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
 
 Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 during the dependency reorder because their new heads were contained in their former base branches. No release branch was merged. Their restored, separate reviews are 579 and 578.
 
@@ -247,6 +248,7 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [577](https://github.com/linkedin/kafka/pull/577) | 3.0 unhosted-log cleanup — storage/controller |
 | [583](https://github.com/linkedin/kafka/pull/583) | 3.0 complete-image log recovery — storage/controller |
 | [585](https://github.com/linkedin/kafka/pull/585) | 3.0 topic-identity validation — storage/controller |
+| [588](https://github.com/linkedin/kafka/pull/588) | 3.0 diagnostic-metrics opt-in — observability |
 | [558](https://github.com/linkedin/kafka/pull/558) | 3.9 CI/publication — release engineering |
 | [543](https://github.com/linkedin/kafka/pull/543) | 3.9 outbound bridge — protocol/controller |
 | [544](https://github.com/linkedin/kafka/pull/544) | old wire/client/recovery compatibility — protocol/replication |
@@ -278,12 +280,13 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [584](https://github.com/linkedin/kafka/pull/584) | 3.9 complete-image recovery and offline-reuse tests — storage/verification |
 | [586](https://github.com/linkedin/kafka/pull/586) | 3.9 topic identity and scenario-revision-4 qualification — storage/verification |
 | [587](https://github.com/linkedin/kafka/pull/587) | current findings, evidence limits and completion checklist — operations/review |
+| [589](https://github.com/linkedin/kafka/pull/589) | 3.9 diagnostic-metrics opt-in and admission checks — observability/verification |
 
 Merge 558 into `3.9-li` and 559 into `3.0-li` first. They have different release bases, so do not put them in one dependent Git stack. Rebase/retarget 575 to `3.0-li` and 543 to `3.9-li`; do not merge feature work into temporary CI branches.
 
-The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585**. The stack rooted at PR 543 has the 3.9 order:
+The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588**. The stack rooted at PR 543 has the 3.9 order:
 
-**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587**.
+**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589**.
 
 Retarget remaining layers after each independent merge. The wrapper branch contains the ACL test repair (`6ddf2a87`) and cleanup mapping/tests (`1a9ecccf`); its source suite passes 132 tests. Add the approved wrapper/dependency/security PR and named deployment-gate owner to the release record.
 

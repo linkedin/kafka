@@ -509,6 +509,34 @@ class Migration:
         self.start("zookeeper", [self.homes["3.9"] / "bin/zookeeper-server-start.sh", self.work / "zookeeper.properties"])
         self.until("ZooKeeper startup", self.zookeeper_ready, 60)
 
+    def native_offline_deletion(self):
+        topic = "bridge-native-offline-delete"
+        self.create(topic, "0")
+        self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 1, 64)
+        def cached():
+            listing = self.command([self.homes["3.9"] / "bin/kafka-topics.sh", "--bootstrap-server",
+                                    f"127.0.0.1:{self.port[1]}", "--list"], timeout=20)
+            return topic in listing.splitlines()
+        self.until("native offline deletion initial metadata", cached)
+        self.stop("broker-0", hard=True)
+        self.until("native offline deletion controller failover", lambda:
+                   not self.registered(0) and self.controller(1), 60)
+        # Queue deletion without waiting on an Admin future for the offline replica.
+        self.zk(f"create /admin/delete_topics/{topic}")
+        self.until("native offline deletion metadata tombstone", lambda: not cached(), 45)
+        if "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"):
+            raise AssertionError("Assignment deleted before the offline replica acknowledged removal")
+        self.timings.append(("native offline deletion retains assignment until acknowledgement", 0, "passed"))
+        self.start_broker(0, "3.0", mode=False)
+        self.until("native offline deletion removes assignment after acknowledgement", lambda:
+                   "Node does not exist" in self.zk(f"get /brokers/topics/{topic}"), 60)
+        self.create(topic, "0")
+        self.java("LiBridgeRecords", "produce", self.bootstrap, topic, 0, 2, 128)
+        self.java("LiBridgeRecords", "verify", self.bootstrap, topic, 0, 2, 128)
+        self.timings.append(("native offline deletion recreated records verified", 0, "passed"))
+        self.admin("kafka-topics.sh", "--delete", "--topic", topic)
+        self.until("native offline deletion final ISR recovery", self.healthy)
+
     def run(self):
         self.prepare()
         self.start_broker(0, "3.0", mode=False)
@@ -516,6 +544,7 @@ class Migration:
         self.start_broker(1, "3.0", mode=False)
         self.java("LiBridgeMetadataScaleSmoke", self.bootstrap, self.scenario["SCALE_TOPIC_COUNT"],
                   self.scenario["SCALE_PARTITION_COUNT"], generation="3.9")
+        self.native_offline_deletion()
         self.start_clients()
         self.checkpoint("dormant")
         self.set_mode(True)

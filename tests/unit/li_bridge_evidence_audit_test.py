@@ -217,7 +217,7 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
             self.assertFalse(AUDITOR.audit(root)["passed"])
 
     def test_old_scenario_revision_does_not_qualify_offline_name_reuse(self):
-        for revision in (None, 3):
+        for revision in (None, 3, 4):
             with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.create_evidence(root)
@@ -364,6 +364,22 @@ class LiBridgeEvidenceAuditTest(unittest.TestCase):
             result = AUDITOR.audit(root)
             self.assertFalse(result["passed"])
             self.assertTrue(any(missing_operation in issue for issue in result["issues"]))
+
+    def test_native_offline_deletion_requires_tombstone_acknowledgement_and_records(self):
+        operations = ("native offline deletion metadata tombstone",
+                      "native offline deletion retains assignment until acknowledgement",
+                      "native offline deletion removes assignment after acknowledgement",
+                      "native offline deletion recreated records verified")
+        for operation in operations:
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.create_evidence(root)
+                timings = root / "mixed-process/timings.tsv"
+                timings.write_text("".join(line for line in timings.read_text().splitlines(True)
+                                           if not line.startswith(operation + "\t")))
+                result = AUDITOR.audit(root)
+                self.assertFalse(result["passed"])
+                self.assertTrue(any(operation in issue for issue in result["issues"]))
 
     def test_offline_name_reuse_requires_all_placement_checks(self):
         for generation in ("3.0", "3.9"):

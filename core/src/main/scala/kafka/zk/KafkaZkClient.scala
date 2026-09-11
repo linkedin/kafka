@@ -2373,6 +2373,20 @@ object KafkaZkClient {
             enableEntityConfigControllerCheck: Boolean = true,
             paginateTopics: Boolean = false
   ): KafkaZkClient = {
+    // Fail before opening a session or registering a broker. Otherwise a packaged stock client
+    // can join the cluster and repeatedly fail controller initialization when pagination is on.
+    if (paginateTopics) {
+      try {
+        val method = classOf[ZooKeeper].getMethod("getAllChildrenPaginated", classOf[String], java.lang.Boolean.TYPE)
+        require(classOf[java.util.List[_]].isAssignableFrom(method.getReturnType),
+          "getAllChildrenPaginated must return a java.util.List")
+      } catch {
+        case e: ReflectiveOperationException =>
+          val origin = Option(classOf[ZooKeeper].getProtectionDomain.getCodeSource).map(_.getLocation).orNull
+          throw new org.apache.kafka.common.config.ConfigException(
+            s"li.zookeeper.pagination.enable requires a qualified LinkedIn ZooKeeper client; loaded $origin: ${e.getMessage}")
+      }
+    }
 
     /* ZooKeeper 3.6.0 changed the default configuration for JUTE_MAXBUFFER from 4 MB to 1 MB.
      * This causes a regression if Kafka tries to retrieve a large amount of data across many

@@ -68,6 +68,21 @@ jobs:
           ./gradlew --no-daemon "-PscalaVersion=${SCALA_VERSION}" \
             -PxmlSpotBugsReport=true \
             rat checkstyleMain checkstyleTest spotbugsMain spotbugsTest
+      - name: Test LinkedIn ZooKeeper pagination
+        id: zk-pagination
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --max-workers=4 \
+            "-PscalaVersion=${SCALA_VERSION}" \
+            -I tests/bin/li_bridge_zookeeper_test.gradle \
+            core:liZookeeperPaginationTest
+      - name: Retain ZooKeeper pagination results
+        if: always() && steps.zk-pagination.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zookeeper-pagination-results
+          path: core/build/test-results/liZookeeperPaginationTest/*.xml
+          if-no-files-found: warn
 
   module-tests:
     name: ${{ matrix.name }}_2.12

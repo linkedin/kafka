@@ -19,17 +19,17 @@ limitations under the License.
 
 ## Current verdict
 
-**Do not deploy this candidate. The coverage audit found two offline topic-name-reuse failures after an earlier full verifier passed.** Both paired repairs are published in 583–586, but final qualification remains incomplete. The current inventory has 39 open PRs. The complete revision-4 process run now passes, including all four offline-reuse record checks. The later diagnostic-metrics opt-in and matching wrapper still need final qualification. An earlier green bundle or CI run does not cover a scenario it never exercised.
+**Do not deploy this candidate. The coverage audit found two offline topic-name-reuse failures after an earlier full verifier passed.** Both paired repairs are published in 583–586, but final qualification remains incomplete. The current inventory has 41 open PRs. The complete revision-4 process run now passes, including all four offline-reuse record checks. The diagnostic-metrics opt-in and matching wrapper pass their scoped suites. The full verifier is running on that pair; the later quota regression repair still needs final-source qualification. An earlier green bundle or CI run does not cover a scenario it never exercised.
 
 The findings below record what the initial review and later tests found. Instructions in an original finding describe the repair that was needed; use the current disposition and evidence sections for status. This is not a line-by-line approval of every Kafka change.
 
 ### Reviewed revisions
 
 - Workspace plan: `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. Canonical runbook: `docs/ops/li-bridge-upgrade.md`.
-- Current 3.9 behavior change: PR 589, `43b03f35049efa5510a40a6a46bb2bf78bf4750a`; its documentation update follows that commit.
+- Current 3.9 behavior change: PR 590, `3.9-li-bridge/native-quota-window`; release-input tests and documentation follow in PR 591.
 - Current 3.0 source: PR 588, `ec940efaacdebf38b82c786e61ac46e91eecd5da`.
 - CI: PR 558, `3e799b08ea`; PR 559, `a86214e2da`.
-- Wrapper: `1a9ecccf`, including the ACL test fix `6ddf2a87`.
+- Wrapper: `1764cc95bfa21e19d3ff89e0164e5896808b5507`, including the diagnostic opt-in and the earlier ACL test fix.
 
 GitHub heads, bases, labels and sizes were read back after publication. The upgrade stacks rooted at PRs 543 and 575 retain separate release histories. CI foundations have no upgrade label. PRs 563/564 were automatically closed during the reorder; replacement reviews 579/578 preserve those scopes. No release branch was merged by this work. Original findings began from aggregate `a658c512df`; aggregate PR 542 and old docs PR 555 remain closed.
 
@@ -279,7 +279,17 @@ Both generations constructed `LiProtocolBridgeMetrics` and registered new MBeans
 
 PRs 588/589 add `li.protocol.bridge.config.metrics.enable`, default false, ZooKeeper-only and restart-scoped. Enabled diagnostics still report disabled behavior flags without activating them. The existing constructors remain available. A disabled instance does not remove an enabled instance's gauges during cleanup.
 
-The default-off test failed on both previous implementations and passes with the repair. Tests also cover enabled readings, dynamic behavior flags, ignored live updates to the restart-only setting, KRaft exclusion and cleanup. The selected 3.0 and 3.9 suites passed 22 and 39 tests respectively. All 72 Python tests pass, including missing/false opt-in rejection in every migration phase. The process profile enables diagnostics explicitly. The wrapper mapping and its new negative test still need qualification with matching staged jars.
+The default-off test failed on both previous implementations and passes with the repair. Tests also cover enabled readings, dynamic behavior flags, ignored live updates to the restart-only setting, KRaft exclusion and cleanup. The selected 3.0 and 3.9 suites passed 22 and 39 tests respectively. All 72 Python tests pass, including missing/false opt-in rejection in every migration phase. The process profile enables diagnostics explicitly. The wrapper mapping and its new negative test pass with matching staged jars: 133 tests, no failures or skips, unchanged main/test-classifier hashes. This scoped pass does not replace the complete verifier.
+
+### F23 — P2: Static quota fallback changes a flag-off native limit
+
+`ClientQuotaManager.getMaxValueInQuotaWindow` treated any limit at or above `Long.MaxValue` as absent. That also changed an explicit dynamic quota when the bridge static-default flag was off. A new regression expected the native finite window limit `9.223372036854776E19`, but got `Double.MaxValue`.
+
+PR 590 restores the original callback calculation and uses the gated static default only when the callback returns no limit. The large explicit-quota and fallback-removal regressions pass with the full `ClientQuotaManagerTest`, `QuotaFactoryTest` and `RequestQuotaTest` suites. No default is enabled by this repair.
+
+### Review-record correction — empty metric buckets are rejected
+
+The original reply and ledger for PR 551 comment 2 incorrectly said empty buckets were supported. The published parser and `testEmptyRequestMetricBuckets` reject them with `ConfigException`, as the reviewer requested. The [correction](https://github.com/linkedin/kafka/pull/551#discussion_r3992669600) is explicit; the original reply remains in the history. No code was changed to match the inaccurate reply.
 
 ## PR dispositions and dependency audit
 
@@ -326,12 +336,14 @@ Every PR below has a distinct migration or CI purpose. Keep these scopes, but do
 | [586](https://github.com/linkedin/kafka/pull/586) | 3.9 topic identity and scenario-revision-4 qualification — storage/verification |
 | [587](https://github.com/linkedin/kafka/pull/587) | current findings, evidence limits and completion checklist — operations/review |
 | [589](https://github.com/linkedin/kafka/pull/589) | 3.9 diagnostic-metrics opt-in and admission checks — observability/verification |
+| [590](https://github.com/linkedin/kafka/pull/590) | native quota-window behavior and gated fallback regression — quotas |
+| [591](https://github.com/linkedin/kafka/pull/591) | release-input negative tests and final audit records — verification/release |
 
 Merge CI 558/559 into their own release branches first. Then retarget the upgrade stack bottoms as described in the runbook. Never force a Git dependency between the 3.0 and 3.9 CI branches. When reordering again, change PR bases before pushing a head that becomes an ancestor of its former base; GitHub can otherwise auto-close and delete that branch.
 
 The oversized original scopes were split. Control wire definitions are in 565 (503 lines), handlers in 545 (845); storage metrics are in 566 (221), broker metrics/watchdog wiring in 551 (910); workload helpers precede runner 553 (754). The new evidence auditor, verifier and release gate are separate layers. All 36 implementation/CI diffs were below 1,000 changed lines at readback. This documentation follow-up stays separate from the 863-line original runbook PR.
 
-The original 62 review threads now have replies with published source decisions and code/test references. See `docs/ops/li-bridge-review-comments.md`. The static `LeaderTransferManager.noOp()` call is valid: javap confirms the forwarder, and the Java builder compiles. Empty metric bucket lists remain intentionally supported; malformed, negative and unordered boundaries are rejected. The latest readback covers 37 PRs and finds all 62 expected replies, no mismatches and no new review threads. The later F18/F19 issue comments are retained and have follow-up code and qualification records. Re-fetch after the final publication; comment status is not proof that the code is correct.
+The original 62 review threads now have replies with published source decisions and code/test references. See `docs/ops/li-bridge-review-comments.md`. The static `LeaderTransferManager.noOp()` call is valid: javap confirms the forwarder, and the Java builder compiles. Empty, malformed, negative and unordered metric bucket lists are rejected. The earlier claim that empty lists were supported has been corrected against the actual source and test assertion. The latest readback covers 37 PRs and finds all 62 expected replies, no mismatches and no new review threads. The later F18/F19 issue comments are retained and have follow-up code and qualification records. Re-fetch after the final publication; comment status is not proof that the code is correct.
 
 ## Verification and remaining requirements
 
@@ -341,23 +353,23 @@ This prompt-to-artifact checklist separates observed results from open requireme
 
 | Requirement | Artifact and verification surface | Evidence / open work |
 |---|---|---|
-| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 39 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
-| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. Stack 582 has 31 upgrade PRs; stack 581 has six. CI 558/559 remain on independent release histories. No release branch was merged. |
-| Apply the requested label | GitHub labels | All 37 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
+| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 41 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
+| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. Stack 582 has 33 upgrade PRs; stack 581 has six. CI 558/559 remain on independent release histories. No release branch was merged. |
+| Apply the requested label | GitHub labels | All 39 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
 | Keep PRs below 1,000 changed lines, preferably near 500 | Additions plus deletions, not file length | Established diffs passed the limit; recheck the new metrics follow-ups after publication. The largest established diffs are 981 and 963 lines. |
 | Use plain, direct English | Plan, review, comment replies and workflow comments | Final wording/link review remains required. Historical findings are not current deployment instructions. |
 | Gate every Kafka behavior change | `KafkaConfig`, `DynamicBrokerConfig`, runtime call sites, metrics, wrapper mapping | 24 default-off 3.9 gates. F18/F19 use the cleanup gate; ISR retry repair uses bridge mode; F22 separately gates diagnostic registration. Dedicated disabled/activation tests pass. The final per-change call-site audit remains open. |
 | Select symmetric v2/v5/v1 control | Schemas, controller selectors, wire fixtures and retained logs | Both generations have fixtures and real-process coverage. F20 makes rotated log checks fail closed too. Final-source process qualification remains required. |
 | Fence activation and preserve callbacks | `RequestSendThreadBridgeTest` | Blocked dequeue, sustained queue and admitted-deletion callback tests pass. Controller restart remains mandatory. |
-| Enforce all six phases and unchanged clients | `li_bridge_contract.py`, preflight, persistent client/Streams/Connect and private-API helpers | 72 Python tests pass. Native control stays at IBP 3.0 before the separate IBP roll. One 3.0 archive is not the deployed client/tool floor. |
+| Enforce all six phases and unchanged clients | `li_bridge_contract.py`, preflight, persistent client/Streams/Connect and private-API helpers | 80 Python tests pass. Native control stays at IBP 3.0 before the separate IBP roll. One 3.0 archive is not the deployed client/tool floor. |
 | Prove persisted rollback and recovery | Process runner, record helper, timings and JUnit | Historical full run covers canary/all-3.9 rollback, cancellation, crashes and truncation. Repeat against the final source; registration or ISR alone is not proof. |
 | Prove deletion and name reuse | `TopicDeletionManager`, `ZkMetadataCache`, `ReplicaManager`, `BridgeTopicIdentity` | Gated F12/F13/F15/F17/F18/F19 repairs have tests. Revision 4 requires four post-promotion record checks. They passed in the current scoped checks, but do not replace complete qualification. |
 | Handle version-changing ISR retries | `BridgeAlterPartitionRetryTest` | One queued builder crosses versions 3/1 and activation without reusing mutated request data. Earlier failed logs remain failed evidence. |
 | Collect real runtime/configuration/state | Live inventory, runtime probe and negative-input tests | Disposable-cluster collection passes. Production binaries, settings, state dispositions, owners and client/tool floor remain required inputs. |
 | Qualify pagination with the loaded runtime | `KafkaZkClient`, five vendor-client tests and release runtime probe | Startup rejects an unsupported client. Vendor tests pass. The actual deployed client/Jute/server pairing remains a release gate. |
 | Follow Google shell style, including comments | Four wrappers, all extracted workflow Bash blocks, ShellCheck, shfmt, syntax/length checks | The refreshed audit checks exact reviewed source revisions: 54 changed-workflow blocks and four wrappers pass ShellCheck, shfmt, syntax, no-tab and 80-column checks. Unmodified upstream Docker workflows are outside these PRs; the broader diagnostic results are retained separately. |
-| Preserve wrapper/API compatibility | Factory mapping tests, ACL tests, complete wrapper suite and jar comparison | Historical 132-test suite passed with matching jars and stable hashes. The required Mint refresh has now produced a fresh dependency spec. Test the new metrics mapping against matching staged jars; no TTL or artifact-identity bypass is allowed. |
-| Qualify real archives and reject incomplete evidence | `verify_li_bridge.sh`, `audit_li_bridge_evidence.py`, `verify_li_bridge_release.sh` and negative fixtures | Earlier full verifier passed, but predates F18/F19. Final full-source verification and release-guard inputs/negative behavior remain open. |
+| Preserve wrapper/API compatibility | Factory mapping tests, ACL tests, complete wrapper suite and jar comparison | The current 133-test suite passes with matching main jars, stable main/test-classifier hashes and unchanged source. Wrapper commit 1764cc95 is published. The required Mint refresh produced a fresh dependency spec; no TTL or artifact-identity bypass was used. |
+| Qualify real archives and reject incomplete evidence | `verify_li_bridge.sh`, `audit_li_bridge_evidence.py`, `verify_li_bridge_release.sh` and negative fixtures | Earlier full verifier passed but predates F18/F19. The metrics-gated full run is active. Eight new release-input tests cover missing inputs, malformed identifiers, mismatched/unknown archive metadata, dirty/wrong checkouts, forced full mode and rejection before launch. A real-archive identity-only check also passes; neither it nor the fixtures grant release approval. |
 | Address every review comment with evidence | Comment ledger, source/test decisions, GraphQL readback | All original 62 replies verified across 37 PRs; no new review threads. Later issue findings have published fixes and explicit qualification limits. Re-fetch after final publication. |
 | Keep the three documents consistent | Workspace files and `docs/ops/li-bridge-{upgrade,review,review-comments}.md` | This follow-up synchronizes the records. Verify relative links and actual PR/source/evidence state before calling the review complete. |
 | Preserve side-task PR 2039 | ADU worktree, commit history and formatting checks | Rebased/pushed on master at `ae007420`; formatting is one separate commit and is idempotent. Functional patches remain unchanged. |
@@ -385,7 +397,9 @@ Later evidence supersedes the inventory and coverage limits of those historical 
 
 The complete revision-4 process run `/tmp/li-scenario-4-churn-fixed` passed on clean `d8f255f8a4` / `1a5d02403b`, with all four name-reuse checks, unchanged source and an issue-free process audit. It includes F20/F21 but predates F22. The real `mint --no-metrics dependency create-dependency-spec --detect-variant --overwrite` command has now refreshed the wrapper metadata successfully. An invocation without `--overwrite` returned success without refreshing the expired file; that no-op was not accepted as freshness evidence.
 
-No complete bundle yet covers the final metrics opt-in, both binaries and wrapper together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
+`/tmp/li-wrapper-metrics-qualification` retains the 133-test wrapper result and matching before/after artifact reports. `/tmp/li-release-input-regressions.log` records 80 passing Python tests; `/tmp/li-release-input-real-check.json` is explicitly identity-validation-only. `/tmp/li-native-quota-before.log` preserves the flag-off failure; `/tmp/li-native-quota-after.log` passes after the repair.
+
+No complete bundle yet covers the quota correction, final metrics opt-in, both binaries and wrapper together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
 
 ### Inputs still required before production
 

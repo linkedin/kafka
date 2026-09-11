@@ -29,9 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BridgeProtocolConstantsTest {
     @Test
-    public void testLinkedInClientProtocolConstants() {
+    public void testLinkedInProtocolConstants() {
         assertEquals(1000, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK.id);
         assertEquals(1002, ApiKeys.LI_MOVE_CONTROLLER.id);
+        assertEquals(1003, ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES.id);
+        assertEquals(1004, ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES.id);
+        assertEquals(1005, ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES.id);
         assertEquals(2, ElectionType.RECOMMENDED.value);
         assertEquals(-104L, ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP);
         assertEquals(Errors.OFFSET_MOVED_TO_TIERED_STORAGE, Errors.forCode((short) 1107));
@@ -39,10 +42,13 @@ public class BridgeProtocolConstantsTest {
     }
 
     @Test
-    public void testControlApisAreScopedToZooKeeperBrokers() {
+    public void testPrivateApisAreScopedToZooKeeperBrokers() {
         for (ApiKeys apiKey : Arrays.asList(
             ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK,
-            ApiKeys.LI_MOVE_CONTROLLER
+            ApiKeys.LI_MOVE_CONTROLLER,
+            ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES,
+            ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES,
+            ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES
         )) {
             assertTrue(apiKey.inScope(ListenerType.ZK_BROKER));
             assertFalse(apiKey.inScope(ListenerType.BROKER));

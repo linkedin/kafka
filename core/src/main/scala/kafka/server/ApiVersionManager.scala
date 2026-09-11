@@ -61,8 +61,15 @@ object ApiVersionManager {
       config.unstableApiVersionsEnabled,
       config.migrationEnabled,
       clientMetricsManager,
-      () => config.liProtocolBridgeMoveControllerActive,
-      () => config.liProtocolBridgeShutdownSafetyOverrideActive
+      apiKey => apiKey match {
+        case ApiKeys.LI_MOVE_CONTROLLER => config.liProtocolBridgeMoveControllerActive
+        case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK =>
+          config.liProtocolBridgeShutdownSafetyOverrideActive
+        case ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES |
+             ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES |
+             ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES => config.liProtocolBridgeFederatedTopicsActive
+        case _ => true
+      }
     )
   }
 }
@@ -145,16 +152,13 @@ class DefaultApiVersionManager(
   val enableUnstableLastVersion: Boolean,
   val zkMigrationEnabled: Boolean = false,
   val clientMetricsManager: Option[ClientMetricsManager] = None,
-  liMoveControllerEnabled: () => Boolean = () => false,
-  liShutdownSafetyOverrideEnabled: () => Boolean = () => false
+  liApiEnabled: ApiKeys => Boolean = _ => false
 ) extends ApiVersionManager {
 
   val enabledApis: mutable.Set[ApiKeys] = ApiKeys.apisForListener(listenerType).asScala
 
-  private def isLiApiEnabled(apiKey: ApiKeys): Boolean = apiKey match {
-    case ApiKeys.LI_MOVE_CONTROLLER => liMoveControllerEnabled()
-    case ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK => liShutdownSafetyOverrideEnabled()
-    case _ => true
+  private def isLiApiEnabled(apiKey: ApiKeys): Boolean = {
+    if (apiKey == null || apiKey.id < 1000) true else liApiEnabled(apiKey)
   }
 
   override def isApiEnabled(apiKey: ApiKeys, apiVersion: Short): Boolean =

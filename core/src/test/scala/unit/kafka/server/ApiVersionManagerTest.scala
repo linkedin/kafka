@@ -42,8 +42,7 @@ class ApiVersionManagerTest {
       brokerFeatures = brokerFeatures,
       metadataCache = metadataCache,
       enableUnstableLastVersion = true,
-      liMoveControllerEnabled = () => true,
-      liShutdownSafetyOverrideEnabled = () => true
+      liApiEnabled = _ => true
     )
     assertEquals(ApiKeys.apisForListener(apiScope).asScala, versionManager.enabledApis)
     assertTrue(ApiKeys.apisForListener(apiScope).asScala.forall { apiKey =>
@@ -80,11 +79,12 @@ class ApiVersionManagerTest {
       brokerFeatures = brokerFeatures,
       metadataCache = metadataCache,
       enableUnstableLastVersion = true,
-      liMoveControllerEnabled = () => enabled,
-      liShutdownSafetyOverrideEnabled = () => enabled
+      liApiEnabled = _ => enabled
     )
 
-    Seq(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK).foreach { apiKey =>
+    Seq(ApiKeys.LI_MOVE_CONTROLLER, ApiKeys.LI_CONTROLLED_SHUTDOWN_SKIP_SAFETY_CHECK,
+      ApiKeys.LI_CREATE_FEDERATED_TOPIC_ZNODES, ApiKeys.LI_DELETE_FEDERATED_TOPIC_ZNODES,
+      ApiKeys.LI_LIST_FEDERATED_TOPIC_ZNODES).foreach { apiKey =>
       val disabledManager = versionManager(enabled = false)
       assertFalse(disabledManager.isApiEnabled(apiKey, apiKey.latestVersion))
       assertNull(disabledManager.apiVersionResponse(0, alterFeatureLevel0 = false).data.apiKeys.find(apiKey.id))

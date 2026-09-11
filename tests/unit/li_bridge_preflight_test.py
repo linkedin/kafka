@@ -106,12 +106,30 @@ class LiBridgePreflightTest(unittest.TestCase):
             Path("broker.properties"), self.mixed_properties(), "mixed", True)
         self.assertEqual(len(PREFLIGHT.BRIDGE_GATES) - len(PREFLIGHT.MIXED_REQUIRED_GATES), len(issues))
 
+    def test_config_metrics_opt_in_is_required_in_every_phase(self):
+        gate = "li.protocol.bridge.config.metrics.enable"
+        for phase, (ibp, mode, generations) in PREFLIGHT.PHASES.items():
+            for generation in generations:
+                for value in (None, "false"):
+                    with self.subTest(phase=phase, generation=generation, value=value):
+                        properties = {name: "true" for name in PREFLIGHT.BRIDGE_GATES}
+                        properties.update({"broker.id": "0", "inter.broker.protocol.version": ibp,
+                                           PREFLIGHT.MODE: str(mode).lower()})
+                        self.assertEqual([], PREFLIGHT.inspect_config(Path("broker"), properties, phase, True, generation)[0])
+                        if value is None:
+                            properties.pop(gate)
+                        else:
+                            properties[gate] = value
+                        issues, _ = PREFLIGHT.inspect_config(Path("broker"), properties, phase, True, generation)
+                        self.assertTrue(any(gate in issue for issue in issues))
+
     def test_legacy_broker_requires_bridge_mode_and_topic_cleanup(self):
         properties = {
             "broker.id": "0",
             "inter.broker.protocol.version": "3.0",
             "li.protocol.bridge.mode.enable": "true",
             "li.protocol.bridge.topic.deletion.state.cleanup.enable": "true",
+            "li.protocol.bridge.config.metrics.enable": "true",
         }
         issues, details = PREFLIGHT.inspect_config(
             Path("legacy.properties"), properties, "mixed", True, "3.0")

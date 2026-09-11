@@ -22,6 +22,7 @@ import scala.jdk.CollectionConverters._
 
 object LiProtocolBridgeMetrics {
   val ModeEnabled = "ModeEnabled"
+  val ConfigMetricsEnabled = "ConfigMetricsEnabled"
   val TopicDeletionStateCleanupEnabled = "TopicDeletionStateCleanupEnabled"
   val FollowerRecoveryEnabled = "FollowerRecoveryEnabled"
   val RecommendedLeaderElectionEnabled = "RecommendedLeaderElectionEnabled"
@@ -46,7 +47,7 @@ object LiProtocolBridgeMetrics {
   val LeaderTransferEnabled = "LeaderTransferEnabled"
   val LegacyRequestMetricsEnabled = "LegacyRequestMetricsEnabled"
   val LogTruncationMetricsEnabled = "LogTruncationMetricsEnabled"
-  val MetricNames: Seq[String] = Seq(ModeEnabled, TopicDeletionStateCleanupEnabled, FollowerRecoveryEnabled,
+  val MetricNames: Seq[String] = Seq(ModeEnabled, ConfigMetricsEnabled, TopicDeletionStateCleanupEnabled, FollowerRecoveryEnabled,
     RecommendedLeaderElectionEnabled, ExcludePartitionsEnabled, MoveControllerEnabled,
     ShutdownSafetyOverrideEnabled, PreferredControllerEnabled, FederatedTopicsEnabled,
     RackIdMapperEnabled, ZookeeperPaginationEnabled, DynamicTopicDeletionEnabled,
@@ -64,60 +65,64 @@ class LiProtocolBridgeMetrics(config: KafkaConfig) extends AutoCloseable {
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
   private val tags = Map("broker-id" -> config.brokerId.toString).asJava
 
-  metricsGroup.newGauge(ModeEnabled, () => enabled(config.liProtocolBridgeModeActive), tags)
-  metricsGroup.newGauge(TopicDeletionStateCleanupEnabled,
-    () => enabled(config.liProtocolBridgeTopicDeletionStateCleanupActive), tags)
-  metricsGroup.newGauge(FollowerRecoveryEnabled,
-    () => enabled(config.liProtocolBridgeFollowerRecoveryActive), tags)
-  metricsGroup.newGauge(RecommendedLeaderElectionEnabled,
-    () => enabled(config.liProtocolBridgeRecommendedElectionActive), tags)
-  metricsGroup.newGauge(ExcludePartitionsEnabled,
-    () => enabled(config.liProtocolBridgeExcludePartitionsActive), tags)
-  metricsGroup.newGauge(MoveControllerEnabled,
-    () => enabled(config.liProtocolBridgeMoveControllerActive), tags)
-  metricsGroup.newGauge(ShutdownSafetyOverrideEnabled,
-    () => enabled(config.liProtocolBridgeShutdownSafetyOverrideActive), tags)
-  metricsGroup.newGauge(PreferredControllerEnabled,
-    () => enabled(config.liProtocolBridgePreferredControllerActive), tags)
-  metricsGroup.newGauge(FederatedTopicsEnabled,
-    () => enabled(config.liProtocolBridgeFederatedTopicsActive), tags)
-  metricsGroup.newGauge(RackIdMapperEnabled,
-    () => enabled(config.liProtocolBridgeRackIdMapperActive), tags)
-  metricsGroup.newGauge(ZookeeperPaginationEnabled,
-    () => enabled(config.liZookeeperPaginationEnable), tags)
-  metricsGroup.newGauge(DynamicTopicDeletionEnabled,
-    () => enabled(config.liProtocolBridgeDynamicTopicDeletionActive), tags)
-  metricsGroup.newGauge(ControllerInitializationThreads,
-    () => config.liNumControllerInitThreads, tags)
-  metricsGroup.newGauge(ProduceRequestInstrumentationEnabled,
-    () => enabled(config.liProtocolBridgeProduceRequestInstrumentationActive), tags)
-  metricsGroup.newGauge(RequestMetricBucketsEnabled,
-    () => enabled(config.liProtocolBridgeRequestMetricBucketsActive), tags)
-  metricsGroup.newGauge(RequestChannelWatchdogEnabled,
-    () => enabled(config.liProtocolBridgeRequestChannelWatchdogActive), tags)
-  metricsGroup.newGauge(MinimumLogRollEnabled,
-    () => enabled(config.liProtocolBridgeMinimumLogRollActive), tags)
-  metricsGroup.newGauge(ReassignmentCancellationSafetyEnabled,
-    () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
-  metricsGroup.newGauge(ListOffsetsInstrumentationEnabled,
-    () => enabled(config.liProtocolBridgeListOffsetsInstrumentationActive), tags)
-  metricsGroup.newGauge(StaticDefaultQuotasEnabled,
-    () => enabled(config.liProtocolBridgeStaticDefaultQuotasActive), tags)
-  metricsGroup.newGauge(ReplicaRequestTimeoutEnabled,
-    () => enabled(config.liProtocolBridgeReplicaRequestTimeoutActive), tags)
-  metricsGroup.newGauge(OffsetsTopicConfigEnabled,
-    () => enabled(config.liProtocolBridgeOffsetsTopicConfigActive), tags)
-  metricsGroup.newGauge(LeaderTransferEnabled,
-    () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
-  metricsGroup.newGauge(LegacyRequestMetricsEnabled,
-    () => enabled(config.liProtocolBridgeLegacyRequestMetricsActive), tags)
-  metricsGroup.newGauge(LogTruncationMetricsEnabled,
-    () => enabled(config.liProtocolBridgeLogTruncationMetricsActive), tags)
+  private val registrationEnabled = config.liProtocolBridgeConfigMetricsActive
+  if (registrationEnabled) {
+    metricsGroup.newGauge(ConfigMetricsEnabled, () => 1, tags)
+    metricsGroup.newGauge(ModeEnabled, () => enabled(config.liProtocolBridgeModeActive), tags)
+    metricsGroup.newGauge(TopicDeletionStateCleanupEnabled,
+      () => enabled(config.liProtocolBridgeTopicDeletionStateCleanupActive), tags)
+    metricsGroup.newGauge(FollowerRecoveryEnabled,
+      () => enabled(config.liProtocolBridgeFollowerRecoveryActive), tags)
+    metricsGroup.newGauge(RecommendedLeaderElectionEnabled,
+      () => enabled(config.liProtocolBridgeRecommendedElectionActive), tags)
+    metricsGroup.newGauge(ExcludePartitionsEnabled,
+      () => enabled(config.liProtocolBridgeExcludePartitionsActive), tags)
+    metricsGroup.newGauge(MoveControllerEnabled,
+      () => enabled(config.liProtocolBridgeMoveControllerActive), tags)
+    metricsGroup.newGauge(ShutdownSafetyOverrideEnabled,
+      () => enabled(config.liProtocolBridgeShutdownSafetyOverrideActive), tags)
+    metricsGroup.newGauge(PreferredControllerEnabled,
+      () => enabled(config.liProtocolBridgePreferredControllerActive), tags)
+    metricsGroup.newGauge(FederatedTopicsEnabled,
+      () => enabled(config.liProtocolBridgeFederatedTopicsActive), tags)
+    metricsGroup.newGauge(RackIdMapperEnabled,
+      () => enabled(config.liProtocolBridgeRackIdMapperActive), tags)
+    metricsGroup.newGauge(ZookeeperPaginationEnabled,
+      () => enabled(config.liZookeeperPaginationEnable), tags)
+    metricsGroup.newGauge(DynamicTopicDeletionEnabled,
+      () => enabled(config.liProtocolBridgeDynamicTopicDeletionActive), tags)
+    metricsGroup.newGauge(ControllerInitializationThreads,
+      () => config.liNumControllerInitThreads, tags)
+    metricsGroup.newGauge(ProduceRequestInstrumentationEnabled,
+      () => enabled(config.liProtocolBridgeProduceRequestInstrumentationActive), tags)
+    metricsGroup.newGauge(RequestMetricBucketsEnabled,
+      () => enabled(config.liProtocolBridgeRequestMetricBucketsActive), tags)
+    metricsGroup.newGauge(RequestChannelWatchdogEnabled,
+      () => enabled(config.liProtocolBridgeRequestChannelWatchdogActive), tags)
+    metricsGroup.newGauge(MinimumLogRollEnabled,
+      () => enabled(config.liProtocolBridgeMinimumLogRollActive), tags)
+    metricsGroup.newGauge(ReassignmentCancellationSafetyEnabled,
+      () => enabled(config.liProtocolBridgeReassignmentCancellationSafetyActive), tags)
+    metricsGroup.newGauge(ListOffsetsInstrumentationEnabled,
+      () => enabled(config.liProtocolBridgeListOffsetsInstrumentationActive), tags)
+    metricsGroup.newGauge(StaticDefaultQuotasEnabled,
+      () => enabled(config.liProtocolBridgeStaticDefaultQuotasActive), tags)
+    metricsGroup.newGauge(ReplicaRequestTimeoutEnabled,
+      () => enabled(config.liProtocolBridgeReplicaRequestTimeoutActive), tags)
+    metricsGroup.newGauge(OffsetsTopicConfigEnabled,
+      () => enabled(config.liProtocolBridgeOffsetsTopicConfigActive), tags)
+    metricsGroup.newGauge(LeaderTransferEnabled,
+      () => enabled(config.liProtocolBridgeLeaderTransferActive), tags)
+    metricsGroup.newGauge(LegacyRequestMetricsEnabled,
+      () => enabled(config.liProtocolBridgeLegacyRequestMetricsActive), tags)
+    metricsGroup.newGauge(LogTruncationMetricsEnabled,
+      () => enabled(config.liProtocolBridgeLogTruncationMetricsActive), tags)
+  }
 
   private def enabled(value: Boolean): Int = if (value) 1 else 0
 
   override def close(): Unit = {
-    MetricNames.foreach { name =>
+    if (registrationEnabled) MetricNames.foreach { name =>
       metricsGroup.removeMetric(name, tags)
     }
   }

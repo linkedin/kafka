@@ -37,7 +37,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from li_bridge_artifacts import file_sha256, snapshot_archive
-from li_bridge_contract import CONTRACT_VERSION, MODE, PHASES, TOPIC_CLEANUP, scenario_spec
+from li_bridge_contract import CONFIG_METRICS, CONTRACT_VERSION, MODE, PHASES, TOPIC_CLEANUP, scenario_spec
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -206,7 +206,8 @@ class Migration:
             "transaction.state.log.min.isr": 1, "controlled.shutdown.enable": "true",
             "controlled.shutdown.max.retries": 3, "controlled.shutdown.retry.backoff.ms": 1000,
             "delete.topic.enable": "true", "log.segment.delete.delay.ms": 100,
-            "inter.broker.protocol.version": ibp, MODE: str(mode).lower(), TOPIC_CLEANUP: "true",
+            "inter.broker.protocol.version": ibp, MODE: str(mode).lower(),
+            CONFIG_METRICS: "true", TOPIC_CLEANUP: "true",
             "remote.log.storage.system.enable": "false", "li.drop.corrupted.files.enable": "false",
             "li.leader.election.on.corruption.wait.ms": 0,
         }

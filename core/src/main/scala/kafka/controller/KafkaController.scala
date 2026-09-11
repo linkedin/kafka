@@ -360,7 +360,12 @@ class KafkaController(val config: KafkaConfig,
     info(s"Sending update metadata request ${KafkaController.timing(-1, failoverStartMs, time)}")
     val controllerContextSnapshot = ControllerContextSnapshot(controllerContext)
     // PERF TODO:  add controllerContextSnapshot as optional (defaultable) 3rd arg:
-    sendUpdateMetadataRequest(controllerContextSnapshot.liveOrShuttingDownBrokerIds.toSeq, Set.empty)
+    val initialMetadataPartitions = if (config.liProtocolBridgeTopicDeletionStateCleanupActive)
+      controllerContext.partitionsLeadershipInfo.keySet.toSet
+    else Set.empty[TopicPartition]
+    // With cleanup enabled, each new controller epoch starts with a complete cache image.
+    // This lets receivers discard entries whose deletion update was lost during failover.
+    sendUpdateMetadataRequest(controllerContextSnapshot.liveOrShuttingDownBrokerIds.toSeq, initialMetadataPartitions)
 
     maybeCleanIsrsForCorruptedBrokers(controllerContext.corruptedBrokers)
 

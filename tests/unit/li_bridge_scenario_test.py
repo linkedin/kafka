@@ -102,6 +102,30 @@ class LiBridgeScenarioTest(unittest.TestCase):
             self.assertEqual(b"retained failure detail", data)
             self.assertTrue(rotated.exists())
 
+    def test_prepare_checks_retry_policy_with_both_client_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = object.__new__(Migration)
+            runner.work = Path(directory)
+            runner.evidence = runner.work / "evidence"
+            runner.evidence.mkdir()
+            runner.zk_port, runner.homes, runner.archives = 22181, {}, {}
+            for generation in ("3.0", "3.9"):
+                path = runner.work / f"{generation}.tgz"
+                with tarfile.open(path, "w:gz") as archive:
+                    archive.addfile(tarfile.TarInfo("kafka/libs/fixture"))
+                runner.archives[generation] = path
+            with mock.patch("li_bridge_mixed_cluster_smoke.snapshot_archive",
+                            side_effect=lambda path, *_: {"path": str(path)}), \
+                    mock.patch.object(runner, "command") as command, \
+                    mock.patch.object(runner, "java") as java, \
+                    mock.patch.object(runner, "start"), mock.patch.object(runner, "until"):
+                runner.prepare()
+            for generation in ("3.0", "3.9"):
+                java.assert_any_call("LiBridgeMetadataChurnRetryTest", generation=generation)
+            self.assertEqual(2, command.call_count)
+            for call in command.call_args_list:
+                self.assertIn("LiBridgeMetadataChurnRetryTest.java", [Path(arg).name for arg in call.args[0]])
+
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]
         config = (root / "core/src/main/scala/kafka/server/KafkaConfig.scala").read_text()

@@ -489,13 +489,15 @@ class Migration:
             self.homes[generation] = homes[0]
             classes = self.work / f"classes-{generation}"
             classes.mkdir()
-            helpers = ["LiBridgePrivateApiSmoke.java", "LiBridgeRecords.java"]
+            helpers = ["LiBridgePrivateApiSmoke.java", "LiBridgeRecords.java",
+                       "LiBridgeMetadataChurn.java", "LiBridgeMetadataChurnRetryTest.java"]
             if generation == "3.0":
-                helpers.extend(["LiBridgeContinuousClients.java", "LiBridgeMetadataChurn.java"])
+                helpers.append("LiBridgeContinuousClients.java")
             else:
                 helpers.extend(["LiBridgeMetadataScaleSmoke.java", "LiBridgeLiveInventory.java", "LiBridgeRuntimeProbe.java"])
             self.command(["javac", "--release", "11", "-cp", f"{homes[0] / 'libs'}/*", "-d", classes,
                           *[SCRIPT_DIR / name for name in helpers]])
+            self.java("LiBridgeMetadataChurnRetryTest", generation=generation)
         self.java("LiBridgeContinuousClients", "--self-test")
         self.java("LiBridgeRuntimeProbe", self.evidence / "packaged-runtime-39.json", "false", generation="3.9")
         write_properties(self.work / "zookeeper.properties", {"clientPort": self.zk_port,

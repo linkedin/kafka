@@ -37,6 +37,7 @@ object ProduceRequestInstrumentation {
 
   val Disabled: ProduceRequestInstrumentation = new ProduceRequestInstrumentation(Time.SYSTEM) {
     override def markStage(stage: Stage.Value): Unit = ()
+    override def appliedTopicPartitions_=(partitions: Iterable[TopicPartition]): Unit = ()
   }
 }
 
@@ -44,7 +45,12 @@ class ProduceRequestInstrumentation(time: Time) {
   import ProduceRequestInstrumentation.Stage
 
   private[instrumentation] val marks = mutable.Map.empty[Stage.Value, Long]
-  @volatile var appliedTopicPartitions: Iterable[TopicPartition] = Seq.empty
+  @volatile private var topicPartitions: Iterable[TopicPartition] = Seq.empty
+
+  def appliedTopicPartitions: Iterable[TopicPartition] = topicPartitions
+  def appliedTopicPartitions_=(partitions: Iterable[TopicPartition]): Unit = {
+    topicPartitions = partitions
+  }
 
   markStage(Stage.Init)
 
@@ -109,7 +115,7 @@ final class ProduceRequestInstrumentationLogger(config: KafkaConfig,
   }
 
   def maybeLog(request: Request, instrumentation: ProduceRequestInstrumentation): Unit = {
-    if (!enabled)
+    if (!enabled || (instrumentation eq ProduceRequestInstrumentation.Disabled))
       return
 
     val endTimeNanos = time.nanoseconds()

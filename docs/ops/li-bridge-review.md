@@ -19,15 +19,15 @@ limitations under the License.
 
 ## Current verdict
 
-**Do not deploy this candidate. The coverage audit found two offline topic-name-reuse failures after an earlier full verifier passed.** Both paired repairs are published in 583–586, but final qualification remains incomplete. The current inventory has 43 open PRs. The complete revision-4 process run now passes, including all four offline-reuse record checks. The diagnostic-metrics opt-in and matching wrapper pass their scoped suites. The full verifier on that pair passed its build/JVM/wrapper stages but failed the all-3.0 dormant-backout churn-progress deadline. The offline-deletion cause is now repaired and covered by deterministic tests. Complete final-source qualification, including the quota repair and scenario revision 5, is still required. An earlier green bundle or CI run does not cover a scenario it never exercised.
+**Do not deploy this candidate without final-source qualification and the release approvals.** A complete local full-verifier run now passes, including scenario revision 5, native offline deletion, all four name-reuse cases and the matching wrapper. Later default-off audits and a failed CI run exposed the F25/F26 gaps. Their repairs are published, but the combined final pair still needs qualification. The inventory covers 45 open PRs. Earlier passing or failed bundles retain their original source and coverage limits.
 
 The findings below record what the initial review and later tests found. Instructions in an original finding describe the repair that was needed; use the current disposition and evidence sections for status. This is not a line-by-line approval of every Kafka change.
 
 ### Reviewed revisions
 
 - Workspace plan: `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. Canonical runbook: `docs/ops/li-bridge-upgrade.md`.
-- Current 3.9 implementation and qualification: PR 593, `3.9-li-bridge/native-deletion-qualification`, including the quota repair in PR 590.
-- Current 3.0 source: PR 592, `0e15a6763937f95bb766c2d7a856f546b51ac10a`.
+- Current 3.9 implementation and qualification: PR 594, `3.9-li-bridge/default-off-audit`, including the quota repair in PR 590 and mandatory native deletion in PR 593.
+- Current 3.0 source: PR 595, `427e1d993f1eaed9cf13c2d441889f2f7abea81f`.
 - CI: PR 558, `3e799b08ea`; PR 559, `a86214e2da`.
 - Wrapper: `1764cc95bfa21e19d3ff89e0164e5896808b5507`, including the diagnostic opt-in and the earlier ACL test fix.
 
@@ -299,6 +299,24 @@ PR 592 requires real replica acknowledgements while either bridge mode or the cl
 
 A real-broker probe failed before: cached topic present, assignment absent. With the repair it passes: cache cleared, assignment retained until replica return, and replacement records verified after recreation. The actual runner method also passes these checks. PR 593 makes them mandatory in scenario revision 5 and rejects revision-4 or incomplete evidence. All 82 Python tests pass. These targets deliberately remain incomplete migrations, not full qualification passes.
 
+### F25 — P2: Remaining default-off paths need explicit guards
+
+The raw `AdminZkClient.createTopic` and `addPartitions` utilities excluded preferred-controller IDs without consulting their optional KafkaConfig. A regression failed with replication factor 3 but only two available brokers, although no preferred-controller flag was supplied. PR 594 requires the existing gate for that exclusion. Maintenance config still applies independently, and explicit manual assignments may include preferred brokers. The normal broker API was already gated and is not the failing path.
+
+The audit also found three added `KafkaController` diagnostic gauges registered while the diagnostics opt-in was false. They now use the existing `config.metrics` gate, including conditional cleanup. Native controller metrics remain unchanged. The before regression observed the unwanted registration; both enabled/disabled cases pass after the fix.
+
+Finally, the shared disabled produce-instrumentation object retained partition references and could be read by a logger activated after the request started. It now ignores partition setters, and the logger skips uncollected requests. The getter/setter JVM methods remain. Before tests caught retained state and request access after activation; enabled stage/partition tests and both disabled-path tests pass after repair.
+
+The affected suites pass on Scala 2.12 and 2.13; all 82 Python tests pass. The focused verifier now includes the complete raw-admin suite and the existing replica-timeout/offsets-topic configuration tests. `docs/ops/li-bridge-gate-audit.md` maps the reviewed runtime boundaries to configuration and tests. Final-source qualification must cover these fixes rather than reuse the ongoing predecessor run.
+
+### F26 — P1: Merged non-delete responses can poison deletion state
+
+PR 593's failed CI run selected the repaired 3.0 archive and passed the native offline-deletion test, then stalled during later churn. Unlike F24, its topic assignment still existed. The controller treated a `FENCED_LEADER_EPOCH` response as a deletion failure, reset the replica to `OfflineReplica`, then rejected the subsequent successful deletion acknowledgements.
+
+The 3.0 merger keeps one callback per request type while queued partition states may produce several responses. The StopReplica callback ORed its captured delete predicate with the response bit. A later delete request's predicate could therefore misclassify an earlier non-delete response. PR 595 uses the authoritative native-v4 response delete bit under the cleanup gate. Older wire versions keep the request-predicate fallback; cleanup disabled keeps existing behavior.
+
+The four-configuration regression fails before the repair and passes after. Genuine deletion failures and acknowledgements are still forwarded. The complete controller-channel, bridge-send-thread and deletion suites pass. Paired CI now selects the response-fenced 3.0 branch. The failed CI evidence remains failed; final qualification must cover this repair.
+
 ## PR dispositions and dependency audit
 
 Every PR below has a distinct migration or CI purpose. Keep these scopes, but do not treat publication, a resolved thread or a green job as release approval. New review layers are drafts. The controller/ZooKeeper, security, storage and operational changes still need the corresponding owners' review.
@@ -313,6 +331,7 @@ Every PR below has a distinct migration or CI purpose. Keep these scopes, but do
 | [585](https://github.com/linkedin/kafka/pull/585) | 3.0 topic-identity validation — storage/controller |
 | [588](https://github.com/linkedin/kafka/pull/588) | 3.0 diagnostic-metrics opt-in — observability |
 | [592](https://github.com/linkedin/kafka/pull/592) | 3.0 deletion acknowledgement fencing during native backout — controller |
+| [595](https://github.com/linkedin/kafka/pull/595) | native StopReplica response classification under cleanup — controller |
 | [558](https://github.com/linkedin/kafka/pull/558) | 3.9 CI/publication — release engineering |
 | [543](https://github.com/linkedin/kafka/pull/543) | 3.9 outbound bridge — protocol/controller |
 | [544](https://github.com/linkedin/kafka/pull/544) | old wire/client/recovery compatibility — protocol/replication |
@@ -348,6 +367,7 @@ Every PR below has a distinct migration or CI purpose. Keep these scopes, but do
 | [590](https://github.com/linkedin/kafka/pull/590) | native quota-window behavior and gated fallback regression — quotas |
 | [591](https://github.com/linkedin/kafka/pull/591) | release-input negative tests and final audit records — verification/release |
 | [593](https://github.com/linkedin/kafka/pull/593) | mandatory native offline-deletion checks, scenario revision 5 — verification |
+| [594](https://github.com/linkedin/kafka/pull/594) | default-off placement, controller diagnostics and instrumentation audit — operations/verification |
 
 Merge CI 558/559 into their own release branches first. Then retarget the upgrade stack bottoms as described in the runbook. Never force a Git dependency between the 3.0 and 3.9 CI branches. When reordering again, change PR bases before pushing a head that becomes an ancestor of its former base; GitHub can otherwise auto-close and delete that branch.
 
@@ -363,12 +383,12 @@ This prompt-to-artifact checklist separates observed results from open requireme
 
 | Requirement | Artifact and verification surface | Evidence / open work |
 |---|---|---|
-| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 43 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
-| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. Stack 582 has 34 upgrade PRs; stack 581 has seven. CI 558/559 remain on independent release histories. No release branch was merged. |
-| Apply the requested label | GitHub labels | All 41 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
+| Review the named plan and every open public PR | `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`; canonical runbook; GitHub inventory | 45 open PRs are listed in both tables. Recheck the exact PR set after any further publication. |
+| Explain scope and dependencies | PR responsibility table, heads/bases, stack membership | Separate protocol, handlers, storage metrics, runner, auditor, verifier and release-gate layers. Stack 582 has 35 upgrade PRs; stack 581 has eight. CI 558/559 remain on independent release histories. No release branch was merged. |
+| Apply the requested label | GitHub labels | All 43 upgrade PRs have `kafka-upgrade-august-2026`; CI 558/559 do not. |
 | Keep PRs below 1,000 changed lines, preferably near 500 | Additions plus deletions, not file length | Established diffs passed the limit; recheck the new metrics follow-ups after publication. The largest established diffs are 981 and 963 lines. |
 | Use plain, direct English | Plan, review, comment replies and workflow comments | Final wording/link review remains required. Historical findings are not current deployment instructions. |
-| Gate every Kafka behavior change | `KafkaConfig`, `DynamicBrokerConfig`, runtime call sites, metrics, wrapper mapping | 24 default-off 3.9 gates. F18/F19 use the cleanup gate; ISR retry repair uses bridge mode; F22 separately gates diagnostic registration. Dedicated disabled/activation tests pass. The final per-change call-site audit remains open. |
+| Gate every Kafka behavior change | `KafkaConfig`, `DynamicBrokerConfig`, runtime call sites, metrics, wrapper mapping | 24 default-off 3.9 gates. F18/F19 use the cleanup gate; ISR retry repair uses bridge mode; F22 separately gates diagnostic registration. Dedicated disabled/activation tests pass. The gate-audit matrix records runtime call sites, non-Boolean configuration opt-ins and native behavior; verify it against final published source and final-source test results. |
 | Select symmetric v2/v5/v1 control | Schemas, controller selectors, wire fixtures and retained logs | Both generations have fixtures and real-process coverage. F20 makes rotated log checks fail closed too. Final-source process qualification remains required. |
 | Fence activation and preserve callbacks | `RequestSendThreadBridgeTest` | Blocked dequeue, sustained queue and admitted-deletion callback tests pass. Controller restart remains mandatory. |
 | Enforce all six phases and unchanged clients | `li_bridge_contract.py`, preflight, persistent client/Streams/Connect and private-API helpers | 82 Python tests pass. Native control stays at IBP 3.0 before the separate IBP roll. One 3.0 archive is not the deployed client/tool floor. |
@@ -413,7 +433,9 @@ The complete revision-4 process run `/tmp/li-scenario-4-churn-fixed` passed on c
 
 `/tmp/li-native-offline-deletion-before/target-result.json` retains the real-broker failure. The corresponding fixed target and `/tmp/li-native-deletion-runner-target/target-result.json` pass, while their complete-migration statuses remain false. `/tmp/li-native-deletion-after.log` passes the 18 focused controller/cache tests. `/tmp/li-native-deletion-tools-publish-tests.log` passes 82 Python tests.
 
-No complete bundle yet covers the native-deletion and quota corrections, final metrics opt-in, scenario revision 5, both binaries and wrapper together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
+`/tmp/li-native-backout-full` passed all full-verifier stages on clean 6ea4d367d2 / 0e15a67639 / wrapper 1764cc95, including scenario revision 5 and an issue-free final audit. It predates F25/F26. The new `/tmp/li-final-default-off-full` run covers F25 but still uses the pre-F26 3.0 archive. The CI failure at `/tmp/li-ci-593-small-evidence` exposed the response-classification gap despite that local pass.
+
+No complete bundle yet covers all final default-off and response-fencing repairs together. Failed runs remain failed. A source, archive or scenario change must be checked against the fingerprint before reuse.
 
 ### Inputs still required before production
 

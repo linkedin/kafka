@@ -66,9 +66,46 @@ class AdminZkClientTest extends QuorumTestHarness with Logging with RackAwareTes
     zkClient.createRecursive(PreferredControllersZNode.path)
     zkClient.registerPreferredControllerId(2)
 
-    adminZkClient.createTopic("maintenance-test", partitions = 4, replicationFactor = 2)
+    adminZkClient.createTopic("maintenance-test", partitions = 4, replicationFactor = 3)
     val assignment = zkClient.getReplicaAssignmentForTopics(Set("maintenance-test"))
-    assertTrue(assignment.values.forall(replicas => !replicas.contains(1) && !replicas.contains(2)))
+    assertTrue(assignment.values.forall(replicas => !replicas.contains(1) && replicas.contains(2)))
+  }
+
+  @Test
+  def testPreferredControllerExclusionRequiresExplicitConfig(): Unit = {
+    createBrokersInZk(zkClient, Seq(0, 1, 2))
+    zkClient.createRecursive(PreferredControllersZNode.path)
+    zkClient.registerPreferredControllerId(2)
+    Seq(None, Some(false), Some(true)).zipWithIndex.foreach { case (enabled, index) =>
+      val config = enabled.map { value =>
+        val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect)
+        props.put(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp, value.toString)
+        KafkaConfig.fromProps(props)
+      }
+      val client = new AdminZkClient(zkClient, config)
+      val topic = s"preferred-gate-$index"
+      val replicationFactor = if (enabled.contains(true)) 2 else 3
+      client.createTopic(topic, partitions = 1, replicationFactor = replicationFactor)
+      val initial = zkClient.getFullReplicaAssignmentForTopics(Set(topic))
+        .map { case (partition, assignment) => partition.partition -> assignment }
+      val expanded = client.addPartitions(topic, initial, client.getBrokerMetadatas(), numPartitions = 3)
+      assertEquals(3, expanded.size)
+      assertTrue(expanded.values.forall(replicas => replicas.contains(2) == !enabled.contains(true)))
+    }
+  }
+
+  @Test
+  def testManualAssignmentMayIncludePreferredController(): Unit = {
+    createBrokersInZk(zkClient, Seq(0, 1, 2))
+    zkClient.createRecursive(PreferredControllersZNode.path)
+    zkClient.registerPreferredControllerId(2)
+    val props = TestUtils.createBrokerConfig(0, TestUtils.MockZkConnect)
+    props.put(KafkaConfig.LiProtocolBridgePreferredControllerEnableProp, "true")
+    val client = new AdminZkClient(zkClient, Some(KafkaConfig.fromProps(props)))
+    client.createTopicWithAssignment("manual-preferred", new Properties, Map(0 -> Seq(0, 2)))
+    val result = client.addPartitions("manual-preferred", Map(0 -> ReplicaAssignment(Seq(0, 2))),
+      client.getBrokerMetadatas(), numPartitions = 2, replicaAssignment = Some(Map(1 -> Seq(2, 1))))
+    assertEquals(Seq(2, 1), result(1))
   }
 
   @Test

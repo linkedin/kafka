@@ -23,7 +23,7 @@ limitations under the License.
 
 The implementation base is Apache **3.9.2** with the reviewed LI bridge stack. Pin the final internal `3.9.2.N`, matching `3.0.1.N`, wrapper commit, archive checksums, JDKs and ZooKeeper runtime in the release record. A maintenance-baseline change requires a new qualification run; do not substitute a newer tag during rollout.
 
-The current implementation is the split stack through `3.9-li-bridge/native-deletion-qualification`, with the companion `3.0-li-bridge/native-deletion-ack` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
+The current implementation is the split stack through `3.9-li-bridge/default-off-audit`, with the companion `3.0-li-bridge/stop-response-fencing` branch. It is not the closed aggregate PR 542. The canonical mergeable runbook is `docs/ops/li-bridge-upgrade.md`; the workspace copy is `LI-3.0-TO-3.9-ROLLING-UPGRADE-PLAN.md`. The `3.9-li-bridge/review-refresh` branch updates the documentation after the behavior fixes. Historical experiments are evidence, not current acceptance criteria.
 
 **Clients do not change.** The supported producer, consumer, transactional client, Streams application, Connect worker, LI AdminClient and operational-tool artifacts/configuration must remain unchanged across every phase. Discovery must name their deployed version floor and owners. One 3.0 test archive is not proof for every externally deployed client.
 
@@ -237,7 +237,7 @@ Automatically stop for unexpected control versions, post-fence API 1001 traffic,
 
 ## PR inventory and merge order
 
-All 43 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
+All 45 open public PRs are covered below. Upgrade PRs carry `kafka-upgrade-august-2026`; CI foundations 558 and 559 do not. All current diffs are below 1,000 changed lines. These checks do not grant approval to deploy.
 
 Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 during the dependency reorder because their new heads were contained in their former base branches. No release branch was merged. Their restored, separate reviews are 579 and 578.
 
@@ -251,6 +251,7 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [585](https://github.com/linkedin/kafka/pull/585) | 3.0 topic-identity validation — storage/controller |
 | [588](https://github.com/linkedin/kafka/pull/588) | 3.0 diagnostic-metrics opt-in — observability |
 | [592](https://github.com/linkedin/kafka/pull/592) | 3.0 deletion acknowledgement fencing during native backout — controller |
+| [595](https://github.com/linkedin/kafka/pull/595) | native StopReplica response classification under cleanup — controller |
 | [558](https://github.com/linkedin/kafka/pull/558) | 3.9 CI/publication — release engineering |
 | [543](https://github.com/linkedin/kafka/pull/543) | 3.9 outbound bridge — protocol/controller |
 | [544](https://github.com/linkedin/kafka/pull/544) | old wire/client/recovery compatibility — protocol/replication |
@@ -286,12 +287,13 @@ Closed PRs 542 and 555 are superseded. GitHub automatically closed 563 and 564 d
 | [590](https://github.com/linkedin/kafka/pull/590) | native quota-window behavior and gated fallback regression — quotas |
 | [591](https://github.com/linkedin/kafka/pull/591) | release-input negative tests and final audit records — verification/release |
 | [593](https://github.com/linkedin/kafka/pull/593) | mandatory native offline-deletion checks, scenario revision 5 — verification |
+| [594](https://github.com/linkedin/kafka/pull/594) | default-off placement, controller diagnostics and instrumentation audit — operations/verification |
 
 Merge 558 into `3.9-li` and 559 into `3.0-li` first. They have different release bases, so do not put them in one dependent Git stack. Rebase/retarget 575 to `3.0-li` and 543 to `3.9-li`; do not merge feature work into temporary CI branches.
 
-The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588 → 592**. The stack rooted at PR 543 has the 3.9 order:
+The GitHub stack rooted at PR 575 has the 3.0 order **575 → 541 → 577 → 583 → 585 → 588 → 592 → 595**. The stack rooted at PR 543 has the 3.9 order:
 
-**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593**.
+**543 → 544 → 565 → 545 → 546 → 547 → 548 → 560 → 549 → 550 → 561 → 566 → 551 → 567 → 576 → 568 → 578 → 579 → 552 → 569 → 570 → 571 → 553 → 572 → 554 → 573 → 574 → 584 → 586 → 587 → 589 → 590 → 591 → 593 → 594**.
 
 Retarget remaining layers after each independent merge. The wrapper branch contains the ACL test repair (`6ddf2a87`) and cleanup mapping/tests (`1a9ecccf`); its source suite passes 132 tests. Add the approved wrapper/dependency/security PR and named deployment-gate owner to the release record.
 

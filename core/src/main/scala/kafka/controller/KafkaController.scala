@@ -642,7 +642,13 @@ class KafkaController(val config: KafkaConfig,
     // Send update metadata request to all the new brokers in the cluster with a full set of partition states for initialization.
     // In cases of controlled shutdown leaders will not be elected when a new broker comes up. So at least in the
     // common controlled shutdown case, the metadata will reach the new brokers faster.
-    sendUpdateMetadataRequest(newBrokers, controllerContext.partitionsWithLeaders)
+    // Bridge cleanup uses this complete image to retire unassigned local logs.
+    // Include leaderless partitions so their valid recovery logs are retained.
+    val initialPartitions = if (config.liProtocolBridgeTopicDeletionStateCleanupActive)
+      controllerContext.partitionsLeadershipInfo.keySet.toSet
+    else
+      controllerContext.partitionsWithLeaders
+    sendUpdateMetadataRequest(newBrokers, initialPartitions)
     // the very first thing to do when a new broker comes up is send it the entire list of partitions that it is
     // supposed to host. Based on that the broker starts the high watermark threads for the input list of partitions
     val allReplicasOnNewBrokers = controllerContext.replicasOnBrokers(newBrokersSet)

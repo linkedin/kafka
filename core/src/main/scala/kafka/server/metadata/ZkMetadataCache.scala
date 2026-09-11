@@ -41,6 +41,8 @@ import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{MetadataResponse, UpdateMetadataRequest}
 import org.apache.kafka.common.security.auth.SecurityProtocol
 
+private[server] case class ZkMetadataCacheUpdate(deletedPartitions: Seq[TopicPartition], replacedSnapshot: Boolean)
+
 /**
  *  A cache for the state (e.g., current leader) of each partition. This cache is updated through
  *  UpdateMetadataRequest from the controller. Every broker maintains the same cache, asynchronously.
@@ -308,7 +310,11 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
   // With cleanup enabled, upgraded controllers send a full first update for each epoch.
   // Later updates in that epoch remain incremental, including after a dynamic flag change.
   def updateMetadata(correlationId: Int, updateMetadataRequest: UpdateMetadataRequest,
-                     reconcileOnControllerChange: Boolean): Seq[TopicPartition] = {
+                     reconcileOnControllerChange: Boolean): Seq[TopicPartition] =
+    updateMetadataAndGetResult(correlationId, updateMetadataRequest, reconcileOnControllerChange).deletedPartitions
+
+  private[server] def updateMetadataAndGetResult(correlationId: Int, updateMetadataRequest: UpdateMetadataRequest,
+                                                reconcileOnControllerChange: Boolean): ZkMetadataCacheUpdate = {
     inWriteLock(partitionMetadataLock) {
       val replaceMetadata = reconcileOnControllerChange &&
         updateMetadataRequest.controllerEpoch > lastMetadataControllerEpoch
@@ -403,7 +409,7 @@ class ZkMetadataCache(brokerId: Int) extends MetadataCache with Logging {
         metadataSnapshot = MetadataSnapshot(partitionStates, topicIds.toMap, controllerIdOpt, aliveBrokers, aliveNodes)
       }
       lastMetadataControllerEpoch = math.max(lastMetadataControllerEpoch, updateMetadataRequest.controllerEpoch)
-      deletedPartitions
+      ZkMetadataCacheUpdate(deletedPartitions, replaceMetadata)
     }
   }
 

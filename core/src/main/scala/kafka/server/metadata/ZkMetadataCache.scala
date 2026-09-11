@@ -64,6 +64,8 @@ case class MetadataSnapshot(partitionStates: mutable.AnyRefMap[String, mutable.L
   val topicNames: Map[Uuid, String] = topicIds.map { case (topicName, topicId) => (topicId, topicName) }
 }
 
+private[server] case class ZkMetadataCacheUpdate(deletedPartitions: Seq[TopicPartition], replacedSnapshot: Boolean)
+
 object ZkMetadataCache {
   def transformKRaftControllerFullMetadataRequest(
     currentMetadata: MetadataSnapshot,
@@ -472,7 +474,14 @@ class ZkMetadataCache(
     correlationId: Int,
     originalUpdateMetadataRequest: UpdateMetadataRequest,
     reconcileOnControllerChange: Boolean
-  ): Seq[TopicPartition] = {
+  ): Seq[TopicPartition] =
+    updateMetadataAndGetResult(correlationId, originalUpdateMetadataRequest, reconcileOnControllerChange).deletedPartitions
+
+  private[server] def updateMetadataAndGetResult(
+    correlationId: Int,
+    originalUpdateMetadataRequest: UpdateMetadataRequest,
+    reconcileOnControllerChange: Boolean
+  ): ZkMetadataCacheUpdate = {
     var updateMetadataRequest = originalUpdateMetadataRequest
     inWriteLock(partitionMetadataLock) {
       // Upgraded ZK controllers send a full first update for each epoch. Keep the
@@ -622,7 +631,7 @@ class ZkMetadataCache(
         metadataSnapshot = MetadataSnapshot(partitionStates, topicIds.toMap, controllerIdOpt, aliveBrokers, aliveNodes)
       }
       lastMetadataControllerEpoch = math.max(lastMetadataControllerEpoch, updateMetadataRequest.controllerEpoch)
-      deletedPartitions.asScala.toSeq
+      ZkMetadataCacheUpdate(deletedPartitions.asScala.toSeq, replaceMetadata)
     }
   }
 

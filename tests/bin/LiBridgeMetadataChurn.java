@@ -22,7 +22,10 @@ import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.ControllerMovedException;
+import org.apache.kafka.common.errors.CorruptRecordException;
 import org.apache.kafka.common.errors.InvalidReplicaAssignmentException;
+import org.apache.kafka.common.errors.KafkaStorageException;
 import org.apache.kafka.common.errors.NoReassignmentInProgressException;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TopicExistsException;
@@ -41,6 +44,25 @@ import java.util.concurrent.TimeUnit;
 /** Continuous old-Admin metadata mutations; never relies on a quiet controller queue. */
 public final class LiBridgeMetadataChurn {
     private LiBridgeMetadataChurn() { }
+
+    static boolean retryMutation(Throwable cause) {
+        return retryTransientFailure(cause) || cause instanceof TopicExistsException ||
+            cause instanceof InvalidReplicaAssignmentException;
+    }
+
+    static boolean retryDeletion(Throwable cause) {
+        return retryTransientFailure(cause) || cause instanceof UnknownTopicOrPartitionException;
+    }
+
+    private static boolean retryTransientFailure(Throwable cause) {
+        // These data errors inherit RetriableException, but must fail qualification.
+        if (cause instanceof KafkaStorageException || cause instanceof CorruptRecordException) {
+            return false;
+        }
+        // A deliberate controller move can fence a 3.9 ZooKeeper config write.
+        // Old clients map that response to a non-retriable ControllerMovedException.
+        return cause instanceof RetriableException || cause instanceof ControllerMovedException;
+    }
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
@@ -97,8 +119,7 @@ public final class LiBridgeMetadataChurn {
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
                     System.err.println(java.time.Instant.now() + " mutation retry at " + Files.readString(directory.resolve("stage")) + ": " + cause);
-                    if (!(cause instanceof RetriableException) && !(cause instanceof TopicExistsException) &&
-                            !(cause instanceof InvalidReplicaAssignmentException)) {
+                    if (!retryMutation(cause)) {
                         throw e;
                     }
                 }
@@ -119,7 +140,7 @@ public final class LiBridgeMetadataChurn {
                     Files.move(temporary, directory.resolve("progress"), StandardCopyOption.REPLACE_EXISTING);
                 } catch (ExecutionException e) {
                     System.err.println(java.time.Instant.now() + " deletion retry: " + e.getCause());
-                    if (!(e.getCause() instanceof RetriableException) && !(e.getCause() instanceof UnknownTopicOrPartitionException)) {
+                    if (!retryDeletion(e.getCause())) {
                         throw e;
                     }
                 }

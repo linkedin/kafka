@@ -24,6 +24,7 @@ import json
 import os
 
 CONTRACT_VERSION = 2
+SCENARIO_REVISION = 3
 MODE = "li.protocol.bridge.mode.enable"
 TOPIC_CLEANUP = "li.protocol.bridge.topic.deletion.state.cleanup.enable"
 # The Kafka registry and metric-name set are checked against this table by tests.
@@ -104,7 +105,8 @@ def transition_allowed(previous, phase):
 
 def scenario_spec(environment=None):
     environment = os.environ if environment is None else environment
-    result = {"contract_version": CONTRACT_VERSION, "profile": "legacy-async-rollback-old-clients",
+    result = {"contract_version": CONTRACT_VERSION, "scenario_revision": SCENARIO_REVISION,
+              "profile": "legacy-async-rollback-old-clients",
               "old_client_interval_ms": 100}
     for name, default in SCENARIO_DEFAULTS.items():
         raw = str(environment.get(name, default))

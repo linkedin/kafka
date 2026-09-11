@@ -55,7 +55,7 @@ import org.apache.kafka.common.message.UpdateMetadataRequestData.{UpdateMetadata
 import org.apache.kafka.common.message._
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.{ClientInformation, ListenerName}
-import org.apache.kafka.common.protocol.{ApiKeys, Errors}
+import org.apache.kafka.common.protocol.{ApiKeys, Errors, MessageUtil}
 import org.apache.kafka.common.quota.{ClientQuotaAlteration, ClientQuotaEntity}
 import org.apache.kafka.common.record.FileRecords.TimestampAndOffset
 import org.apache.kafka.common.record._
@@ -3047,6 +3047,40 @@ class KafkaApisTest {
     val leaderAndIsrResponse = capturedResponse.getValue.asInstanceOf[LeaderAndIsrResponse]
     assertEquals(expectedError, leaderAndIsrResponse.error())
     EasyMock.verify(replicaManager)
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testNativeStopReplicaResponseIdentifiesDeletionWithCleanup(cleanup: Boolean): Unit = {
+    val states = (0 to 2).map { partition =>
+      new StopReplicaPartitionState().setPartitionIndex(partition).setLeaderEpoch(1)
+        .setDeletePartition(partition != 2)
+    }
+    val stopRequest = new StopReplicaRequest.Builder(4.toShort, 0, 5, 10L, 10L, false,
+      Seq(new StopReplicaTopicState().setTopicName("foo").setPartitionStates(states.asJava)).asJava).build()
+    val request = buildRequest(stopRequest)
+    val errors = mutable.Map(new TopicPartition("foo", 0) -> Errors.NONE,
+      new TopicPartition("foo", 1) -> Errors.FENCED_LEADER_EPOCH,
+      new TopicPartition("foo", 2) -> Errors.FENCED_LEADER_EPOCH)
+    val capturedResponse: Capture[AbstractResponse] = EasyMock.newCapture()
+    EasyMock.expect(controller.brokerEpoch).andStubReturn(10L)
+    EasyMock.expect(replicaManager.stopReplicas(request.context.correlationId, 0, 5,
+      stopRequest.partitionStates().asScala)).andReturn((errors, Errors.NONE))
+    EasyMock.expect(requestChannel.sendResponse(EasyMock.eq(request),
+      EasyMock.capture(capturedResponse), EasyMock.eq(None)))
+    EasyMock.replay(controller, replicaManager, requestChannel)
+
+    createKafkaApis(overrideProperties = Map(
+      KafkaConfig.LiProtocolBridgeTopicDeletionStateCleanupEnableProp -> cleanup.toString))
+      .handleStopReplicaRequest(request)
+    val response = capturedResponse.getValue.asInstanceOf[StopReplicaResponse]
+    val decoded = StopReplicaResponse.parse(MessageUtil.toByteBuffer(response.data(), 4.toShort), 4.toShort)
+    assertEquals(3, decoded.partitionErrors().size())
+    decoded.partitionErrors().asScala.foreach { partition =>
+      assertEquals(cleanup && partition.partitionIndex() != 2, partition.deletePartition())
+      assertEquals(errors(new TopicPartition("foo", partition.partitionIndex())).code(), partition.errorCode())
+    }
+    EasyMock.verify(replicaManager, requestChannel)
   }
 
   @Test

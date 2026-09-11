@@ -370,6 +370,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         .setTopicName(tp.topic)
         .setPartitionIndex(tp.partition)
         .setErrorCode(error.code)
+        // Native v4 callbacks use this bit even when the request was not combined.
+        .setDeletePartition(config.liProtocolBridgeTopicDeletionStateCleanupActive &&
+          stopReplicaRequest.version >= 4 && partitionStates(tp).deletePartition())
 
     new StopReplicaResponse(new StopReplicaResponseData()
       .setErrorCode(error.code)

@@ -21,7 +21,8 @@ Production preflight requires owner-reviewed decisions, not a nonempty status
 string. The contract-2 JSON shape is unchanged, but its disposition values are now
 enforced. Old free-form values such as `pending`, `blocked`, `unknown` or a bare
 `retained` client floor do not grant admission. Unknown decision keys also fail.
-Each `owner`, `evidence` and `disposition` must be a nonblank string.
+Each `owner`, `evidence` and `disposition` must be a nonblank string. Packaged
+runtime `server_version` and `qualification_evidence` fields have the same rule.
 
 | Decision | Accepted values | What the owner must establish |
 |---|---|---|

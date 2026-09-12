@@ -268,6 +268,15 @@ class LiBridgePreflightTest(unittest.TestCase):
                     self.assertTrue(PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
                                                                      "all-39-bridge", False, 900))
 
+    def test_packaged_runtime_qualification_requires_nonblank_strings(self):
+        for field in ("server_version", "qualification_evidence"):
+            for value in ("", " \t", True, 7, ["reviewed"], {"reviewed": True}):
+                with self.subTest(field=field, value=value):
+                    inventory, dispositions, configs = self.live_evidence()
+                    dispositions["broker_runtimes"]["1"][field] = value
+                    self.assertTrue(PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                                     "all-39-bridge", False, 900))
+
     def test_unknown_decision_key_is_not_silently_ignored(self):
         inventory, dispositions, configs = self.live_evidence()
         dispositions["decisions"]["unreviewed-extra-state"] = {

@@ -22,7 +22,8 @@ bridge changes. This records code paths, not a claim that all release tests pass
 The complete scenario-6 verifier passes on runtime source f919812ba4, 3.0 archive
 8086d17968 and wrapper 1764cc95, followed by a strict clean/full/archive audit.
 PR 599 adds boundary assertions against unchanged runtime code. The separate F28
-client-bootstrap limitation and deployed client-floor decision remain open.
+client-bootstrap limitation is a mandatory unchanged-client qualification gate,
+not a client setting selected by this review.
 
 All suffixes below use `li.protocol.bridge.<suffix>.enable`. The 3.9 Active getters
 require empty process.roles as well as the Boolean flag. Every Boolean defaults
@@ -113,4 +114,6 @@ tests on Scala 2.12 and 39 scoped tests on Scala 2.13, without failures/errors/s
 
 A passing process run still covers only its configuration and actions. It does not
 qualify the deployed client/tool floor, actual production runtime, capacity or
-security approvals. F28 and the final prompt-to-artifact audit remain open.
+security approvals. PR 600 rejects unresolved client/state attestations; the
+client-floor evidence must account for F28 before deployment. The final review
+and CI readback remain separate from that production approval.

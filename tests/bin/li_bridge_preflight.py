@@ -300,8 +300,9 @@ def inspect_live_inventory(inventory, dispositions, cluster_id, configs, phase, 
             for key in ("zookeeper_sha256", "jute_sha256"):
                 if not re.fullmatch(r"[0-9a-f]{64}", runtime.get(key, "")):
                     issues.append(f"Broker {identifier}: missing packaged {key}")
-            if not runtime.get("server_version") or not runtime.get("qualification_evidence"):
-                issues.append(f"Broker {identifier}: missing deployed ZooKeeper server qualification")
+            if any(not isinstance(runtime.get(key), str) or not runtime[key].strip()
+                   for key in ("server_version", "qualification_evidence")):
+                issues.append(f"Broker {identifier}: missing or invalid deployed ZooKeeper server qualification")
     topics = inventory.get("topics")
     topic_names = inventory.get("topic_names")
     if not isinstance(topics, dict) or not isinstance(topic_names, list) or set(topics) != set(topic_names):

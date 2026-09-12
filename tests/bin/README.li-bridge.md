@@ -122,7 +122,7 @@ python3 tests/bin/audit_li_bridge_evidence.py \
 
 This checks all phase reports, record checks, process identities and archive hashes. It does not claim that wrapper tests, full suites or release approval passed. Failures retain thread dumps and the relevant ZooKeeper state before cleanup. The process test also writes a JUnit report.
 
-Use `LiBridgeLiveInventory` plus owner-reviewed state dispositions and `li_bridge_preflight.py --require-live --require-all-gates` for production admission. Offline config lint is not live admission. See the runbook for credentials, freshness, cluster identity and runtime-probe requirements.
+Use `LiBridgeLiveInventory` plus owner-reviewed state dispositions and `li_bridge_preflight.py --require-live --require-all-gates` for production admission. Offline config lint is not live admission. The [state/client decision guide](../../docs/ops/li-bridge-state-dispositions.md) defines accepted dispositions and provides an empty template that cannot grant admission. Pending, blocked or malformed attestations fail. The guide leaves client configuration unchanged and requires actual client-floor qualification; it does not prescribe the separate bootstrap-expiry opt-out. See the runbook for credentials, freshness, cluster identity and runtime-probe requirements.
 
 ## CI and protected release gate
 

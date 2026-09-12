@@ -2154,8 +2154,9 @@ class PartitionTest extends AbstractPartitionTest {
     assertEquals(log.logEndOffset, partition.localLogOrException.highWatermark)
   }
 
-  @Test
-  def testLeaderTransferSelectsLowestInSyncFollower(): Unit = {
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testLeaderTransferSelectsLowestInSyncFollower(enabled: Boolean): Unit = {
     configRepository.setTopicConfig(topicPartition.topic, TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "4")
     val log = logManager.getOrCreateLog(topicPartition, topicId = None)
     seedLogData(log, numRecords = 10, leaderEpoch = 4)
@@ -2177,7 +2178,7 @@ class PartitionTest extends AbstractPartitionTest {
       metadataCache,
       logManager,
       alterPartitionManager,
-      leaderTransferEnabled = true,
+      leaderTransferEnabled = enabled,
       leaderTransferManager = leaderTransferManager)
     transferPartition.createLogIfNotExists(isNew = false, isFutureReplica = false, offsetCheckpoints, None)
     assertTrue(transferPartition.makeLeader(
@@ -2196,9 +2197,11 @@ class PartitionTest extends AbstractPartitionTest {
     fetchFollower(transferPartition, replicaId = lowestInSyncFollower, fetchOffset = log.logEndOffset)
     time.sleep(transferPartition.replicaLagTimeMaxMs + 1)
     transferPartition.maybeTransferToNewLeader()
-
-    verify(leaderTransferManager).submit(topicPartition, lowestInSyncFollower)
+    if (enabled) verify(leaderTransferManager).submit(topicPartition, lowestInSyncFollower)
     verifyNoMoreInteractions(leaderTransferManager)
+
+    transferPartition.maybeShrinkIsr()
+    assertEquals(if (enabled) 0 else 1, alterPartitionManager.isrUpdates.size)
   }
 
   @Test

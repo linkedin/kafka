@@ -391,6 +391,11 @@ class Migration:
         self.start_broker(1, "3.9")
         self.until("recovery ledger final ISR", self.healthy)
 
+    def execute_reassignment(self, path):
+        # Continuous metadata churn may already own a different reassignment.
+        self.admin("kafka-reassign-partitions.sh", "--reassignment-json-file", path,
+                   "--execute", "--additional")
+
     def offline_name_reuse(self, offline, assigned_before_return):
         survivor = 1 - offline
         offline_generation = self.generations[offline]
@@ -407,7 +412,7 @@ class Migration:
             path = self.work / "offline-name-reuse-reassignment.json"
             path.write_text(json.dumps({"version": 1, "partitions": [
                 {"topic": topic, "partition": 0, "replicas": replicas}]}))
-            self.admin("kafka-reassign-partitions.sh", "--reassignment-json-file", path, "--execute")
+            self.execute_reassignment(path)
             def complete():
                 description = self.admin("kafka-topics.sh", "--describe", "--topic", topic, check=False) or ""
                 match = re.search(r"Replicas:\s+([0-9,]+)\s+Isr:\s+([0-9,]+)", description)
@@ -440,6 +445,16 @@ class Migration:
         self.start_broker(survivor, survivor_generation)
         self.until("offline name-reuse final ISR recovery", self.healthy)
 
+    def configure_cancellation_throttle(self):
+        # CLI --throttle also rewrites topic throttles for unrelated active moves.
+        # Restrict topic selectors and keep the fixture's 1024-byte/s broker rates.
+        self.admin("kafka-configs.sh", "--entity-type", "topics", "--entity-name", "bridge-cancel", "--alter",
+                   "--add-config", "leader.replication.throttled.replicas=[0:0,0:1],"
+                   "follower.replication.throttled.replicas=[0:2]")
+        for identifier in (0, 1, 2):
+            self.admin("kafka-configs.sh", "--entity-type", "brokers", "--entity-name", str(identifier), "--alter",
+                       "--add-config", "leader.replication.throttled.rate=1024,follower.replication.throttled.rate=1024")
+
     def cancellation(self):
         self.force_controller(1)
         self.start_broker(2, "3.9")
@@ -447,7 +462,8 @@ class Migration:
         self.java("LiBridgeRecords", "produce", self.bootstrap, "bridge-cancel", 0, 100, 100000)
         path = self.work / "reassignment.json"
         path.write_text(json.dumps({"version": 1, "partitions": [{"topic": "bridge-cancel", "partition": 0, "replicas": [1, 2]}]}))
-        self.admin("kafka-reassign-partitions.sh", "--reassignment-json-file", path, "--execute", "--throttle", "1024")
+        self.configure_cancellation_throttle()
+        self.execute_reassignment(path)
         self.until("throttled reassignment to begin", lambda: "is still in progress" in
                    (self.admin("kafka-reassign-partitions.sh", "--reassignment-json-file", path, "--verify", check=False) or ""), 30)
         self.stop("broker-1", hard=True)

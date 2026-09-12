@@ -169,6 +169,49 @@ class LiBridgeScenarioTest(unittest.TestCase):
                 runner.run()
         self.assertEqual(["3.0", "3.9", "deletion"], calls)
 
+    def test_fixture_reassignments_coexist_without_rethrottling_other_topics(self):
+        for scenario in ("offline-reuse", "cancellation"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                runner = object.__new__(Migration)
+                runner.work, runner.bootstrap = Path(directory), "localhost:9092"
+                runner.generations = {0: "3.0", 1: "3.9"}
+                topic = "bridge-cancel" if scenario == "cancellation" else "bridge-offline-name-reuse-3.0-reassigned-after-return"
+                commands = []
+                def admin(script, *args, **kwargs):
+                    commands.append((script, args))
+                    if script == "kafka-reassign-partitions.sh" and "--execute" in args:
+                        if "--additional" not in args:
+                            raise subprocess.CalledProcessError(1, args, "Existing unrelated reassignment")
+                        self.assertNotIn("--throttle", args, "CLI throttling also rewrites existing moves")
+                        path = args[args.index("--reassignment-json-file") + 1]
+                        self.assertEqual({topic}, {p["topic"] for p in json.loads(path.read_text())["partitions"]})
+                    return ""
+                with mock.patch.object(runner, "admin", side_effect=admin), \
+                        mock.patch.object(runner, "force_controller"), mock.patch.object(runner, "create"), \
+                        mock.patch.object(runner, "java"), mock.patch.object(runner, "until"), \
+                        mock.patch.object(runner, "start_broker"), mock.patch.object(runner, "stop"):
+                    if scenario == "cancellation":
+                        runner.cancellation()
+                    else:
+                        runner.offline_name_reuse(0, False)
+                execute = [i for i, (script, args) in enumerate(commands) if "--execute" in args]
+                self.assertEqual(1 if scenario == "cancellation" else 2, len(execute))
+                config = [(i, args) for i, (script, args) in enumerate(commands) if script == "kafka-configs.sh"]
+                if scenario == "cancellation":
+                    self.assertEqual(4, len(config))
+                    self.assertTrue(all(i < execute[0] for i, _ in config))
+                    topics = [args for _, args in config if "topics" in args]
+                    self.assertEqual(1, len(topics))
+                    self.assertIn("bridge-cancel", topics[0])
+                    self.assertIn("leader.replication.throttled.replicas=[0:0,0:1],"
+                                  "follower.replication.throttled.replicas=[0:2]", topics[0])
+                    brokers = [args for _, args in config if "brokers" in args]
+                    self.assertEqual({"0", "1", "2"}, {args[args.index("--entity-name") + 1] for args in brokers})
+                    for args in brokers:
+                        self.assertIn("leader.replication.throttled.rate=1024,follower.replication.throttled.rate=1024", args)
+                else:
+                    self.assertEqual([], config)
+
     def test_manifest_has_every_gate_and_effective_metric(self):
         root = Path(__file__).parents[2]
         config = (root / "core/src/main/scala/kafka/server/KafkaConfig.scala").read_text()

@@ -88,6 +88,24 @@ class LiBridgeCommandsTest(unittest.TestCase):
                 self.assertEqual(passed, json.loads((root / "verification-summary.json").read_text())["passed"])
                 self.assertEqual("passed" if passed else "failed(1)", verification.commands.results["evidence-audit"])
 
+    def test_verifier_uses_single_use_gradle_without_stopping_other_builds(self):
+        root = Path(__file__).parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            wrapper = Path(directory) / "wrapper"
+            wrapper.mkdir()
+            environment = dict(os.environ, BRIDGE_VERIFY_DRY_RUN="1", BRIDGE_VERIFY_FULL="1",
+                               EVIDENCE_DIR=str(Path(directory) / "evidence"), WRAPPER_ROOT=str(wrapper),
+                               KAFKA_30_TGZ=str(Path(directory) / "synthetic-unused.tgz"))
+            environment.pop("KAFKA_39_TGZ", None)
+            with mock.patch("verify_li_bridge.java_17"), mock.patch.object(Commands, "run") as commands:
+                Verification(root, environment).run()
+            gradle = [call.args[1] for call in commands.call_args_list
+                      if Path(call.args[1][0]).name == "gradlew"]
+            self.assertTrue(gradle)
+            for command in gradle:
+                self.assertIn("--no-daemon", command)
+                self.assertNotIn("--stop", command, "Global stop can terminate an unrelated build")
+
     def test_selection_names_tests_and_requires_all_suites(self):
         path = Path(__file__).parents[1] / "bin/li_bridge_test_selection.ini"
         selected = selection(path)

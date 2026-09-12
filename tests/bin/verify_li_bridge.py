@@ -233,8 +233,6 @@ class Verification:
                 tasks.append("--offline")
             self.command("wrapper-tests", tasks, self.wrapper, {"KAFKA_30_TGZ": str(self.legacy)})
             self.wrapper_artifacts(after=True)
-            self.gradle("stop-kafka-gradle", ["--stop"])
-            self.gradle("stop-wrapper-gradle", ["--stop"], self.wrapper)
             self.command("mixed-process", [self.bin / "li_bridge_mixed_cluster_smoke.sh"], extra_env={
                 "KAFKA_30_TGZ": str(self.legacy), "KAFKA_39_TGZ": str(self.broker),
                 "EVIDENCE_DIR": str(self.evidence / "mixed-process")})

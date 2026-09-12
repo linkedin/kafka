@@ -23,10 +23,10 @@ Use Java 17 and Python 3.9 or newer. Run the verifier from the current split-sta
 
 ```sh
 JAVA_HOME=/path/to/jdk17 \
-KAFKA_30_TGZ=/releases/kafka_2.12-3.0.1.83.tgz \
-WRAPPER_ROOT=/checkouts/kafka-server \
-EVIDENCE_DIR=/evidence/local-bridge \
-tests/bin/verify_li_bridge.sh
+  KAFKA_30_TGZ=/releases/kafka_2.12-3.0.1.83.tgz \
+  WRAPPER_ROOT=/checkouts/kafka-server \
+  EVIDENCE_DIR=/evidence/local-bridge \
+  tests/bin/verify_li_bridge.sh
 ```
 
 The verifier stages Scala 2.12 jars for the wrapper and builds the 3.9 archive. `LI_BRIDGE_VERSION` selects the local artifact version. Its default comes from `gradle.properties`.
@@ -37,19 +37,19 @@ Download both archives from approved releases and verify their published SHA-256
 
 ```sh
 JAVA_HOME=/path/to/jdk17 \
-KAFKA_30_TGZ=/releases/kafka_2.12-3.0.1.83.tgz \
-KAFKA_39_TGZ=/releases/kafka_2.12-3.9.2.17.tgz \
-SKIP_LOCAL_STAGE=1 \
-WRAPPER_ROOT=/checkouts/kafka-server \
-EVIDENCE_DIR=/evidence/released-bridge \
-tests/bin/verify_li_bridge.sh
+  KAFKA_30_TGZ=/releases/kafka_2.12-3.0.1.83.tgz \
+  KAFKA_39_TGZ=/releases/kafka_2.12-3.9.2.17.tgz \
+  SKIP_LOCAL_STAGE=1 \
+  WRAPPER_ROOT=/checkouts/kafka-server \
+  EVIDENCE_DIR=/evidence/released-bridge \
+  tests/bin/verify_li_bridge.sh
 ```
 
 `KAFKA_39_TGZ` disables the local archive build. It requires `SKIP_LOCAL_STAGE=1` and a 3.0 archive. The verifier checks the version inside each archive and retains the exact input bytes before compilation starts.
 
 The wrapper's declared Kafka and Scala versions must match the 3.9 archive. Every resolved main Kafka jar must match a jar in that archive byte for byte. Test classifiers must use the selected version. Their hashes are recorded. The verifier checks the resolved files before and after wrapper testing.
 
-Source compilation and focused source tests still run. `BRIDGE_VERIFY_FULL=1` adds the complete clients, server, and storage suites. The mixed-process test runs the retained archives.
+Source compilation and focused source tests still run. `BRIDGE_VERIFY_FULL=1` adds the complete clients, server, and storage suites. The mixed-process test runs the retained archives. Gradle commands use `--no-daemon`; the verifier does not run global `--stop` commands that could interrupt unrelated builds.
 
 ## Diagnostic metrics opt-in
 
@@ -116,8 +116,8 @@ Optional scenario inputs and defaults:
 To check a standalone process result, use the same scenario environment as the run:
 
 ```sh
-python3 tests/bin/audit_li_bridge_evidence.py --process-only --require-archives \
-  --evidence-dir /evidence/process-run
+python3 tests/bin/audit_li_bridge_evidence.py \
+  --process-only --require-archives --evidence-dir /evidence/process-run
 ```
 
 This checks all phase reports, record checks, process identities and archive hashes. It does not claim that wrapper tests, full suites or release approval passed. Failures retain thread dumps and the relevant ZooKeeper state before cleanup. The process test also writes a JUnit report.

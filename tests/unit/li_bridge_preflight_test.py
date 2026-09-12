@@ -15,6 +15,7 @@
 
 import datetime
 import importlib.util
+import json
 import re
 import tempfile
 import unittest
@@ -197,6 +198,8 @@ class LiBridgePreflightTest(unittest.TestCase):
         decisions = {name: {"owner": "oncall", "evidence": "sha256:retained-review", "disposition": "retained"}
                      for name in PREFLIGHT.INSPECTED_ZK_PATHS + ("remote-storage", "plugin-state", "client-floor", "artifact-admission")}
         decisions["remote-storage"]["disposition"] = "unused"
+        decisions["plugin-state"]["disposition"] = "qualified"
+        decisions["client-floor"]["disposition"] = "qualified-unchanged"
         decisions["artifact-admission"]["disposition"] = "bridge-artifacts-only"
         dispositions = {"contract_version": 2, "cluster_id": "cluster", "collected_at_utc": timestamp,
                         "decisions": decisions, "broker_runtimes": {"1": {
@@ -229,6 +232,89 @@ class LiBridgePreflightTest(unittest.TestCase):
         dispositions["decisions"].pop("remote-storage")
         self.assertTrue(PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
                                                          "all-39-bridge", False, 900))
+
+    def test_unresolved_or_unknown_dispositions_block_admission(self):
+        for name in PREFLIGHT.INSPECTED_ZK_PATHS + ("remote-storage", "plugin-state", "client-floor", "artifact-admission"):
+            for value in ("pending", "blocked", "unknown", "arbitrary-approval"):
+                with self.subTest(name=name, value=value):
+                    inventory, dispositions, configs = self.live_evidence()
+                    dispositions["decisions"][name]["disposition"] = value
+                    issues = PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                               "all-39-bridge", False, 900)
+                    self.assertTrue(issues, (name, value))
+
+    def test_unused_paths_and_plugins_are_valid_explicit_dispositions(self):
+        for name in PREFLIGHT.INSPECTED_ZK_PATHS + ("plugin-state",):
+            with self.subTest(name=name):
+                inventory, dispositions, configs = self.live_evidence()
+                dispositions["decisions"][name]["disposition"] = "unused"
+                self.assertEqual([], PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                                       "all-39-bridge", False, 900))
+
+    def test_client_and_plugin_qualification_tokens_are_not_interchangeable(self):
+        for name, value in (("client-floor", "qualified"), ("plugin-state", "retained")):
+            with self.subTest(name=name, value=value):
+                inventory, dispositions, configs = self.live_evidence()
+                dispositions["decisions"][name]["disposition"] = value
+                self.assertTrue(PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                                  "all-39-bridge", False, 900))
+
+    def test_disposition_fields_require_nonblank_strings(self):
+        for field in ("owner", "evidence", "disposition"):
+            for value in ("", " \t", True, 7, ["reviewed"], {"reviewed": True}):
+                with self.subTest(field=field, value=value):
+                    inventory, dispositions, configs = self.live_evidence()
+                    dispositions["decisions"]["client-floor"][field] = value
+                    self.assertTrue(PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                                     "all-39-bridge", False, 900))
+
+    def test_unknown_decision_key_is_not_silently_ignored(self):
+        inventory, dispositions, configs = self.live_evidence()
+        dispositions["decisions"]["unreviewed-extra-state"] = {
+            "owner": "oncall", "evidence": "fixture", "disposition": "blocked"}
+        issues = PREFLIGHT.inspect_live_inventory(inventory, dispositions, "cluster", configs,
+                                                   "all-39-bridge", False, 900)
+        self.assertTrue(any("unreviewed-extra-state" in issue for issue in issues), issues)
+
+    def test_live_cli_requires_explicit_unchanged_client_qualification(self):
+        for disposition in ("blocked", "retained", "qualified-unchanged"):
+            with self.subTest(disposition=disposition), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                inventory, dispositions, _ = self.live_evidence()
+                properties = inventory["brokers"][0]["properties"]
+                properties.update({gate: "true" for gate in PREFLIGHT.BRIDGE_GATES})
+                dispositions["decisions"]["client-floor"]["disposition"] = disposition
+                config, live, decisions, output = [root / name for name in
+                                                   ("broker.properties", "live.json", "decisions.json", "result.json")]
+                config.write_text("".join(f"{key}={value}\n" for key, value in properties.items()))
+                live.write_text(json.dumps(inventory))
+                decisions.write_text(json.dumps(dispositions))
+                args = ["preflight", "--phase", "all-39-bridge", "--require-live", "--cluster-id", "cluster",
+                        "--broker-config", str(config), "--live-inventory", str(live),
+                        "--state-dispositions", str(decisions), "--zk-connect", "fixture",
+                        "--kafka-home", str(root), "--output-json", str(output)]
+                with mock.patch("sys.argv", args), mock.patch("builtins.print"), \
+                        mock.patch.object(PREFLIGHT, "inspect_zookeeper", return_value=([], {"/brokers/ids": ["1"]})):
+                    status = PREFLIGHT.main()
+                report = json.loads(output.read_text())
+                expected = disposition == "qualified-unchanged"
+                self.assertEqual(0 if expected else 1, status)
+                self.assertEqual(expected, report["passed"], report)
+                self.assertEqual("live-admission", report["kind"])
+
+    def test_disposition_template_lists_every_decision_but_cannot_grant_admission(self):
+        guide = Path(__file__).parents[2] / "docs/ops/li-bridge-state-dispositions.md"
+        template = json.loads(re.search(r"```json\n(.*?)\n```", guide.read_text(), re.S).group(1))
+        self.assertEqual(PREFLIGHT.CONTRACT_VERSION, template["contract_version"])
+        self.assertEqual(set(PREFLIGHT.ALLOWED_DISPOSITIONS), set(template["decisions"]))
+        inventory, valid, configs = self.live_evidence()
+        for key in ("cluster_id", "collected_at_utc", "broker_runtimes"):
+            template[key] = valid[key]
+        issues = PREFLIGHT.inspect_live_inventory(inventory, template, "cluster", configs,
+                                                   "all-39-bridge", False, 900)
+        for name, decision in template["decisions"].items():
+            self.assertEqual({"owner": "", "evidence": "", "disposition": ""}, decision)
+            self.assertTrue(any(name in issue for issue in issues), issues)
 
     def test_parse_rendered_properties(self):
         with tempfile.TemporaryDirectory() as directory:

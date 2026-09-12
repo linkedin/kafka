@@ -41,6 +41,14 @@ INSPECTED_ZK_PATHS: Tuple[str, ...] = (
     "/topic_deletion_flag",
 )
 
+ALLOWED_DISPOSITIONS: Dict[str, Tuple[str, ...]] = {
+    **dict.fromkeys(INSPECTED_ZK_PATHS, ("retained", "unused")),
+    "remote-storage": ("unused",),
+    "plugin-state": ("unused", "qualified"),
+    "client-floor": ("qualified-unchanged",),
+    "artifact-admission": ("bridge-artifacts-only",),
+}
+
 
 def parse_properties(path: Path) -> Dict[str, str]:
     """Parse the simple key/value subset used by rendered Kafka properties."""
@@ -305,18 +313,21 @@ def inspect_live_inventory(inventory, dispositions, cluster_id, configs, phase, 
             if boolean_value(properties, "remote.storage.enable") or boolean_value(properties, "remote.log.storage.enable"):
                 issues.append(f"Topic {topic} enables remote storage; a separate migration plan is required")
     # These are attestations backed by retained evidence, not claims inferred from an empty znode.
-    required = set(INSPECTED_ZK_PATHS) | {"remote-storage", "plugin-state", "client-floor", "artifact-admission"}
     decisions = dispositions.get("decisions", {})
-    for name in sorted(required):
+    unknown = set(decisions) - set(ALLOWED_DISPOSITIONS)
+    if unknown:
+        issues.append(f"Unknown state dispositions: {', '.join(sorted(unknown))}")
+    for name, allowed in sorted(ALLOWED_DISPOSITIONS.items()):
         decision = decisions.get(name, {})
         if not isinstance(decision, dict):
             raise ValueError(f"Invalid disposition for {name}")
-        if not decision.get("owner") or not decision.get("evidence") or not decision.get("disposition"):
-            issues.append(f"Missing owner/evidence/disposition for {name}")
-    if decisions.get("remote-storage", {}).get("disposition") != "unused":
-        issues.append("Remote storage must be confirmed unused, including persisted metadata and objects")
-    if decisions.get("artifact-admission", {}).get("disposition") != "bridge-artifacts-only":
-        issues.append("Deployment must fence unsupported binary/image restarts")
+        if any(not isinstance(decision.get(field), str) or not decision[field].strip()
+               for field in ("owner", "evidence", "disposition")):
+            issues.append(f"Missing or invalid owner/evidence/disposition for {name}; nonblank strings are required")
+            continue
+        if decision["disposition"] not in allowed:
+            issues.append(f"{name}: unqualified disposition {decision['disposition']!r}; "
+                          f"required: {' or '.join(allowed)}")
     return issues
 
 

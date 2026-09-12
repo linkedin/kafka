@@ -17,7 +17,7 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 50 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 51 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
 
 ## Later qualification findings
 
@@ -38,6 +38,8 @@ The verifier isolation finding is tracked in [598](https://github.com/linkedin/k
 [599](https://github.com/linkedin/kafka/pull/599) strengthens the gate evidence rather than relying on helper test names: request admission, native behavior, authorization, cancellation, minimum roll and ISR transfer/shrink now have direct flag-boundary assertions. Deliberately broken guard boundaries failed those assertions; restored runtime code passes the new suites. No runtime or client-profile change is included.
 
 [600](https://github.com/linkedin/kafka/pull/600) rejects unresolved or malformed state/client attestations. The CLI previously admitted a client floor marked `blocked`; negative tests now reject that case, unknown keys and invalid field types. The guide's empty template cannot grant admission. Client configuration remains unchanged; production approval still requires real owner evidence.
+
+[601](https://github.com/linkedin/kafka/pull/601) addresses the later PR 600 process failure: the CLI's global existing-reassignment guard conflicted with continuous metadata churn. Fixture moves use `--additional`, with cancellation throttles scoped to the fixture topic. The deterministic probe preserves the unrelated assignment/throttle and exact records; the complete corrected process is still running. No runtime/client setting or deadline was relaxed.
 
 ## PR 541
 

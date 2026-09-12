@@ -39,7 +39,7 @@ The verifier isolation finding is tracked in [598](https://github.com/linkedin/k
 
 [600](https://github.com/linkedin/kafka/pull/600) rejects unresolved or malformed state/client attestations. The CLI previously admitted a client floor marked `blocked`; negative tests now reject that case, unknown keys and invalid field types. The guide's empty template cannot grant admission. Client configuration remains unchanged; production approval still requires real owner evidence.
 
-[601](https://github.com/linkedin/kafka/pull/601) addresses the later PR 600 process failure: the CLI's global existing-reassignment guard conflicted with continuous metadata churn. Fixture moves use `--additional`, with cancellation throttles scoped to the fixture topic. The deterministic probe preserves the unrelated assignment/throttle and exact records; the complete corrected process is still running. No runtime/client setting or deadline was relaxed.
+[601](https://github.com/linkedin/kafka/pull/601) addresses the later PR 600 process failure: the CLI's global existing-reassignment guard conflicted with continuous metadata churn. Fixture moves use `--additional`, with cancellation throttles scoped to the fixture topic. The deterministic probe preserves the unrelated assignment/throttle and exact records. The complete corrected process and independent source/archive audit also pass all sixteen checkpoints. No runtime/client setting or deadline was relaxed.
 
 ## PR 541
 

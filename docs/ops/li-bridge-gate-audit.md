@@ -19,9 +19,10 @@ limitations under the License.
 
 Scope: upgrade-stack runtime changes relative to `3.9-li`, plus the paired 3.0
 bridge changes. This records code paths, not a claim that all release tests passed.
-The retained full-verifier pass uses 6ea4d367d2 and predates F25–F27. PRs 596/597
-add interrupted-deletion recovery and mandatory scenario-6 evidence. Scoped tests
-pass; the final pair and the separate old-client metadata failure remain open.
+The complete scenario-6 verifier passes on runtime source f919812ba4, 3.0 archive
+8086d17968 and wrapper 1764cc95, followed by a strict clean/full/archive audit.
+PR 599 adds boundary assertions against unchanged runtime code. The separate F28
+client-bootstrap limitation and deployed client-floor decision remain open.
 
 All suffixes below use `li.protocol.bridge.<suffix>.enable`. The 3.9 Active getters
 require empty process.roles as well as the Boolean flag. Every Boolean defaults
@@ -33,9 +34,9 @@ listed separately from actions taken by the broker.
 | mode | ControllerChannelManager snapshots the flag once per batch and chooses v2/v5/v1; false uses the original metadata-version branches. RemoteLeaderEndPoint uses -104 only with follower recovery too. AlterPartition retries copy mutable data only while the flag is active. | ControllerChannelManagerTest; BridgeAlterPartitionRetryTest; protocol fixtures; retained process-selection logs |
 | config.metrics | LiProtocolBridgeMetrics registers/removes gauges only when opted in. PR 594 extends the same opt-in to the three new KafkaController diagnostic gauges; native gauges remain. | LiProtocolBridgeMetricsTest; KafkaControllerTest.testCompatibilityControllerMetricsRequireOptIn; shutdown ownership tests |
 | topic.deletion.state.cleanup | New-controller complete metadata images, cache replacement, unhosted-log reconciliation and topic-ID recovery occur only under cleanup. KRaft requests are excluded. 3.0 acknowledgement fencing persists when mode is off; direct native v4 responses echo deletion intent. Marked deletions with missing leader state clear reassignment flags but retain all replicas before ordinary acknowledged deletion. | BridgeMetadataCacheEpochTest; BridgeTopicIdentityTest; BridgeStrayLogDeletionTest; TopicDeletionManagerTest; BridgeInterruptedDeletionTest; KafkaControllerTest; KafkaApisTest native response round trip; scenario revision 6 |
-| follower.recovery | KafkaApis admits the private -104 query and emits 1107 only through this flag. Generic timestamp helpers alone do not admit a wire request. | KafkaApisTest; BridgeProtocolConstantsTest; both recovery directions |
-| recommended.leader.election | KafkaApis rejects election type 2 when disabled. KRaft ControllerApis always rejects it. The election helper restricts the target to live ISR members. | LiControllerOperationsTest; controller/partition tests |
-| metadata.exclude.partitions | KafkaApis requires both the request field and the feature flag before suppressing partition metadata. | KafkaApisTest; request/response wire fixtures |
+| follower.recovery | KafkaApis admits the private -104 query and emits 1107 only through this flag. Generic timestamp helpers alone do not admit a wire request. | KafkaApisTest.testFollowerRecoveryRequestAndErrorGates checks disabled admission, v7 minimum, backend calls and native/legacy errors; both recovery directions |
+| recommended.leader.election | KafkaApis rejects election type 2 when disabled. KRaft ControllerApis always rejects it. The election helper restricts the target to live ISR members. | KafkaApisTest.testRecommendedElectionRequestRequiresCompatibilityGate (off/on, authorization, native preferred election); ElectLeadersRequestOpsTest; PartitionLeaderElectionAlgorithmsTest |
+| metadata.exclude.partitions | KafkaApis requires both the request field and the feature flag before suppressing partition metadata. | KafkaApisTest.testMetadataExclusionRequiresRequestAndCompatibilityGate checks all four combinations and serialized responses; wire fixtures |
 | move.controller | ApiVersionManager filters advertisement/admission; KafkaApis requires CLUSTER_ACTION and the feature before deleting the controller znode. | ApiVersionManagerTest; LiControllerOperationsTest; unchanged private-API clients |
 | shutdown.safety.override | Advertisement and handler admission are gated; override grant is broker-epoch fenced. Previously admitted work has its documented lifecycle. | LiShutdownSafetyTest; LiControllerOperationsTest |
 | preferred.controller | KafkaServer registers/watches preferred IDs and KafkaController changes election/fallback/shutdown behavior only under the flag. ZkAdminManager's broker API filters through it. The raw AdminZkClient fix makes optional config explicitly opt in too. | AdminZkClientTest (none/false/true plus manual assignment); controller and shutdown tests |
@@ -45,13 +46,13 @@ listed separately from actions taken by the broker.
 | produce.request.instrumentation | New per-request collector only while enabled; Disabled does not collect stages. PR 594 makes it ignore partition setters and prevents later activation from logging an uncollected request. Logger also checks the dynamic flag. | ProduceRequestInstrumentationTest; acks=0/callback source checks |
 | request.metric.buckets | RequestChannel creates size/time buckets only from the gated optional config. Empty maps produce no additional request groups. Empty or malformed configured boundary lists are rejected, not supported as a disabling syntax. | RequestMetricBucketsTest; KafkaConfigTest boundary cases |
 | request.channel.watchdog | Data-plane histogram, health scheduler and PoisonPill construction/actions are gated. Old constructors default the watchdog off. | RequestChannelWatchdogTest; KafkaServerTest interval case; PoisonPillProcessTest |
-| minimum.log.roll | KafkaConfig passes zero when disabled. Storage's explicit li.min.log.roll.ms also defaults zero. Old RollParams constructor supplies zero. Size/index/relative-offset rolling checks remain separate. | LogSegmentTest in full storage suite; configuration tests |
-| reassignment.cancellation.safety | Only cancellation with the gate invokes the minimum-live-original-replica check. Ordinary reassignment and flag-off cancellation keep native behavior. | KafkaControllerTest; reassignment cancellation process case |
+| minimum.log.roll | KafkaConfig passes zero when disabled. Storage's explicit li.min.log.roll.ms also defaults zero. Old RollParams constructor supplies zero. Size/index/relative-offset rolling checks remain separate. | LiProtocolBridgeConfigTest.testNonzeroMinimumLogRollRequiresCompatibilityGate; LogSegmentTest in the full storage suite |
+| reassignment.cancellation.safety | Only cancellation with the gate invokes the minimum-live-original-replica check. Ordinary reassignment and flag-off cancellation keep native behavior. | LiReassignmentCancellationGateTest checks actual controller acceptance/rejection and persisted target with an offline original replica; KafkaControllerTest threshold cases; process cancellation |
 | list.offsets.instrumentation | Data-plane and flag conjunction reaches a collector with disabled registration/usage early returns otherwise. Snapshot/reset is synchronized. | ListOffsetsRequestInstrumentationTest |
 | static.default.quotas | QuotaFactory passes Long.MaxValue when disabled. Explicit dynamic/callback limits retain native arithmetic; static fallback is used only for absent limits. | QuotaFactoryTest; ClientQuotaManagerTest including PR 590 regressions; RequestQuotaTest |
 | replica.request.timeout | effectiveReplicaRequestTimeoutMs selects requestTimeoutMs when disabled. BrokerBlockingSender uses that accessor. | ReplicaRequestTimeoutConfigTest (added to focused verifier selection) |
 | offsets.topic.config | AutoTopicCreationManager copies the original properties; overrides only under the gate. | AutoTopicCreationManagerTest (added to focused selection) |
-| leader.transfer.on.isr.shrink | Partition suppresses shrinking below minimum ISR and submits a live ISR target only while enabled. KafkaServer defaults to NoOp manager and ReplicaManager schedules transfers only under the gate. | PartitionTest; LeaderTransferManagerTest; legacy constructor tests |
+| leader.transfer.on.isr.shrink | Partition suppresses shrinking below minimum ISR and submits a live ISR target only while enabled. KafkaServer defaults to NoOp manager and ReplicaManager schedules transfers only under the gate. | PartitionTest checks transfer submission and native ISR shrink with the flag off/on; LeaderTransferManagerTest; legacy constructor tests |
 | legacy.request.metrics | Constructors receive false by default; additional broker/replica/request counters, metadata egress and topic-name diagnostics are conditional. | LegacyRequestMetricsTest; MetadataOutgoingBytesTest; BrokerTopicMetricsTest; LogDirFailureChannelTest |
 | log.truncation.metrics | KafkaConfig passes false when disabled; explicit internal log setting defaults false; meters are referenced/updated only when enabled. | UnifiedLogTest.testTruncateTo; full storage suite |
 
@@ -98,10 +99,18 @@ listed separately from actions taken by the broker.
 - The old reply claiming empty buckets were supported was incorrect. Source and
   tests reject them; an explicit correction was posted and the ledger updated.
 
-## Audit boundary
+## Assertion audit and boundary
 
-This matrix must be checked against final published source and actual test results.
-A passing process run covers its configuration and actions, not every disabled-path
-claim. The newly added default-off fixes are not covered by the still-running full
-verifier on the prior source. Final-source qualification, publication/readback and
-remaining requirement checks are still needed before goal completion.
+The source audit confirms 24 false defaults and 24 ZooKeeper-only Active getters.
+Runtime callers use those getters, not the raw Enable accessors. The strengthened
+dynamic-scope test checks every flag individually: ten permit cluster-wide updates,
+and fourteen require restart; none permits a per-broker dynamic override.
+
+PR 599 closes six weak test mappings above. Three mutation runs deliberately broke
+seven guard boundaries; every break failed the intended assertion. The runtime files
+were restored and checked against the published base. The restored suites pass 441
+tests on Scala 2.12 and 39 scoped tests on Scala 2.13, without failures/errors/skips.
+
+A passing process run still covers only its configuration and actions. It does not
+qualify the deployed client/tool floor, actual production runtime, capacity or
+security approvals. F28 and the final prompt-to-artifact audit remain open.

@@ -317,7 +317,7 @@ class DynamicBrokerConfigTest {
       KafkaConfig.LiProtocolBridgeReassignmentCancellationSafetyEnableProp,
       KafkaConfig.LiProtocolBridgeProduceRequestInstrumentationEnableProp
     )
-    val allBridgeFlags = dynamicBridgeFlags :+ KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp
+    val allBridgeFlags = KafkaConfig.LiProtocolBridgeEnableProps
     allBridgeFlags.foreach(flag => assertFalse(config.getBoolean(flag), s"$flag should be disabled by default"))
 
     val dynamicProps = new Properties
@@ -325,12 +325,17 @@ class DynamicBrokerConfigTest {
     config.dynamicConfig.validate(dynamicProps, perBrokerConfig = false)
     config.dynamicConfig.updateDefaultConfig(dynamicProps)
     dynamicBridgeFlags.foreach(flag => assertTrue(config.getBoolean(flag), s"$flag should be enabled dynamically"))
-    assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(dynamicProps, perBrokerConfig = true))
-
-    val startupOnlyProps = new Properties
-    startupOnlyProps.put(KafkaConfig.LiProtocolBridgeLeaderTransferEnableProp, "true")
-    assertThrows(classOf[ConfigException],
-      () => config.dynamicConfig.validate(startupOnlyProps, perBrokerConfig = false))
+    // Test each flag alone so one rejected key cannot hide an allowed override.
+    allBridgeFlags.foreach { flag =>
+      val oneFlag = new Properties
+      oneFlag.put(flag, "true")
+      assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(oneFlag, perBrokerConfig = true),
+        s"$flag must reject a per-broker override")
+      if (!dynamicBridgeFlags.contains(flag)) {
+        assertThrows(classOf[ConfigException], () => config.dynamicConfig.validate(oneFlag, perBrokerConfig = false),
+          s"$flag must require a restart")
+      }
+    }
   }
 
   @Test

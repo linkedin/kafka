@@ -51,6 +51,16 @@ class LiProtocolBridgeConfigTest {
   }
 
   @Test
+  def testNonzeroMinimumLogRollRequiresCompatibilityGate(): Unit = {
+    val props = new Properties
+    props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")
+    props.put(KafkaConfig.LiMinLogRollTimeMillisProp, "60000")
+    assertEquals(0L, KafkaConfig.fromProps(props).extractLogConfigMap.get(LogConfig.LI_MIN_SEGMENT_MS_CONFIG))
+    props.put(KafkaConfig.LiProtocolBridgeMinimumLogRollEnableProp, "true")
+    assertEquals(60000L, KafkaConfig.fromProps(props).extractLogConfigMap.get(LogConfig.LI_MIN_SEGMENT_MS_CONFIG))
+  }
+
+  @Test
   def testBridgeModeRejectsMetadataThatLeaderAndIsrV2CannotRepresent(): Unit = {
     val props = new Properties
     props.put(ZkConfigs.ZK_CONNECT_CONFIG, "localhost:2181")

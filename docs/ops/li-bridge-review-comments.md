@@ -17,7 +17,7 @@ limitations under the License.
 
 # Review comment dispositions
 
-All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 48 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
+All 62 original threads have replies with published source decisions. A fresh GraphQL readback across 49 PRs verified every expected reply, found no mismatches and found no new review threads. Resolved status alone was not accepted as proof. Re-fetch after the final publication and check the actual source/test coverage before closing the review.
 
 ## Later qualification findings
 
@@ -34,6 +34,8 @@ All 62 original threads have replies with published source decisions. A fresh Gr
 | F28: old producer times out obtaining recreated-topic metadata | Latest PR 594 CI failure is retained. The unchanged client jar reproduces a 60-second metadata stall in a deterministic network fixture. The existing zero-expiry setting also passes a separate real-broker experiment with both survivor generations. The migration profile and deadlines are unchanged. | Client-floor decision and full final-pair qualification remain open. |
 
 The verifier isolation finding is tracked in [598](https://github.com/linkedin/kafka/pull/598): all Gradle invocations remain single-use, and the global daemon-stop commands are removed. Its command-plan regression fails before and passes after. No functional qualification check is removed.
+
+[599](https://github.com/linkedin/kafka/pull/599) strengthens the gate evidence rather than relying on helper test names: request admission, native behavior, authorization, cancellation, minimum roll and ISR transfer/shrink now have direct flag-boundary assertions. Deliberately broken guard boundaries failed those assertions; restored runtime code passes the new suites. No runtime or client-profile change is included.
 
 ## PR 541
 

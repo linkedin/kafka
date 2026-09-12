@@ -229,6 +229,90 @@ class KafkaApisTest extends Logging {
       clientMetricsManager = clientMetricsManagerOpt)
   }
 
+  @ParameterizedTest
+  @CsvSource(Array("false,false,true", "false,true,true", "true,false,true", "true,true,true",
+    "false,true,false", "true,true,false"))
+  def testRecommendedElectionRequestRequiresCompatibilityGate(enabled: Boolean, authorized: Boolean,
+                                                               recommended: Boolean): Unit = {
+    val authorizer = mock(classOf[Authorizer])
+    authorizeResource(authorizer, AclOperation.ALTER, ResourceType.CLUSTER, Resource.CLUSTER_NAME,
+      if (authorized) AuthorizationResult.ALLOWED else AuthorizationResult.DENIED)
+    val tp = new TopicPartition("recommended", 0)
+    val electionType = if (recommended) ElectionType.RECOMMENDED else ElectionType.PREFERRED
+    val leaders = if (recommended) Map(tp -> 1) else Map.empty[TopicPartition, Int]
+    val builder = if (recommended) new ElectLeadersRequest.Builder(10L,
+      Collections.singletonMap(tp, Integer.valueOf(1)), 30000)
+    else new ElectLeadersRequest.Builder(electionType, Collections.singleton(tp), 30000)
+    val request = buildRequest(builder.build(2.toShort))
+    doAnswer { invocation =>
+      invocation.getArgument[Map[TopicPartition, ApiError] => Unit](4)(Map(tp -> ApiError.NONE))
+      null
+    }.when(replicaManager).electLeaders(ArgumentMatchers.eq(controller), ArgumentMatchers.eq(Set(tp)),
+      ArgumentMatchers.eq(leaders), ArgumentMatchers.eq(electionType), any(), ArgumentMatchers.eq(30000))
+    kafkaApis = createKafkaApis(authorizer = Some(authorizer), overrideProperties = Map(
+      KafkaConfig.LiProtocolBridgeRecommendedElectionEnableProp -> enabled.toString))
+    kafkaApis.handleElectLeaders(request)
+    val response = verifyNoThrottling[ElectLeadersResponse](request)
+    val expectedError = if (recommended && !enabled) Errors.INVALID_REQUEST
+      else if (!authorized) Errors.CLUSTER_AUTHORIZATION_FAILED else Errors.NONE
+    assertEquals(expectedError.code, response.data.errorCode)
+    verify(replicaManager, times(if ((!recommended || enabled) && authorized) 1 else 0))
+      .electLeaders(any(), any(), any(), any(), any(), anyInt())
+  }
+
+  @ParameterizedTest
+  @CsvSource(Array("false,false", "false,true", "true,false", "true,true"))
+  def testMetadataExclusionRequiresRequestAndCompatibilityGate(enabled: Boolean, requested: Boolean): Unit = {
+    val topic = "metadata-exclusion"
+    addTopicToMetadataCache(topic, numPartitions = 2, numBrokers = 1)
+    val data = new MetadataRequestData()
+      .setTopics(Collections.singletonList(new MetadataRequestData.MetadataRequestTopic().setName(topic)))
+      .setAllowAutoTopicCreation(false)
+      .setExcludePartitions(requested)
+    val request = buildRequest(new MetadataRequest(data, 12.toShort))
+    kafkaApis = createKafkaApis(overrideProperties = Map(
+      KafkaConfig.LiProtocolBridgeExcludePartitionsEnableProp -> enabled.toString))
+    kafkaApis.handleTopicMetadataRequest(request)
+    val response = verifyNoThrottling[MetadataResponse](request)
+    assertEquals(1, response.topicMetadata.size)
+    val metadata = response.topicMetadata.iterator.next()
+    assertEquals(Errors.NONE, metadata.error)
+    assertEquals(topic, metadata.topic)
+    assertEquals(if (enabled && requested) 0 else 2, metadata.partitionMetadata.size)
+  }
+
+  @ParameterizedTest
+  @CsvSource(Array("false,-104,7,false", "true,-104,6,false", "true,-104,7,false",
+    "true,-104,7,true", "false,-4,8,true", "true,-4,8,true"))
+  def testFollowerRecoveryRequestAndErrorGates(enabled: Boolean, timestamp: Long,
+                                               version: Short, moved: Boolean): Unit = {
+    val tp = new TopicPartition("recovery-gate", 0)
+    val fetch = when(replicaManager.fetchOffsetForTimestamp(ArgumentMatchers.eq(tp), ArgumentMatchers.eq(timestamp),
+      any[Option[IsolationLevel]](), any[Optional[Integer]](), anyBoolean()))
+    if (moved) fetch.thenThrow(Errors.OFFSET_MOVED_TO_TIERED_STORAGE.exception)
+    else fetch.thenReturn(Some(new TimestampAndOffset(0L, 12L, Optional.of[Integer](1))))
+    val topic = new ListOffsetsTopic().setName(tp.topic).setPartitions(Collections.singletonList(
+      new ListOffsetsPartition().setPartitionIndex(tp.partition).setTimestamp(timestamp)))
+    val request = buildRequest(ListOffsetsRequest.Builder.forConsumer(true, IsolationLevel.READ_UNCOMMITTED)
+      .setTargetTimes(Collections.singletonList(topic)).build(version))
+    kafkaApis = createKafkaApis(overrideProperties = Map(
+      KafkaConfig.LiProtocolBridgeFollowerRecoveryEnableProp -> enabled.toString))
+    kafkaApis.handleListOffsetRequest(request)
+    val response = verifyNoThrottling[ListOffsetsResponse](request)
+    assertEquals(1, response.topics.size)
+    val partition = response.topics.get(0).partitions.get(0)
+    val legacy = timestamp == ListOffsetsRequest.LI_EARLIEST_LOCAL_TIMESTAMP
+    val admitted = !legacy || (enabled && version >= 7)
+    val expectedError = if (!admitted) Errors.UNSUPPORTED_VERSION.code
+      else if (moved && legacy) 1107.toShort
+      else if (moved) Errors.OFFSET_MOVED_TO_TIERED_STORAGE.code
+      else Errors.NONE.code
+    assertEquals(expectedError, partition.errorCode)
+    assertEquals(if (admitted && !moved) 12L else ListOffsetsResponse.UNKNOWN_OFFSET, partition.offset)
+    verify(replicaManager, times(if (admitted) 1 else 0)).fetchOffsetForTimestamp(
+      ArgumentMatchers.eq(tp), ArgumentMatchers.eq(timestamp), any(), any(), anyBoolean())
+  }
+
   @Test
   def testDescribeConfigsWithAuthorizer(): Unit = {
     val authorizer: Authorizer = mock(classOf[Authorizer])

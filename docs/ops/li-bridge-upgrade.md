@@ -180,12 +180,12 @@ Run qualification against independently built archives, then repeat it against t
 
 ```bash
 JAVA_HOME=/path/to/jdk17 \
-LI_BRIDGE_JAVA_30_HOME=/path/to/jdk11 \
-KAFKA_30_TGZ=/releases/kafka-30.tgz \
-KAFKA_39_TGZ=/releases/kafka-39.tgz \
-SKIP_LOCAL_STAGE=1 WRAPPER_ROOT=/checkouts/kafka-server \
-BRIDGE_VERIFY_FULL=1 EVIDENCE_DIR=/evidence/bridge \
-tests/bin/verify_li_bridge.sh
+  LI_BRIDGE_JAVA_30_HOME=/path/to/jdk11 \
+  KAFKA_30_TGZ=/releases/kafka-30.tgz \
+  KAFKA_39_TGZ=/releases/kafka-39.tgz \
+  SKIP_LOCAL_STAGE=1 WRAPPER_ROOT=/checkouts/kafka-server \
+  BRIDGE_VERIFY_FULL=1 EVIDENCE_DIR=/evidence/bridge \
+  tests/bin/verify_li_bridge.sh
 ```
 
 For the protected release gate, use `tests/bin/verify_li_bridge_release.sh` with published `KAFKA_30_SHA256`, `KAFKA_39_SHA256`, approved full `KAFKA_30_COMMIT`, `KAFKA_39_COMMIT`, and `WRAPPER_COMMIT` in addition to the inputs above. It rejects dirty/unapproved checkouts, archive/source/checksum mismatches and partial verification, and runs a strict final audit.

@@ -54,9 +54,9 @@ public class ClientUtilsTest {
         checkWithoutLookup("[::1]:8000");
         checkWithoutLookup("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1234", "localhost:10000");
 
-        // With lookup of a loopback address, every returned address should be
+        // With lookup of a loopback host, every returned address should be
         // resolved and preserve the configured port.
-        List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("127.0.0.1:10000"));
+        List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("localhost:10000"));
         assertTrue(validatedAddresses.size() >= 1, "Unexpected addresses " + validatedAddresses);
         validatedAddresses.forEach(address -> assertFalse(address.isUnresolved(), "Unexpected address " + address));
         validatedAddresses.forEach(address -> assertEquals(10000, address.getPort()));

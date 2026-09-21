@@ -368,7 +368,7 @@ public class TestSslUtils {
         private byte[] subjectAltName;
 
         public CertificateBuilder() {
-            this(30, "SHA1withRSA");
+            this(30, "SHA256withRSA");
         }
 
         public CertificateBuilder(int days, String algorithm) {

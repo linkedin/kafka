@@ -368,7 +368,7 @@ public class TestSslUtils {
         private byte[] subjectAltName;
 
         public CertificateBuilder() {
-            this(30, null);
+            this(30, "SHA1withRSA");
         }
 
         public CertificateBuilder(int days, String algorithm) {
@@ -392,16 +392,12 @@ public class TestSslUtils {
         public X509Certificate generate(String dn, KeyPair keyPair) throws CertificateException {
             try {
                 Security.addProvider(new BouncyCastleProvider());
-                String keyAlgorithm = keyPair.getPublic().getAlgorithm();
-                // When no signature algorithm is specified, derive a SHA-256 based one from the key
-                // type. SHA-1 signed certificates are rejected by the default trust settings of
-                // recent JDK releases, which otherwise fails the TLS handshake in these tests.
-                String signatureAlgorithm = this.algorithm != null ? this.algorithm : defaultSignatureAlgorithm(keyAlgorithm);
-                AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find(signatureAlgorithm);
+                AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find(algorithm);
                 AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
                 AsymmetricKeyParameter privateKeyAsymKeyParam = PrivateKeyFactory.createKey(keyPair.getPrivate().getEncoded());
                 SubjectPublicKeyInfo subPubKeyInfo = SubjectPublicKeyInfo.getInstance(keyPair.getPublic().getEncoded());
                 BcContentSignerBuilder signerBuilder;
+                String keyAlgorithm = keyPair.getPublic().getAlgorithm();
                 if (keyAlgorithm.equals("RSA"))
                     signerBuilder = new BcRSAContentSignerBuilder(sigAlgId, digAlgId);
                 else if (keyAlgorithm.equals("DSA"))
@@ -425,19 +421,6 @@ public class TestSslUtils {
                 throw ce;
             } catch (Exception e) {
                 throw new CertificateException(e);
-            }
-        }
-
-        private static String defaultSignatureAlgorithm(String keyAlgorithm) {
-            switch (keyAlgorithm) {
-                case "RSA":
-                    return "SHA256withRSA";
-                case "DSA":
-                    return "SHA256withDSA";
-                case "EC":
-                    return "SHA256withECDSA";
-                default:
-                    throw new IllegalArgumentException("Unsupported algorithm " + keyAlgorithm);
             }
         }
     }

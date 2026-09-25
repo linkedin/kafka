@@ -19,10 +19,8 @@ package org.apache.kafka.clients;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.kafka.common.config.ConfigException;
 import org.junit.jupiter.api.Test;
 
@@ -56,20 +54,16 @@ public class ClientUtilsTest {
         checkWithoutLookup("[::1]:8000");
         checkWithoutLookup("[2001:db8:85a3:8d3:1319:8a2e:370:7348]:1234", "localhost:10000");
 
-        // With lookup of example.com, either one or two addresses are expected depending on
-        // whether ipv4 and ipv6 are enabled
-        List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("example.com:10000"));
+        // Lookup of localhost resolves to one or two loopback addresses depending on whether
+        // ipv4 and ipv6 are enabled. Use localhost rather than an external host so the test does
+        // not depend on live DNS or on IP addresses that may change over time.
+        List<InetSocketAddress> validatedAddresses = checkWithLookup(asList("localhost:10000"));
         assertTrue(validatedAddresses.size() >= 1, "Unexpected addresses " + validatedAddresses);
-        List<String> validatedHostNames = validatedAddresses.stream().map(InetSocketAddress::getHostName)
-                .collect(Collectors.toList());
-        List<String> expectedHostNames = Arrays.asList(
-            "104.18.26.120",
-            "104.18.27.120",
-            "2606:4700:0:0:0:0:6812:1a78",
-            "2606:4700:0:0:0:0:6812:1b78"
-        );
-        assertTrue(expectedHostNames.containsAll(validatedHostNames), "Unexpected addresses " + validatedHostNames);
-        validatedAddresses.forEach(address -> assertEquals(10000, address.getPort()));
+        validatedAddresses.forEach(address -> {
+            assertFalse(address.isUnresolved(), "Unexpected unresolved address " + address);
+            assertTrue(address.getAddress().isLoopbackAddress(), "Unexpected non-loopback address " + address);
+            assertEquals(10000, address.getPort());
+        });
     }
 
     @Test

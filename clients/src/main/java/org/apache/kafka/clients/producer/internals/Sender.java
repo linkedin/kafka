@@ -615,13 +615,26 @@ public class Sender implements Runnable {
             maybeRemoveAndDeallocateBatch(batch);
             this.sensors.recordBatchSplit();
         } else if (error != Errors.NONE) {
-            if (canRetry(batch, response, now)) {
-                log.warn(
-                    "Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
-                    correlationId,
-                    batch.topicPartition,
-                    this.retries - batch.attempts() - 1,
-                    formatErrMsg(response));
+            // Evaluate once: reenqueueBatch() below increments batch.attempts(), so calling
+            // canRetry() again later in this method would give a different answer.
+            final boolean willRetry = canRetry(batch, response, now);
+            if (willRetry) {
+                if (error == Errors.NOT_LEADER_OR_FOLLOWER) {
+                    // Transient: the next attempt normally recovers, so keep this out of default-level logs.
+                    log.debug(
+                        "Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
+                        correlationId,
+                        batch.topicPartition,
+                        this.retries - batch.attempts() - 1,
+                        formatErrMsg(response));
+                } else {
+                    log.warn(
+                        "Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
+                        correlationId,
+                        batch.topicPartition,
+                        this.retries - batch.attempts() - 1,
+                        formatErrMsg(response));
+                }
                 reenqueueBatch(batch, now);
             } else if (error == Errors.DUPLICATE_SEQUENCE_NUMBER) {
                 // If we have received a duplicate sequence error, it means that the sequence number has advanced beyond
@@ -641,6 +654,18 @@ public class Sender implements Runnable {
                     log.warn("Received unknown topic or partition error in produce request on partition {}. The " +
                             "topic-partition may not exist or the user may not have Describe access to it",
                         batch.topicPartition);
+                } else if (error == Errors.NOT_LEADER_OR_FOLLOWER) {
+                    if (willRetry) {
+                        // Still retrying; the retry re-reads metadata, so this isn't actionable yet.
+                        log.debug("Received invalid metadata error in produce request on partition {} due to {}. Going " +
+                                "to request metadata update now", batch.topicPartition,
+                                error.exception(response.errorMessage).toString());
+                    } else {
+                        // Retries / delivery timeout exhausted for NOT_LEADER_OR_FOLLOWER.
+                        log.error("Received invalid metadata error in produce request on partition {} due to {}. Going " +
+                                "to request metadata update now", batch.topicPartition,
+                                error.exception(response.errorMessage).toString());
+                    }
                 } else {
                     log.warn("Received invalid metadata error in produce request on partition {} due to {}. Going " +
                             "to request metadata update now", batch.topicPartition,

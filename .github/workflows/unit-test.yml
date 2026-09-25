@@ -58,10 +58,11 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          # Pin to a JDK 11 patch that still permits SHA-1 signed certificates for
-          # non-jdkCA anchored chains. Newer JDK 11 patches tighten this and break
+          # Pin to an early JDK 11 patch that still permits SHA-1 signed certificates
+          # for non-jdkCA anchored chains. Newer JDK 11 patches tighten this and break
           # SslTransportLayerTest, which relies on self-signed SHA-1 test certificates.
-          java-version: '11.0.10'
+          # 11.0.12 is the earliest patch offered by the Temurin distribution.
+          java-version: '11.0.12'
       - name: Run tests
         env:
           SCALA_VERSION: ${{ matrix.scalaVersion }}

@@ -32,8 +32,10 @@ import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.ClusterAuthorizationException;
+import org.apache.kafka.common.errors.InvalidMetadataException;
 import org.apache.kafka.common.errors.InvalidRequestException;
 import org.apache.kafka.common.errors.NetworkException;
+import org.apache.kafka.common.errors.NotLeaderOrFollowerException;
 import org.apache.kafka.common.errors.RecordTooLargeException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
@@ -87,8 +89,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.InOrder;
+import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
@@ -124,8 +128,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEFAULTS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -3260,5 +3266,200 @@ public class SenderTest {
 
         assertTrue(transactionManager.hasProducerId());
         assertEquals(producerIdAndEpoch, transactionManager.producerIdAndEpoch());
+    }
+
+    /**
+     * Supplies Sender with a mock Logger that records the format string of every warn/debug/error call,
+     * regardless of which slf4j overload was used.
+     */
+    private static class RecordingLogContext extends LogContext {
+        final List<String> warnings = new ArrayList<>();
+        final List<String> debugs = new ArrayList<>();
+        final List<String> errors = new ArrayList<>();
+
+        @Override
+        public Logger logger(Class<?> clazz) {
+            return mock(Logger.class, invocation -> {
+                String name = invocation.getMethod().getName();
+                Object[] args = invocation.getArguments();
+                if (args.length > 0 && args[0] instanceof String) {
+                    if (name.equals("warn"))
+                        warnings.add((String) args[0]);
+                    else if (name.equals("debug"))
+                        debugs.add((String) args[0]);
+                    else if (name.equals("error"))
+                        errors.add((String) args[0]);
+                }
+                if (name.equals("isDebugEnabled"))
+                    return true;
+                return RETURNS_DEFAULTS.answer(invocation);
+            });
+        }
+    }
+
+    private Sender senderWithLogContext(LogContext testLogContext, int retries, Metrics m) {
+        return new Sender(testLogContext, client, metadata, accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL, retries,
+            new SenderMetricsRegistry(m), time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
+    }
+
+    // ---- NOT_LEADER_OR_FOLLOWER log-level tests (scoped: debug while retrying, error when exhausted) ----
+
+    @Test
+    public void testNotLeaderOrFollowerIsLoggedAtDebugWhileRetrying() throws Exception {
+        RecordingLogContext recordingLog = new RecordingLogContext();
+        try (Metrics m = new Metrics()) {
+            Sender sender = senderWithLogContext(recordingLog, 5, m);
+
+            Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+            runUntil(sender, client::hasInFlightRequests);
+            client.respond(produceResponse(tp0, -1, Errors.NOT_LEADER_OR_FOLLOWER, 0));
+            sender.runOnce(); // receive error, batch is re-enqueued
+            assertFalse(future.isDone());
+
+            assertTrue(recordingLog.warnings.isEmpty(), "Unexpected warnings: " + recordingLog.warnings);
+            assertTrue(recordingLog.errors.isEmpty(), "Unexpected errors: " + recordingLog.errors);
+            // demoted, not deleted
+            assertTrue(recordingLog.debugs.stream().anyMatch(s -> s.contains("retrying")));
+            assertTrue(recordingLog.debugs.stream().anyMatch(s -> s.contains("invalid metadata error")));
+            // demoting the log line must not change behavior: a metadata refresh is still requested
+            assertTrue(metadata.updateRequested());
+
+            // the retry succeeds and the whole flow stays free of warnings and errors
+            time.sleep(RETRY_BACKOFF_MS);
+            runUntil(sender, client::hasInFlightRequests);
+            client.respond(produceResponse(tp0, 0L, Errors.NONE, 0));
+            sender.runOnce();
+            assertTrue(future.isDone());
+            assertEquals(0L, future.get().offset());
+            assertTrue(recordingLog.warnings.isEmpty());
+            assertTrue(recordingLog.errors.isEmpty());
+        }
+    }
+
+    @Test
+    public void testNotLeaderOrFollowerExhaustedIsLoggedAtError() throws Exception {
+        RecordingLogContext recordingLog = new RecordingLogContext();
+        try (Metrics m = new Metrics()) {
+            Sender sender = senderWithLogContext(recordingLog, 1, m);
+
+            Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+            runUntil(sender, client::hasInFlightRequests);
+            client.respond(produceResponse(tp0, -1, Errors.NOT_LEADER_OR_FOLLOWER, 0));
+            sender.runOnce(); // first failure: retried
+            assertFalse(future.isDone());
+            assertTrue(recordingLog.warnings.isEmpty());
+            assertTrue(recordingLog.errors.isEmpty());
+
+            time.sleep(RETRY_BACKOFF_MS);
+            runUntil(sender, client::hasInFlightRequests); // resend
+            client.respond(produceResponse(tp0, -1, Errors.NOT_LEADER_OR_FOLLOWER, 0));
+            sender.runOnce(); // second failure: retries exhausted
+            assertFutureFailure(future, NotLeaderOrFollowerException.class);
+
+            // once attempts are exhausted the invalid metadata line is emitted at ERROR
+            assertTrue(recordingLog.errors.stream().anyMatch(s -> s.contains("invalid metadata error")),
+                "Expected the invalid metadata line at ERROR: " + recordingLog.errors);
+            // and it is never emitted at WARN for NOT_LEADER_OR_FOLLOWER
+            assertTrue(recordingLog.warnings.stream().noneMatch(s -> s.contains("invalid metadata error")),
+                "Did not expect the invalid metadata line at WARN: " + recordingLog.warnings);
+        }
+    }
+
+    @Test
+    public void testNonRetriableErrorDoesNotAddWarningsOrErrors() throws Exception {
+        RecordingLogContext recordingLog = new RecordingLogContext();
+        try (Metrics m = new Metrics()) {
+            Sender sender = senderWithLogContext(recordingLog, 5, m);
+
+            Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+            runUntil(sender, client::hasInFlightRequests);
+            client.respond(produceResponse(tp0, -1, Errors.TOPIC_AUTHORIZATION_FAILED, 0));
+            sender.runOnce();
+            assertFutureFailure(future, TopicAuthorizationException.class);
+
+            // surfaced via the callback only, exactly as before this change
+            assertTrue(recordingLog.warnings.isEmpty(), "Unexpected warnings: " + recordingLog.warnings);
+            assertTrue(recordingLog.errors.isEmpty(), "Unexpected errors: " + recordingLog.errors);
+        }
+    }
+
+    // ---- scoping: other retriable / invalid-metadata errors keep their original WARN ----
+
+    @Test
+    public void testOtherRetriableErrorsStillLoggedAtWarnWhileRetrying() throws Exception {
+        RecordingLogContext recordingLog = new RecordingLogContext();
+        try (Metrics m = new Metrics()) {
+            Sender sender = senderWithLogContext(recordingLog, 5, m);
+
+            Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+            runUntil(sender, client::hasInFlightRequests);
+            client.respond(produceResponse(tp0, -1, Errors.REQUEST_TIMED_OUT, 0));
+            sender.runOnce(); // receive error, batch is re-enqueued
+            assertFalse(future.isDone());
+
+            // only NOT_LEADER_OR_FOLLOWER is demoted; other retriable errors keep their WARN
+            assertTrue(recordingLog.warnings.stream().anyMatch(s -> s.contains("retrying")),
+                "Expected the retry line at WARN: " + recordingLog.warnings);
+            assertTrue(recordingLog.debugs.stream().noneMatch(s -> s.contains("retrying")));
+            assertTrue(recordingLog.errors.isEmpty(), "Unexpected errors: " + recordingLog.errors);
+        }
+    }
+
+    @Test
+    public void testOtherInvalidMetadataErrorsStayAtWarnWhileRetrying() throws Exception {
+        for (Errors error : Arrays.asList(Errors.LEADER_NOT_AVAILABLE, Errors.FENCED_LEADER_EPOCH)) {
+            assertTrue(error.exception() instanceof InvalidMetadataException,
+                error + " is expected to map to an InvalidMetadataException");
+            RecordingLogContext recordingLog = new RecordingLogContext();
+            try (Metrics m = new Metrics()) {
+                Sender sender = senderWithLogContext(recordingLog, 5, m);
+
+                Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+                runUntil(sender, client::hasInFlightRequests);
+                client.respond(produceResponse(tp0, -1, error, 0));
+                sender.runOnce(); // receive error, batch is re-enqueued
+                assertFalse(future.isDone(), error + ": batch should be retried");
+
+                assertTrue(recordingLog.warnings.stream().anyMatch(s -> s.contains("retrying")),
+                    error + ": expected the retry line at WARN: " + recordingLog.warnings);
+                assertTrue(recordingLog.warnings.stream().anyMatch(s -> s.contains("invalid metadata error")),
+                    error + ": expected the invalid metadata line at WARN: " + recordingLog.warnings);
+                assertTrue(recordingLog.debugs.stream().noneMatch(
+                    s -> s.contains("retrying") || s.contains("invalid metadata error")));
+                assertTrue(recordingLog.errors.isEmpty(), error + ": unexpected errors " + recordingLog.errors);
+
+                // let the retry succeed so the next iteration starts from a clean state
+                time.sleep(RETRY_BACKOFF_MS);
+                runUntil(sender, client::hasInFlightRequests);
+                client.respond(produceResponse(tp0, 0L, Errors.NONE, 0));
+                sender.runOnce();
+                assertTrue(future.isDone());
+            }
+        }
+    }
+
+    @Test
+    public void testOtherInvalidMetadataErrorsStayAtWarnWhenExhausted() throws Exception {
+        for (Errors error : Arrays.asList(Errors.LEADER_NOT_AVAILABLE, Errors.FENCED_LEADER_EPOCH)) {
+            RecordingLogContext recordingLog = new RecordingLogContext();
+            try (Metrics m = new Metrics()) {
+                // retries = 0: the first failure is final
+                Sender sender = senderWithLogContext(recordingLog, 0, m);
+
+                Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
+                runUntil(sender, client::hasInFlightRequests);
+                client.respond(produceResponse(tp0, -1, error, 0));
+                sender.runOnce();
+                assertFutureFailure(future, error.exception().getClass());
+
+                // scoping: only NOT_LEADER_OR_FOLLOWER is escalated to ERROR on exhaustion; these stay WARN
+                assertTrue(recordingLog.warnings.stream().anyMatch(s -> s.contains("invalid metadata error")),
+                    error + ": expected the invalid metadata line at WARN: " + recordingLog.warnings);
+                assertTrue(recordingLog.errors.isEmpty(), error + ": unexpected errors " + recordingLog.errors);
+                assertTrue(recordingLog.debugs.stream().noneMatch(s -> s.contains("invalid metadata error")),
+                    error + ": invalid metadata line should not be logged at DEBUG");
+                assertTrue(metadata.updateRequested(), error + ": metadata update should still be requested");
+            }
+        }
     }
 }

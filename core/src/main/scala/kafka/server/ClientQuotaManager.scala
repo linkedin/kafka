@@ -42,6 +42,39 @@ import scala.jdk.CollectionConverters._
 case class ClientSensors(metricTags: Map[String, String], quotaSensor: Sensor, throttleTimeSensor: Sensor)
 
 /**
+ * Gauge exposing the effective quota limit (bytes/s) the broker currently applies to a client. Read lazily
+ * from the live quota state so it reflects dynamic overrides and adds no request-path cost. Enforced per
+ * broker, so utilization/headroom derived from it must be computed per broker.
+ */
+private[server] class QuotaLimitGauge(limitSupplier: () => Double) extends MeasurableStat {
+  override def measure(config: MetricConfig, now: Long): Double = limitSupplier()
+  override def record(config: MetricConfig, value: Double, timeMs: Long): Unit = ()
+}
+
+/**
+ * Gauge exposing how far a client is over its quota (observed byte rate minus effective limit, bytes/s).
+ * Non-zero only while breaching and explicit 0 otherwise. Updated only on the violation path via
+ * [[recordBreach]]; decays to 0 once the last violation falls outside the enforcement window. The value comes
+ * from the same windowed rate used for enforcement, so short bursts within a window can be averaged out.
+ * Understates true demand while throttled, so read alongside throttle-time.
+ */
+private[server] class QuotaBreachGauge(windowMs: Long) extends MeasurableStat {
+  @volatile private var breachValue: Double = 0.0
+  @volatile private var lastViolationMs: Long = Long.MinValue
+
+  def recordBreach(breach: Double, nowMs: Long): Unit = {
+    // Publish value before timestamp so a reader seeing a fresh timestamp also sees the matching value.
+    breachValue = breach
+    lastViolationMs = nowMs
+  }
+
+  override def measure(config: MetricConfig, now: Long): Double =
+    if (now - lastViolationMs <= windowMs) breachValue else 0.0
+
+  override def record(config: MetricConfig, value: Double, timeMs: Long): Unit = ()
+}
+
+/**
  * Configuration settings for quota management
  * @param quotaDefault The default allocated to any client-id if
  *        dynamic defaults or user quotas are not set
@@ -199,6 +232,9 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
   private val staticConfigClientIdQuota = Quota.upperBound(config.quotaDefault.toDouble)
   private val clientQuotaType = QuotaType.toClientQuotaType(quotaType)
 
+  private val quotaUtilizationMetricsEnabled = quotaType == QuotaType.Produce || quotaType == QuotaType.Fetch
+  private val quotaBreachWindowMs = config.numQuotaSamples.toLong * config.quotaWindowSizeSeconds * 1000L
+
   // The map storing the quota violation count and throttle time for each client.
   // The key is the client name which violate the quota, and the value is (violation count, throttle time in milliseconds).
   private var quotaViolationStatBySensorId = new ConcurrentHashMap[String, (Int, Long)]()
@@ -338,7 +374,20 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
           if (value != null) (value._1 + 1, value._2 + throttleTimeMs)
           else (1, throttleTimeMs)
         )
+        recordQuotaBreach(clientSensors.metricTags, e.value - e.bound, timeMs)
         throttleTimeMs
+    }
+  }
+
+  private def recordQuotaBreach(metricTags: Map[String, String], breach: Double, timeMs: Long): Unit = {
+    if (quotaUtilizationMetricsEnabled) {
+      metrics.metric(quotaBreachMetricName(metricTags)) match {
+        case null =>
+        case metric => metric.measurable() match {
+          case gauge: QuotaBreachGauge => gauge.recordBreach(breach, timeMs)
+          case _ =>
+        }
+      }
     }
   }
 
@@ -477,6 +526,10 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
       new Rate,
       getQuotaMetricConfig(metricTags)
     )
+    if (quotaUtilizationMetricsEnabled) {
+      sensor.add(quotaLimitMetricName(metricTags), new QuotaLimitGauge(() => quotaLimit(metricTags.asJava)))
+      sensor.add(quotaBreachMetricName(metricTags), new QuotaBreachGauge(quotaBreachWindowMs))
+    }
   }
 
   private def metricTagsToSensorSuffix(metricTags: Map[String, String]): String =
@@ -625,6 +678,18 @@ class ClientQuotaManager(private val config: ClientQuotaManagerConfig,
     metrics.metricName("throttle-time",
       quotaType.toString,
       "Tracking average throttle-time per user/client-id",
+      quotaMetricTags.asJava)
+  }
+
+  private def quotaLimitMetricName(quotaMetricTags: Map[String, String]): MetricName = {
+    metrics.metricName("byte-rate-limit", quotaType.toString,
+      "Tracking the effective quota limit per user/client-id",
+      quotaMetricTags.asJava)
+  }
+
+  private def quotaBreachMetricName(quotaMetricTags: Map[String, String]): MetricName = {
+    metrics.metricName("byte-rate-breach", quotaType.toString,
+      "Tracking how far the observed byte-rate exceeds the quota limit per user/client-id",
       quotaMetricTags.asJava)
   }
 

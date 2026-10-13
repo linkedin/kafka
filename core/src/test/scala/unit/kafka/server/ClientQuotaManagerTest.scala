@@ -20,12 +20,14 @@ import java.net.InetAddress
 import kafka.network.RequestChannel.Session
 import kafka.server.QuotaType._
 import kafka.utils.KafkaScheduler
-import org.apache.kafka.common.metrics.Quota
+import org.apache.kafka.common.metrics.{MetricConfig, Quota}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.utils.Sanitizer
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.{BeforeAll, AfterAll}
+
+import scala.jdk.CollectionConverters._
 
 class ClientQuotaManagerTest extends BaseClientQuotaManagerTest {
   private val config = ClientQuotaManagerConfig(quotaDefault = 500)
@@ -405,6 +407,150 @@ class ClientQuotaManagerTest extends BaseClientQuotaManagerTest {
     } finally {
       clientQuotaManager.shutdown()
     }
+  }
+
+  private def utilizationMetricValue(quotaManager: ClientQuotaManager, quotaTypeName: String, metricName: String,
+                                     user: String, clientId: String): Double = {
+    val tags = quotaManager.getOrCreateQuotaSensors(buildSession(user), clientId).metricTags
+    val metric = metrics.metrics().get(metrics.metricName(metricName, quotaTypeName, "", tags.asJava))
+    assertNotNull(metric, s"$metricName metric should exist")
+    metric.metricValue.asInstanceOf[Double]
+  }
+
+  @Test
+  def testClientQuotaLimitMetricReportsDefaultAndDynamicOverride(): Unit = {
+    val clientQuotaManager = new ClientQuotaManager(config, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    try {
+      maybeRecord(clientQuotaManager, "ANONYMOUS", "client1", 1)
+      assertEquals(500.0, utilizationMetricValue(clientQuotaManager, "Produce", "byte-rate-limit", "ANONYMOUS", "client1"),
+        0.0, "Limit gauge should report the default quota")
+
+      clientQuotaManager.updateQuota(None, Some("client1"), Some("client1"), Some(new Quota(2000, true)))
+      assertEquals(2000.0, utilizationMetricValue(clientQuotaManager, "Produce", "byte-rate-limit", "ANONYMOUS", "client1"),
+        0.0, "Limit gauge should reflect a dynamic override without a restart")
+    } finally {
+      clientQuotaManager.shutdown()
+    }
+  }
+
+  @Test
+  def testClientQuotaLimitMetricFollowsResolutionOrder(): Unit = {
+    val clientIdManager = new ClientQuotaManager(config, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    val userConfig = ClientQuotaManagerConfig(quotaDefault = Long.MaxValue)
+    val userManager = new ClientQuotaManager(userConfig, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    val userClientIdManager = new ClientQuotaManager(userConfig, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    try {
+      clientIdManager.updateQuota(None, Some("p1"), Some("p1"), Some(new Quota(2000, true)))
+      maybeRecord(clientIdManager, "ANONYMOUS", "p1", 1)
+      assertEquals(2000.0, utilizationMetricValue(clientIdManager, "Produce", "byte-rate-limit", "ANONYMOUS", "p1"),
+        0.0, "client-id override")
+
+      userManager.updateQuota(Some("User1"), None, None, Some(new Quota(3000, true)))
+      maybeRecord(userManager, "User1", "p1", 1)
+      assertEquals(3000.0, utilizationMetricValue(userManager, "Produce", "byte-rate-limit", "User1", "p1"),
+        0.0, "user override")
+
+      userClientIdManager.updateQuota(Some("User1"), Some("p1"), Some("p1"), Some(new Quota(4000, true)))
+      maybeRecord(userClientIdManager, "User1", "p1", 1)
+      assertEquals(4000.0, utilizationMetricValue(userClientIdManager, "Produce", "byte-rate-limit", "User1", "p1"),
+        0.0, "user + client-id override")
+    } finally {
+      clientIdManager.shutdown()
+      userManager.shutdown()
+      userClientIdManager.shutdown()
+    }
+  }
+
+  @Test
+  def testClientQuotaBreachMetric(): Unit = {
+    val clientQuotaManager = new ClientQuotaManager(config, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    try {
+      for (_ <- 0 until 10) {
+        assertEquals(0, maybeRecord(clientQuotaManager, "ANONYMOUS", "unknown", 400))
+        time.sleep(1000)
+      }
+      assertEquals(0.0, utilizationMetricValue(clientQuotaManager, "Produce", "byte-rate-breach", "ANONYMOUS", "unknown"),
+        0.0, "Breach should be an explicit 0 before any violation")
+
+      // Spike to 600 bytes/s against a 500 quota, so the breach is 600 - 500 = 100 bytes/s.
+      time.sleep(500)
+      val throttleTime = maybeRecord(clientQuotaManager, "ANONYMOUS", "unknown", 2300)
+      assertTrue(throttleTime > 0, "Should be throttled")
+      assertEquals(100.0, utilizationMetricValue(clientQuotaManager, "Produce", "byte-rate-breach", "ANONYMOUS", "unknown"),
+        0.001, "Breach should equal observed byte-rate minus the quota limit")
+
+      time.sleep(config.numQuotaSamples.toLong * config.quotaWindowSizeSeconds * 1000 + 1000)
+      assertEquals(0.0, utilizationMetricValue(clientQuotaManager, "Produce", "byte-rate-breach", "ANONYMOUS", "unknown"),
+        0.0, "Breach should return to an explicit 0 after the window passes with no violation")
+    } finally {
+      clientQuotaManager.shutdown()
+    }
+  }
+
+  @Test
+  def testQuotaUtilizationMetricsTagsMatchByteRate(): Unit = {
+    val clientQuotaManager = new ClientQuotaManager(config, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    try {
+      maybeRecord(clientQuotaManager, "ANONYMOUS", "client1", 100)
+      val tags = clientQuotaManager.getOrCreateQuotaSensors(buildSession("ANONYMOUS"), "client1").metricTags
+      assertEquals("", tags("user"), "Empty user is represented as an empty-string tag value")
+      assertEquals("client1", tags("client-id"))
+      Seq("byte-rate", "byte-rate-limit", "byte-rate-breach").foreach { name =>
+        assertNotNull(metrics.metrics().get(metrics.metricName(name, "Produce", "", tags.asJava)),
+          s"$name should be tagged identically to byte-rate")
+      }
+    } finally {
+      clientQuotaManager.shutdown()
+    }
+  }
+
+  @Test
+  def testQuotaUtilizationMetricsRemovedOnSensorExpiry(): Unit = {
+    val clientQuotaManager = new ClientQuotaManager(config, metrics, Produce, time, Some(ClientQuotaManagerTest.scheduler), "")
+    try {
+      maybeRecord(clientQuotaManager, "ANONYMOUS", "client1", 100)
+      val tags = clientQuotaManager.getOrCreateQuotaSensors(buildSession("ANONYMOUS"), "client1").metricTags
+      assertNotNull(metrics.metrics().get(metrics.metricName("byte-rate-limit", "Produce", "", tags.asJava)))
+      assertNotNull(metrics.metrics().get(metrics.metricName("byte-rate-breach", "Produce", "", tags.asJava)))
+
+      metrics.removeSensor("Produce-:client1")
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-limit", "Produce", "", tags.asJava)),
+        "Limit metric should be removed when the byte-rate sensor expires")
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-breach", "Produce", "", tags.asJava)),
+        "Breach metric should be removed when the byte-rate sensor expires")
+    } finally {
+      clientQuotaManager.shutdown()
+    }
+  }
+
+  @Test
+  def testQuotaUtilizationMetricsNotRegisteredForRequestAndControllerMutationQuotas(): Unit = {
+    val requestQuotaManager = new ClientRequestQuotaManager(config, metrics, time, Some(ClientQuotaManagerTest.scheduler), "", None)
+    val controllerMutationQuotaManager = new ControllerMutationQuotaManager(config, metrics, time, "", None)
+    try {
+      val requestTags = requestQuotaManager.getOrCreateQuotaSensors(buildSession("ANONYMOUS"), "client1").metricTags
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-limit", "Request", "", requestTags.asJava)))
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-breach", "Request", "", requestTags.asJava)))
+
+      val controllerTags = controllerMutationQuotaManager.getOrCreateQuotaSensors(buildSession("ANONYMOUS"), "client1").metricTags
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-limit", "ControllerMutation", "", controllerTags.asJava)))
+      assertNull(metrics.metrics().get(metrics.metricName("byte-rate-breach", "ControllerMutation", "", controllerTags.asJava)))
+    } finally {
+      requestQuotaManager.shutdown()
+      controllerMutationQuotaManager.shutdown()
+    }
+  }
+
+  @Test
+  def testQuotaBreachGaugeUpdatesOnlyOnViolationAndDecays(): Unit = {
+    val gauge = new QuotaBreachGauge(1000)
+    val metricConfig = new MetricConfig()
+    assertEquals(0.0, gauge.measure(metricConfig, 0), 0.0, "Explicit 0 before any violation, with no holder update")
+
+    gauge.recordBreach(100.0, 500)
+    assertEquals(100.0, gauge.measure(metricConfig, 500), 0.0, "Stored breach is returned within the window")
+    assertEquals(100.0, gauge.measure(metricConfig, 1500), 0.0, "Still within the window at the boundary")
+    assertEquals(0.0, gauge.measure(metricConfig, 1501), 0.0, "Explicit 0 once the window passes with no further violation")
   }
 
   private case class UserClient(val user: String, val clientId: String, val configUser: Option[String] = None, val configClientId: Option[String] = None) {

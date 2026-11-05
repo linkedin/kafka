@@ -79,8 +79,8 @@ public class RemoveMembersFromConsumerGroupHandler implements AdminApiHandler<Co
     }
 
     @Override
-    public LeaveGroupRequest.Builder buildRequest(int coordinatorId, Set<CoordinatorKey> groupIds) {
-        validateKeys(groupIds);
+    public LeaveGroupRequest.Builder buildRequest(int coordinatorId, Set<CoordinatorKey> keys) {
+        validateKeys(keys);
         return new LeaveGroupRequest.Builder(groupId.idValue, members);
     }
 

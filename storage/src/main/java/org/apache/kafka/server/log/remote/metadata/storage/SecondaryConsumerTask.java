@@ -205,8 +205,8 @@ public class SecondaryConsumerTask {
             return metadataPartitions.contains(metadataPartition);
         }
 
-        public synchronized void addAll(Set<TopicIdPartition> idPartitions) {
-            for (TopicIdPartition idPartition: idPartitions) {
+        public synchronized void addAll(Set<TopicIdPartition> partitions) {
+            for (TopicIdPartition idPartition: partitions) {
                 topicIdPartitions.add(idPartition);
                 metadataPartitions.add(partitioner.metadataPartition(idPartition));
             }

@@ -85,9 +85,9 @@ public class AlterConsumerGroupOffsetsHandler implements AdminApiHandler<Coordin
     @Override
     public OffsetCommitRequest.Builder buildRequest(
         int coordinatorId,
-        Set<CoordinatorKey> groupIds
+        Set<CoordinatorKey> keys
     ) {
-        validateKeys(groupIds);
+        validateKeys(keys);
 
         Map<String, OffsetCommitRequestTopic> offsetData = new HashMap<>();
         offsets.forEach((topicPartition, offsetAndMetadata) -> {

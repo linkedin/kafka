@@ -165,7 +165,7 @@ public class RemoteLogMetadataCache {
                 throw new IllegalArgumentException("metadataUpdate: " + metadataUpdate + " with state " + RemoteLogSegmentState.COPY_SEGMENT_STARTED +
                                                    " can not be updated");
             case COPY_SEGMENT_FINISHED:
-                handleSegmentWithCopySegmentFinishedState(existingMetadata.createWithUpdates(metadataUpdate));
+                handleSegmentWithDeleteSegmentStartedState(existingMetadata.createWithUpdates(metadataUpdate));
                 break;
             case DELETE_SEGMENT_STARTED:
                 handleSegmentWithDeleteSegmentStartedState(existingMetadata.createWithUpdates(metadataUpdate));
@@ -315,7 +315,7 @@ public class RemoteLogMetadataCache {
                     addCopyInProgressSegment(remoteLogSegmentMetadata);
                     break;
                 case COPY_SEGMENT_FINISHED:
-                    handleSegmentWithCopySegmentFinishedState(remoteLogSegmentMetadata);
+                    handleSegmentWithDeleteSegmentStartedState(remoteLogSegmentMetadata);
                     break;
                 case DELETE_SEGMENT_STARTED:
                     handleSegmentWithDeleteSegmentStartedState(remoteLogSegmentMetadata);

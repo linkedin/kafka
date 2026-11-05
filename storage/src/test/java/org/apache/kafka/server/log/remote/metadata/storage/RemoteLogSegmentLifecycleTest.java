@@ -62,9 +62,9 @@ public class RemoteLogSegmentLifecycleTest {
     private final TopicIdPartition topicIdPartition = new TopicIdPartition(Uuid.randomUuid(), new TopicPartition("foo", 0));
     private final Time time = new MockTime(1);
 
-    @ParameterizedTest(name = "testRemoteLogSegmentLifeCycle = {0}")
+    @ParameterizedTest(name = "testSegmentsLifeCycleInCache = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
-    public void testRemoteLogSegmentLifeCycle(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
+    public void testSegmentsLifeCycleInCache(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
             remoteLogSegmentLifecycleManager.initialize(topicIdPartition);
 
@@ -419,7 +419,7 @@ public class RemoteLogSegmentLifecycleTest {
 
     /**
      * This is a wrapper with {@link TopicBasedRemoteLogMetadataManager} implementing {@link RemoteLogSegmentLifecycleManager}.
-     * This is passed to {@link #testRemoteLogSegmentLifeCycle(RemoteLogSegmentLifecycleManager)} to test
+     * This is passed to {@link #testSegmentsLifeCycleInCache(RemoteLogSegmentLifecycleManager)} to test
      * {@code RemoteLogMetadataCache} for several lifecycle operations.
      * <p>
      * This starts a Kafka cluster with {@link #initialize(TopicIdPartition)} with {@link #brokerCount()} no of servers. It also
@@ -480,7 +480,7 @@ public class RemoteLogSegmentLifecycleTest {
 
     /**
      * This is a wrapper with {@link RemoteLogMetadataCache} implementing {@link RemoteLogSegmentLifecycleManager}.
-     * This is passed to {@link #testRemoteLogSegmentLifeCycle(RemoteLogSegmentLifecycleManager)} to test
+     * This is passed to {@link #testSegmentsLifeCycleInCache(RemoteLogSegmentLifecycleManager)} to test
      * {@code RemoteLogMetadataCache} for several lifecycle operations.
      */
     static class RemoteLogMetadataCacheWrapper implements RemoteLogSegmentLifecycleManager {

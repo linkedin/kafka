@@ -74,24 +74,30 @@ public class PoisonPill {
     }
 
     public void die() {
-        die(null, -1, 1);
-    }
-
-    public void die(File heapDumpFolder, final long maxWaitForDump) {
-        die(heapDumpFolder, maxWaitForDump, 1);
-    }
-
-    public void die(File heapDumpFolder, final long maxWaitForDump, int haltStatusCode) {
         try {
-            if (maxWaitForDump > 0 && heapDumpFolder != null) {
-                grabHeapDump(heapDumpFolder, maxWaitForDump, haltStatusCode);
+            if ((long) -1 > 0 && null != null) {
+                grabHeapDump(null, -1, 1);
             }
         } catch (Exception e) {
             System.err.println("unable to complete heap dump");
             e.printStackTrace(System.err);
             System.err.flush();
         } finally {
-            Runtime.getRuntime().halt(haltStatusCode);
+            Runtime.getRuntime().halt(1);
+        }
+    }
+
+    public void die(File heapDumpFolder, final long maxWaitForDump) {
+        try {
+            if (maxWaitForDump > 0 && heapDumpFolder != null) {
+                grabHeapDump(heapDumpFolder, maxWaitForDump, 1);
+            }
+        } catch (Exception e) {
+            System.err.println("unable to complete heap dump");
+            e.printStackTrace(System.err);
+            System.err.flush();
+        } finally {
+            Runtime.getRuntime().halt(1);
         }
     }
 

@@ -90,8 +90,18 @@ public class StreamsSmokeTest {
                     // slow down data production to span 30 seconds so that system tests have time to
                     // do their bounces, etc.
                     final Map<String, Set<Integer>> allData =
+<<<<<<< HEAD
                         generate(kafka, numKeys, maxRecordsPerKey, Duration.ofSeconds(30));
                     SmokeTestDriver.verify(kafka, allData, maxRecordsPerKey);
+=======
+                        generate(kafka, numKeys, maxRecordsPerKey, Duration.ofSeconds(90));
+                    SmokeTestDriver.verify(
+                        kafka,
+                        allData,
+                        maxRecordsPerKey,
+                        StreamsConfig.EXACTLY_ONCE_V2.equals(processingGuarantee)
+                    );
+>>>>>>> 9f23b25f6e (MINOR: fix Kafka Streams "smoke test" pass criteria (#18835))
                 }
                 break;
             case "process":

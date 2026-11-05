@@ -137,11 +137,11 @@ public class FollowerState implements EpochState {
         return fetchingSnapshot;
     }
 
-    public void setFetchingSnapshot(Optional<RawSnapshotWriter> newSnapshot) {
-        if (fetchingSnapshot.isPresent()) {
-            fetchingSnapshot.get().close();
+    public void setFetchingSnapshot(Optional<RawSnapshotWriter> fetchingSnapshot) {
+        if (this.fetchingSnapshot.isPresent()) {
+            this.fetchingSnapshot.get().close();
         }
-        fetchingSnapshot = newSnapshot;
+        this.fetchingSnapshot = fetchingSnapshot;
     }
 
     @Override

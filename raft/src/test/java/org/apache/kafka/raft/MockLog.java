@@ -230,10 +230,14 @@ public class MockLog implements ReplicatedLog {
             .map(entry -> entry.offset + 1)
             .orElse(
                 latestSnapshotId()
-                    .map(id -> id.offset)
+                    .map(id -> logStartOffset(id))
                     .orElse(0L)
             );
         return new LogOffsetMetadata(nextOffset, Optional.of(new MockOffsetMetadata(nextId)));
+    }
+
+    private long logStartOffset(java.lang.Object id) {
+        return id.offset;
     }
 
     @Override

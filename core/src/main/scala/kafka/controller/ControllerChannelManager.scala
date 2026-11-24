@@ -365,7 +365,7 @@ class RequestSendThread(val controllerId: Int,
       }
 
       val requestBuilder = controllerRequestMerger.pollLatestRequest()
-      (requestBuilder, controllerRequestMerger.triggerCallback _)
+      (requestBuilder, controllerRequestMerger.callbackFor(requestBuilder))
     } else {
       // use the old behavior of sending each item in the queue as a separate request
       takeSingleItemFromQueue()
@@ -794,13 +794,8 @@ abstract class AbstractControllerBrokerRequestBatch(config: KafkaConfig,
       else if (config.interBrokerProtocolVersion >= KAFKA_2_2_IV0) 1
       else 0
 
-    /**
-     * For StopReplica request version < 4, we rely on the isPartitionDeleted function to check a partition's delete flag,
-     * this may not be always correct considering a later request's callback may overwrite an earlier
-     * request's callback inside the {@link ControllerRequestMerger#addStopReplicaRequest) method.
-     * For StopReplica request version 4 and above, we rely on the delete field inside the StopReplica response to
-     * check a partition's delete flag, which should be always correct.
-     */
+    // A standalone callback uses the delete flags it captured from its request.
+    // The merger passes only results for deletes and sets the flag on each result.
     def responseCallback(brokerId: Int, isPartitionDeleted: TopicPartition => Boolean)
                         (response: AbstractResponse): Unit = {
       val stopReplicaResponse = response.asInstanceOf[StopReplicaResponse]

@@ -81,8 +81,21 @@ class ControllerEventManager(controllerId: Int,
   private[controller] var thread = new ControllerEventThread(ControllerEventThreadName)
 
   private val eventQueueTimeHist = newHistogram(EventQueueTimeMetricName)
+  private val topicChangeTiming = new TopicEventTiming("TopicChange")
+  private val deletionReplyTiming = new TopicEventTiming("TopicDeletionStopReplicaResponseReceived")
 
   newGauge(EventQueueSizeMetricName, () => queue.size)
+
+  private class TopicEventTiming(eventName: String) {
+    private val tags = Map("event" -> eventName)
+    val queueTime = newHistogram(EventQueueTimeMetricName, tags = tags)
+    val processingTime = newHistogram("EventProcessingTimeMs", tags = tags)
+
+    def remove(): Unit = {
+      removeMetric(EventQueueTimeMetricName, tags)
+      removeMetric("EventProcessingTimeMs", tags)
+    }
+  }
 
   def state: ControllerState = _state
 
@@ -96,6 +109,8 @@ class ControllerEventManager(controllerId: Int,
     } finally {
       removeMetric(EventQueueTimeMetricName)
       removeMetric(EventQueueSizeMetricName)
+      topicChangeTiming.remove()
+      deletionReplyTiming.remove()
     }
   }
 
@@ -124,7 +139,18 @@ class ControllerEventManager(controllerId: Int,
         case controllerEvent =>
           _state = controllerEvent.state
 
-          eventQueueTimeHist.update(time.milliseconds() - dequeued.enqueueTimeMs)
+          val queueTimeMs = time.milliseconds() - dequeued.enqueueTimeMs
+          eventQueueTimeHist.update(queueTimeMs)
+
+          // The TopicDeletion state covers the ZooKeeper watch and replica replies.
+          // Time the replies separately to measure how long their handler holds the thread.
+          val timing = controllerEvent match {
+            case TopicChange => Some(topicChangeTiming)
+            case _: TopicDeletionStopReplicaResponseReceived => Some(deletionReplyTiming)
+            case _ => None
+          }
+          timing.foreach(_.queueTime.update(queueTimeMs))
+          val processingStartNanos = if (timing.isDefined) time.nanoseconds() else 0L
 
           try {
             def process(): Unit = dequeued.process(processor)
@@ -135,9 +161,12 @@ class ControllerEventManager(controllerId: Int,
             }
           } catch {
             case e: Throwable => error(s"Uncaught error processing event $controllerEvent", e)
+          } finally {
+            timing.foreach { metric =>
+              metric.processingTime.update(TimeUnit.NANOSECONDS.toMillis(time.nanoseconds() - processingStartNanos))
+            }
+            _state = ControllerState.Idle
           }
-
-          _state = ControllerState.Idle
       }
     }
   }

@@ -1443,6 +1443,16 @@ $ bin/kafka-acls.sh \
             queue before being processed</td>
       </tr>
       <tr>
+        <td>Topic event queue time</td>
+        <td>kafka.controller:type=ControllerEventManager,name=EventQueueTimeMs,event={TopicChange|TopicDeletionStopReplicaResponseReceived}</td>
+        <td>Time in milliseconds from queue insertion to the start of event processing.</td>
+      </tr>
+      <tr>
+        <td>Topic event processing time</td>
+        <td>kafka.controller:type=ControllerEventManager,name=EventProcessingTimeMs,event={TopicChange|TopicDeletionStopReplicaResponseReceived}</td>
+        <td>Time in milliseconds spent handling the event on the controller thread.</td>
+      </tr>
+      <tr>
         <td>Request rate</td>
         <td>kafka.network:type=RequestMetrics,name=RequestsPerSec,request={Produce|FetchConsumer|FetchFollower},version=([0-9]+)</td>
         <td></td>

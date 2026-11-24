@@ -136,6 +136,41 @@ class ControllerEventManagerTest {
   }
 
   @Test
+  def testTopicEventTiming(): Unit = {
+    val time = new MockTime()
+    val processor = new ControllerEventProcessor {
+      override def process(event: ControllerEvent): Unit = time.sleep(20)
+      override def preempt(event: ControllerEvent): Unit = {}
+    }
+
+    controllerEventManager = new ControllerEventManager(0, processor, time, Map.empty)
+
+    def histogram(name: String, event: String): Histogram = KafkaYammerMetrics.defaultRegistry.allMetrics.asScala
+      .collectFirst { case (key, value: Histogram) if key.getName == name && key.getScope == s"event.$event" => value }
+      .getOrElse(fail(s"Missing $name for $event"))
+
+    val createWait = histogram("EventQueueTimeMs", "TopicChange")
+    val createProcessing = histogram("EventProcessingTimeMs", "TopicChange")
+    val deleteWait = histogram("EventQueueTimeMs", "TopicDeletionStopReplicaResponseReceived")
+    val deleteProcessing = histogram("EventProcessingTimeMs", "TopicDeletionStopReplicaResponseReceived")
+
+    controllerEventManager.put(TopicChange)
+    time.sleep(10)
+    controllerEventManager.put(TopicDeletionStopReplicaResponseReceived(1, Errors.NONE, Map.empty))
+    time.sleep(30)
+    controllerEventManager.start()
+
+    TestUtils.waitUntilTrue(() => createProcessing.count() == 1 && deleteProcessing.count() == 1,
+      "Expected timing samples for both topic events")
+    assertEquals(1L, createWait.count())
+    assertEquals(1L, deleteWait.count())
+    assertEquals(40.0, createWait.max(), 0.01)
+    assertEquals(50.0, deleteWait.max(), 0.01)
+    assertEquals(20.0, createProcessing.max(), 0.01)
+    assertEquals(20.0, deleteProcessing.max(), 0.01)
+  }
+
+  @Test
   def testEventQueueTimeResetOnTimeout(): Unit = {
     val metricName = "kafka.controller:type=ControllerEventManager,name=EventQueueTimeMs"
     val controllerStats = new ControllerStats

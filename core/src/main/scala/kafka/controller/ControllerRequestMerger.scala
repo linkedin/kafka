@@ -98,26 +98,51 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
   }
 
   private def mergeTopicIds(topicIds: Map[String, Uuid]): Unit = {
-    // validate that the incoming topicIds is connistent with the existing aggregateTopicIds
+    var learnedIds = false
+
     topicIds.forEach((topicName, topicId) => {
       val existingTopicId = aggregateTopicIds.get(topicName)
-      if (existingTopicId != null && !existingTopicId.equals(topicId)) {
-        warn(s"topic $topicName associated with the topic id $existingTopicId is given a new topic id $topicId " +
-          "clearing relevant requests associated with previous topic ids")
+      if (existingTopicId == null || existingTopicId == Uuid.ZERO_UUID) {
+        if (topicId != Uuid.ZERO_UUID)
+          learnedIds = true
+      } else if (existingTopicId != topicId) {
+        warn(s"Topic $topicName has a new ID $topicId. Dropping queued requests for $existingTopicId.")
 
-        def clearObsoleteEntriesInMap(map: mutable.Map[TopicIdPartition, _]) = {
-          val obsoletePartitions = map.filterKeys{
-            topicIdPartition => topicIdPartition.topicPartition().topic().equals(topicName) && !topicIdPartition.topicId().equals(topicId)}
-          obsoletePartitions.foreach{
-            case (topicIdPartition, _) => map.remove(topicIdPartition)}
+        def clearObsoleteEntries(states: mutable.Map[TopicIdPartition, _]): Unit = {
+          val obsolete = states.keysIterator.filter { partition =>
+            partition.topicPartition().topic() == topicName && partition.topicId() != topicId
+          }.toList
+          obsolete.foreach(states.remove)
         }
 
-        clearObsoleteEntriesInMap(leaderAndIsrPartitionStates)
-        clearObsoleteEntriesInMap(updateMetadataPartitionStates)
-        clearObsoleteEntriesInMap(stopReplicaPartitionStates)
+        clearObsoleteEntries(leaderAndIsrPartitionStates)
+        clearObsoleteEntries(updateMetadataPartitionStates)
+        clearObsoleteEntries(stopReplicaPartitionStates)
       }
     })
+
+    if (learnedIds) {
+      // Work queued before the topic ID was known uses ZERO_UUID. Move those
+      // entries to the known ID to keep one ordered queue per replica.
+      assignTopicIds(leaderAndIsrPartitionStates, topicIds)
+      assignTopicIds(updateMetadataPartitionStates, topicIds)
+      assignTopicIds(stopReplicaPartitionStates, topicIds)
+    }
+
     aggregateTopicIds.putAll(topicIds)
+  }
+
+  private def assignTopicIds[T](states: mutable.Map[TopicIdPartition, T], topicIds: Map[String, Uuid]): Unit = {
+    val moves = states.keysIterator.filter(_.topicId() == Uuid.ZERO_UUID).flatMap { unknown =>
+      val partition = unknown.topicPartition()
+      Option(topicIds.get(partition.topic()))
+        .filter(_ != Uuid.ZERO_UUID)
+        .map(id => unknown -> new TopicIdPartition(id, partition))
+    }.toList
+
+    moves.foreach { case (unknown, known) =>
+      states.remove(unknown).foreach(state => states.put(known, state))
+    }
   }
 
   /**

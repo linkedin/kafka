@@ -33,7 +33,7 @@ import org.apache.kafka.common.{Node, TopicPartition, Uuid}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.{Arguments, MethodSource, ValueSource}
+import org.junit.jupiter.params.provider.{Arguments, CsvSource, MethodSource, ValueSource}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -491,6 +491,84 @@ class ControllerRequestMergerTest {
     assertTrue(replies.last.partitionErrors().get(0).deletePartition())
     assertEquals(Errors.KAFKA_STORAGE_ERROR.code(), replies.last.partitionErrors().get(0).errorCode())
   }
+
+  @ParameterizedTest
+  @CsvSource(Array("2.8, false", "3.0, false", "3.0, true"))
+  def testStopReplicaOrderWhenTopicIdBecomesKnown(protocolVersion: String, hasZeroTopicId: Boolean): Unit = {
+    val merger = buildControllerRequestMerger(protocolVersion)
+    val replies = mutable.Buffer.empty[StopReplicaResponse]
+    val recordReply: AbstractResponse => Unit = reply => { replies += reply.asInstanceOf[StopReplicaResponse] }
+
+    def reply(delete: Boolean): LiCombinedControlResponse = {
+      val result = new LiCombinedControlResponseData.StopReplicaPartitionError()
+        .setTopicName(topic)
+        .setPartitionIndex(0)
+        .setErrorCode(Errors.NONE.code())
+        .setDeletePartition(delete && merger.liCombinedControlRequestVersion >= 1)
+      val data = new LiCombinedControlResponseData().setStopReplicaPartitionErrors(Collections.singletonList(result))
+
+      new LiCombinedControlResponse(data, merger.liCombinedControlRequestVersion)
+    }
+
+    if (hasZeroTopicId)
+      merger.addRequest(updateMetadataWithTopicId(Uuid.ZERO_UUID))
+
+    merger.addRequest(stopReplica(delete = false), recordReply)
+    merger.addRequest(updateMetadataWithTopicId(topicId))
+    merger.addRequest(stopReplica(delete = true), recordReply)
+
+    val stop = merger.pollLatestRequest()
+    assertEquals(List(false), stop.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    merger.callbackFor(stop)(reply(delete = false))
+    assertTrue(replies.isEmpty)
+
+    val delete = merger.pollLatestRequest()
+    assertEquals(List(true), delete.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    merger.callbackFor(delete)(reply(delete = true))
+
+    assertEquals(1, replies.size)
+    assertTrue(replies.head.partitionErrors().get(0).deletePartition())
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  @Test
+  def testLeaderAndIsrClearsStopReplicaWhenTopicIdBecomesKnown(): Unit = {
+    val merger = buildControllerRequestMerger("3.0")
+    val leaderAndIsr = new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, controllerId, controllerEpoch,
+      brokerEpoch, brokerEpoch, getLeaderAndIsrPartitionStates(topic, 0).asJava, Map(topic -> topicId).asJava, leaders.asJava)
+
+    merger.addRequest(stopReplica(delete = true))
+    merger.addRequest(leaderAndIsr)
+
+    val request = merger.pollLatestRequest()
+    assertEquals(1, request.leaderAndIsrPartitionStates().size())
+    assertTrue(request.stopReplicaPartitionStates().isEmpty)
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  @Test
+  def testStopReplicaForOldTopicIdIsDroppedOnRecreation(): Unit = {
+    val merger = buildControllerRequestMerger("3.0")
+    val newTopicId = Uuid.randomUuid()
+
+    merger.addRequest(updateMetadataWithTopicId(topicId))
+    merger.addRequest(stopReplica(delete = true))
+    merger.addRequest(updateMetadataWithTopicId(newTopicId))
+    merger.addRequest(stopReplica(delete = false))
+
+    val request = merger.pollLatestRequest()
+    assertEquals(Map(topic -> newTopicId).asJava, request.topicIds())
+    assertEquals(List(false), request.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  private def stopReplica(delete: Boolean): StopReplicaRequest.Builder =
+    new StopReplicaRequest.Builder(4, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
+      false, getStopReplicaTopicState(0, delete, 1))
+
+  private def updateMetadataWithTopicId(id: Uuid): UpdateMetadataRequest.Builder =
+    new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
+      getUpdateMetadataPartitionStates(topic, 0).asJava, updateMetadataLiveBrokers, Map(topic -> id).asJava)
 
   private def createLeaderAndISRResponsePartitions(topicName: String, errors: Seq[Errors]) = {
     val partitions = new util.ArrayList[LiCombinedControlResponseData.LeaderAndIsrPartitionError]

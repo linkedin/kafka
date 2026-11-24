@@ -17,6 +17,8 @@
 
 package kafka.server
 
+import com.yammer.metrics.core.Counter
+import kafka.metrics.KafkaYammerMetrics
 import kafka.utils._
 import org.apache.kafka.common.Uuid
 import org.apache.kafka.common.message.CreateTopicsRequestData
@@ -78,6 +80,24 @@ class CreateTopicsRequestTest extends AbstractCreateTopicsRequestTest {
       numPartitions = 5, replicationFactor = 4, config = Map("min.insync.replicas" -> "1")))), Option(4))
     validateValidCreateTopicsRequests(topicsReq(Seq(topicReq("topic20",
       numPartitions = 5, replicationFactor = 3, config = Map("min.insync.replicas" -> "1")))), Option(3))
+  }
+
+  @Test
+  def testTopicResponseCountExcludesValidateOnly(): Unit = {
+    def successfulCreates: Long = KafkaYammerMetrics.defaultRegistry.allMetrics.asScala.iterator.collect {
+      case (name, counter: Counter) if name.getName == TopicAdminResponseMetrics.MetricName &&
+        name.getScope.contains("request.CreateTopics") &&
+        name.getScope.contains(s"outcome.${TopicAdminResponseMetrics.Success}") => counter.count()
+    }.sum
+
+    val before = successfulCreates
+    val topic = "metric-test-topic"
+
+    validateValidCreateTopicsRequests(topicsReq(Seq(topicReq(topic)), validateOnly = true), Option(3))
+    assertEquals(before, successfulCreates)
+
+    validateValidCreateTopicsRequests(topicsReq(Seq(topicReq(topic))), Option(3))
+    assertEquals(before + 1, successfulCreates)
   }
 
   @Test

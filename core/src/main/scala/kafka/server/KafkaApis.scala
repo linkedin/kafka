@@ -138,9 +138,12 @@ class KafkaApis(val requestChannel: RequestChannel,
     )
 
   val listOffsetsRequestInstrumentation = new ListOffsetsRequestInstrumentation()
+  private val topicAdminResponseMetrics = new TopicAdminResponseMetrics(brokerId, config.requestMetricsTotalTimeBuckets)
 
   def close(): Unit = {
     aclApis.close()
+    topicAdminResponseMetrics.close()
+
     info("Shutdown complete.")
   }
 
@@ -1979,6 +1982,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleCreateTopicsRequest(request: RequestChannel.Request): Unit = {
     val zkSupport = metadataSupport.requireZkOrThrow(KafkaApis.shouldAlwaysForward(request))
     val controllerMutationQuota = quotas.controllerMutation.newQuotaFor(request, strictSinceVersion = 6)
+    val createTopicsRequest = request.body[CreateTopicsRequest]
 
     def sendResponseCallback(results: CreatableTopicResultCollection): Unit = {
       def createResponse(requestThrottleMs: Int): AbstractResponse = {
@@ -1986,6 +1990,12 @@ class KafkaApis(val requestChannel: RequestChannel,
           .setThrottleTimeMs(requestThrottleMs)
           .setTopics(results)
         val responseBody = new CreateTopicsResponse(responseData)
+
+        if (!createTopicsRequest.data.validateOnly) {
+          topicAdminResponseMetrics.record(ApiKeys.CREATE_TOPICS, time.nanoseconds() - request.startTimeNanos,
+            responseBody.errorCounts().asScala)
+        }
+
         trace(s"Sending create topics response $responseData for correlation id " +
           s"${request.header.correlationId} to client ${request.header.clientId}.")
         responseBody
@@ -1993,7 +2003,6 @@ class KafkaApis(val requestChannel: RequestChannel,
       requestHelper.sendResponseMaybeThrottleWithControllerQuota(controllerMutationQuota, request, createResponse)
     }
 
-    val createTopicsRequest = request.body[CreateTopicsRequest]
     val results = new CreatableTopicResultCollection(createTopicsRequest.data.topics.size)
     if (!zkSupport.controller.isActive) {
       createTopicsRequest.data.topics.forEach { topic =>
@@ -2123,6 +2132,10 @@ class KafkaApis(val requestChannel: RequestChannel,
           .setThrottleTimeMs(requestThrottleMs)
           .setResponses(results)
         val responseBody = new DeleteTopicsResponse(responseData)
+
+        topicAdminResponseMetrics.record(ApiKeys.DELETE_TOPICS, time.nanoseconds() - request.startTimeNanos,
+          responseBody.errorCounts().asScala)
+
         trace(s"Sending delete topics response $responseBody for correlation id ${request.header.correlationId} to client ${request.header.clientId}.")
         responseBody
       }

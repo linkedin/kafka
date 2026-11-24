@@ -1454,6 +1454,22 @@ $ bin/kafka-acls.sh \
             multiple errors, all are counted. error=NONE indicates successful responses.</td>
       </tr>
       <tr>
+        <td>Topic admin responses</td>
+        <td>kafka.server:type=TopicAdminResponseMetrics,name=TopicResponses,broker-id=([0-9]+),request={CreateTopics|DeleteTopics},outcome={success|timed-out|failed}</td>
+        <td>Cumulative count of topic results built by the ZooKeeper admin handlers. The broker excludes
+            validate-only requests. A <code>REQUEST_TIMED_OUT</code> result counts as <code>timed-out</code>.
+            Other errors count as <code>failed</code>. Retries count as separate responses.
+            Topic work can continue after a timeout.</td>
+      </tr>
+      <tr>
+        <td>Successful topic admin response latency buckets</td>
+        <td>kafka.server:type=TopicAdminResponseMetrics,name=SuccessfulTopicResponseTime_Bin*,broker-id=([0-9]+),request={CreateTopics|DeleteTopics}</td>
+        <td>Cumulative counts of successful topic results by elapsed time from request receipt to response
+            creation. Topics in the same response share its elapsed time. The bucket edges in milliseconds
+            come from <code>request.metrics.total.time.buckets</code>. Each bucket includes its lower edge
+            and excludes its upper edge. Choose a cutoff at a bucket edge for an exact count.</td>
+      </tr>
+      <tr>
         <td>Request size in bytes</td>
         <td>kafka.network:type=RequestMetrics,name=RequestBytes,request=([-.\w]+)</td>
         <td>Size of requests for each request type.</td>

@@ -30,6 +30,7 @@ import org.apache.kafka.common.{Node, TopicIdPartition, TopicPartition, Uuid}
 
 import java.util
 import java.util.Map
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 case class RequestControllerState(controllerId: Int, controllerEpoch: Int)
@@ -53,8 +54,8 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
   // Thus the controllerState, once set, should not change for the lifetime of this object.
   var controllerState : RequestControllerState = null
 
-  // Here we store one callback for the LeaderAndIsr response and one for the StopReplica response,
-  // given all the requests of a particular type sent to the same broker always have the same callback.
+  // A merger serves one broker and keeps a callback for each reply type.
+  // callbackFor saves the callbacks when the send thread polls a request.
   var leaderAndIsrCallback: AbstractResponse => Unit = null
   var stopReplicaCallback: AbstractResponse => Unit = null
   val aggregateTopicIds: util.Map[String, Uuid] = new util.HashMap[String, Uuid]()
@@ -97,26 +98,51 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
   }
 
   private def mergeTopicIds(topicIds: Map[String, Uuid]): Unit = {
-    // validate that the incoming topicIds is connistent with the existing aggregateTopicIds
+    var learnedIds = false
+
     topicIds.forEach((topicName, topicId) => {
       val existingTopicId = aggregateTopicIds.get(topicName)
-      if (existingTopicId != null && !existingTopicId.equals(topicId)) {
-        warn(s"topic $topicName associated with the topic id $existingTopicId is given a new topic id $topicId " +
-          "clearing relevant requests associated with previous topic ids")
+      if (existingTopicId == null || existingTopicId == Uuid.ZERO_UUID) {
+        if (topicId != Uuid.ZERO_UUID)
+          learnedIds = true
+      } else if (existingTopicId != topicId) {
+        warn(s"Topic $topicName has a new ID $topicId. Dropping queued requests for $existingTopicId.")
 
-        def clearObsoleteEntriesInMap(map: mutable.Map[TopicIdPartition, _]) = {
-          val obsoletePartitions = map.filterKeys{
-            topicIdPartition => topicIdPartition.topicPartition().topic().equals(topicName) && !topicIdPartition.topicId().equals(topicId)}
-          obsoletePartitions.foreach{
-            case (topicIdPartition, _) => map.remove(topicIdPartition)}
+        def clearObsoleteEntries(states: mutable.Map[TopicIdPartition, _]): Unit = {
+          val obsolete = states.keysIterator.filter { partition =>
+            partition.topicPartition().topic() == topicName && partition.topicId() != topicId
+          }.toList
+          obsolete.foreach(states.remove)
         }
 
-        clearObsoleteEntriesInMap(leaderAndIsrPartitionStates)
-        clearObsoleteEntriesInMap(updateMetadataPartitionStates)
-        clearObsoleteEntriesInMap(stopReplicaPartitionStates)
+        clearObsoleteEntries(leaderAndIsrPartitionStates)
+        clearObsoleteEntries(updateMetadataPartitionStates)
+        clearObsoleteEntries(stopReplicaPartitionStates)
       }
     })
+
+    if (learnedIds) {
+      // Work queued before the topic ID was known uses ZERO_UUID. Move those
+      // entries to the known ID to keep one ordered queue per replica.
+      assignTopicIds(leaderAndIsrPartitionStates, topicIds)
+      assignTopicIds(updateMetadataPartitionStates, topicIds)
+      assignTopicIds(stopReplicaPartitionStates, topicIds)
+    }
+
     aggregateTopicIds.putAll(topicIds)
+  }
+
+  private def assignTopicIds[T](states: mutable.Map[TopicIdPartition, T], topicIds: Map[String, Uuid]): Unit = {
+    val moves = states.keysIterator.filter(_.topicId() == Uuid.ZERO_UUID).flatMap { unknown =>
+      val partition = unknown.topicPartition()
+      Option(topicIds.get(partition.topic()))
+        .filter(_ != Uuid.ZERO_UUID)
+        .map(id => unknown -> new TopicIdPartition(id, partition))
+    }.toList
+
+    moves.foreach { case (unknown, known) =>
+      states.remove(unknown).foreach(state => states.put(known, state))
+    }
   }
 
   /**
@@ -227,10 +253,11 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
       }
     }}
 
-    // Here a later request's callback may be overwriting a previous request's callback.
-    // To preserve correctness, we require that the later callback and the earlier callback
-    // must have the same sideeffects when they are provided with the same StopReplica response.
-    stopReplicaCallback = callback
+    // Older stop-only requests have no callback. Keep the current callback for
+    // any deletes still queued for this broker.
+    if (callback != null)
+      stopReplicaCallback = callback
+
     true
   }
   private def clearStopReplicaPartitionState(topicIdPartition: TopicIdPartition): Unit = {
@@ -325,22 +352,38 @@ class ControllerRequestMerger(config: KafkaConfig) extends Logging {
     aggregateTopicIds.clear()
   }
 
-  def triggerCallback(response: AbstractResponse): Unit = {
-    // Currently, there is no callback for the UpdateMetadataResponse
-    val LiDecomposedControlResponse(leaderAndIsrResponse, _, stopReplicaResponse) = {
-      LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
-    }
-    if (leaderAndIsrCallback != null
-      && (!leaderAndIsrResponse.data.partitionErrors.isEmpty ||
-      !leaderAndIsrResponse.data().topics().isEmpty ||
-      leaderAndIsrResponse.error() != Errors.NONE)) {
-      // fire callback only if leaderAndIsrResponse is non-empty or contains errors
-      leaderAndIsrCallback(leaderAndIsrResponse)
-    }
-    if (stopReplicaCallback != null
-      && (!stopReplicaResponse.partitionErrors().isEmpty || stopReplicaResponse.error() != Errors.NONE)) {
-      // fire callback only if stopReplicaResponse is non-empty or contains errors
-      stopReplicaCallback(stopReplicaResponse)
+  def callbackFor(request: LiCombinedControlRequest.Builder): AbstractResponse => Unit = {
+    // A stop and a delete for the same replica can be queued together. Save
+    // this request's delete flags for checking the reply.
+    val sentDeletes = request.stopReplicaPartitionStates().asScala.iterator
+      .filter(_.deletePartitions())
+      .map(state => new TopicPartition(state.topicName(), state.partitionIndex()))
+      .toSet
+    val onLeaderAndIsr = leaderAndIsrCallback
+    val onStopReplica = stopReplicaCallback
+
+    response => {
+      val LiDecomposedControlResponse(leaderAndIsrResponse, _, stopReplicaResponse) =
+        LiDecomposedControlResponseUtils.decomposeResponse(response.asInstanceOf[LiCombinedControlResponse])
+
+      if (onLeaderAndIsr != null && (!leaderAndIsrResponse.data().partitionErrors().isEmpty ||
+        !leaderAndIsrResponse.data().topics().isEmpty || leaderAndIsrResponse.error() != Errors.NONE)) {
+        onLeaderAndIsr(leaderAndIsrResponse)
+      }
+
+      if (onStopReplica != null && sentDeletes.nonEmpty) {
+        // Older replies and error replies can omit the delete flag. Pass only
+        // the results for deletes in this request, and set their flag for the callback.
+        val results = stopReplicaResponse.partitionErrors().asScala.iterator
+          .filter(result => sentDeletes.contains(new TopicPartition(result.topicName(), result.partitionIndex())))
+          .map(_.setDeletePartition(true))
+          .toBuffer
+
+        if (results.nonEmpty || stopReplicaResponse.error() != Errors.NONE) {
+          stopReplicaResponse.data().setPartitionErrors(results.asJava)
+          onStopReplica(stopReplicaResponse)
+        }
+      }
     }
   }
 }

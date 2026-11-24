@@ -27,13 +27,13 @@ import org.apache.kafka.common.message.LiCombinedControlRequestData.StopReplicaP
 import org.apache.kafka.common.message.UpdateMetadataRequestData.{UpdateMetadataBroker, UpdateMetadataPartitionState}
 import org.apache.kafka.common.message.{LiCombinedControlRequestData, LiCombinedControlResponseData, StopReplicaRequestData}
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
-import org.apache.kafka.common.requests.{AbstractResponse, LeaderAndIsrRequest, LiCombinedControlResponse, StopReplicaRequest, UpdateMetadataRequest}
+import org.apache.kafka.common.requests.{AbstractResponse, LeaderAndIsrRequest, LiCombinedControlResponse, StopReplicaRequest, StopReplicaResponse, UpdateMetadataRequest}
 import org.apache.kafka.common.utils.LiCombinedControlTransformer
 import org.apache.kafka.common.{Node, TopicPartition, Uuid}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{BeforeEach, Test}
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.junit.jupiter.params.provider.{Arguments, CsvSource, MethodSource, ValueSource}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -381,15 +381,16 @@ class ControllerRequestMergerTest {
       leaderAndISRCallbackInvocationCount += 1
     }
 
-    controllerRequestMerger.stopReplicaCallback = (response: AbstractResponse) => {
-      stopReplicaCallbackInvocationCount += 1
-    }
+    val request = new StopReplicaRequest.Builder(stopReplicaRequestVersion, controllerId, controllerEpoch, brokerEpoch,
+      brokerEpoch, true, getStopReplicaTopicState(0, true, 1))
+    controllerRequestMerger.addRequest(request, _ => stopReplicaCallbackInvocationCount += 1)
+    val handleReply = controllerRequestMerger.callbackFor(controllerRequestMerger.pollLatestRequest())
 
     // response that contains metadata only
     val responseUpdateMetadataData = new LiCombinedControlResponseData().setUpdateMetadataErrorCode(Errors.NONE.code())
     val responseUpdateMetadata = new LiCombinedControlResponse(responseUpdateMetadataData, ApiKeys.LI_COMBINED_CONTROL.latestVersion())
 
-    controllerRequestMerger.triggerCallback(responseUpdateMetadata)
+    handleReply(responseUpdateMetadata)
 
     // metadata only response would not trigger any callback
     assertEquals(0, leaderAndISRCallbackInvocationCount, "Mismatched callback count")
@@ -407,11 +408,11 @@ class ControllerRequestMergerTest {
     val responseLeaderAndISR2 = new LiCombinedControlResponse(responseLeaderAndISRData2, ApiKeys.LI_COMBINED_CONTROL.latestVersion())
 
     // leaderAndISRCallbackInvocationCount increased with error LeaderAndISR response
-    controllerRequestMerger.triggerCallback(responseLeaderAndISR1)
+    handleReply(responseLeaderAndISR1)
     assertEquals(1, leaderAndISRCallbackInvocationCount, "Mismatched callback count")
 
     // leaderAndISRCallbackInvocationCount increased with non-empty LeaderAndISR response
-    controllerRequestMerger.triggerCallback(responseLeaderAndISR2)
+    handleReply(responseLeaderAndISR2)
     assertEquals(2, leaderAndISRCallbackInvocationCount, "Mismatched callback count")
 
     // stopReplicaCallbackInvocationCount has not been increased
@@ -423,23 +424,151 @@ class ControllerRequestMergerTest {
     val responseStopReplica1 = new LiCombinedControlResponse(responseStopReplicaData1, ApiKeys.LI_COMBINED_CONTROL.latestVersion())
 
     // StopReplica response with non-empty partitions
-    val stopReplicaPartitionsError = createStopReplicaResponsePartitions("foo",
-      Seq(Errors.NONE, Errors.CLUSTER_AUTHORIZATION_FAILED))
+    val stopReplicaPartitionsError = createStopReplicaResponsePartitions(topic, Seq(Errors.NONE))
     val responseStopReplicaData2 =
       new LiCombinedControlResponseData().setStopReplicaPartitionErrors(stopReplicaPartitionsError)
     val responseStopReplica2 = new LiCombinedControlResponse(responseStopReplicaData2, ApiKeys.LI_COMBINED_CONTROL.latestVersion())
 
     // stopReplicaCallbackInvocationCount increased with error StopReplica response
-    controllerRequestMerger.triggerCallback(responseStopReplica1)
+    handleReply(responseStopReplica1)
     assertEquals(1, stopReplicaCallbackInvocationCount, "Mismatched callback count")
 
     // stopReplicaCallbackInvocationCount increased with non-empty StopReplica response
-    controllerRequestMerger.triggerCallback(responseStopReplica2)
+    handleReply(responseStopReplica2)
     assertEquals(2, stopReplicaCallbackInvocationCount, "Mismatched callback count")
 
     // leaderAndISRCallbackInvocationCount remains unchanged
     assertEquals(2, leaderAndISRCallbackInvocationCount, "Mismatched callback count")
   }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("2.4", "3.0"))
+  def testStopReplicaReplyUsesFlagsFromSentRequest(protocolVersion: String): Unit = {
+    val merger = buildControllerRequestMerger(protocolVersion)
+    val requestVersion: Short = if (merger.liCombinedControlRequestVersion == 0) 3 else 4
+    val replies = mutable.Buffer.empty[StopReplicaResponse]
+
+    def request(partition: Int, delete: Boolean): StopReplicaRequest.Builder =
+      new StopReplicaRequest.Builder(requestVersion, controllerId, controllerEpoch, brokerEpoch,
+        brokerEpoch, requestVersion < 4 && delete, getStopReplicaTopicState(partition, delete, 1))
+
+    def response(error: Errors, delete: Boolean): LiCombinedControlResponse = {
+      val result = new LiCombinedControlResponseData.StopReplicaPartitionError()
+        .setTopicName(topic)
+        .setPartitionIndex(0)
+        .setErrorCode(error.code())
+        .setDeletePartition(delete)
+      val data = new LiCombinedControlResponseData().setStopReplicaPartitionErrors(Collections.singletonList(result))
+
+      new LiCombinedControlResponse(data, merger.liCombinedControlRequestVersion)
+    }
+
+    val recordReply: AbstractResponse => Unit = reply => { replies += reply.asInstanceOf[StopReplicaResponse] }
+
+    merger.addRequest(request(0, delete = false))
+    merger.addRequest(request(0, delete = true), recordReply)
+    merger.addRequest(request(1, delete = false))
+
+    val stopReply = merger.callbackFor(merger.pollLatestRequest())
+    val deleteReply = merger.callbackFor(merger.pollLatestRequest())
+
+    // A stale true flag on the stop reply must not finish the delete.
+    stopReply(response(Errors.NONE, delete = true))
+    assertTrue(replies.isEmpty)
+
+    // The delete reply can carry the default false flag.
+    deleteReply(response(Errors.NONE, delete = false))
+    assertEquals(1, replies.size)
+    val result = replies.head.partitionErrors().get(0)
+    assertTrue(result.deletePartition())
+    assertEquals(Errors.NONE.code(), result.errorCode())
+
+    merger.addRequest(request(0, delete = true), recordReply)
+    val retryReply = merger.callbackFor(merger.pollLatestRequest())
+    retryReply(response(Errors.KAFKA_STORAGE_ERROR, delete = false))
+
+    assertEquals(2, replies.size)
+    assertTrue(replies.last.partitionErrors().get(0).deletePartition())
+    assertEquals(Errors.KAFKA_STORAGE_ERROR.code(), replies.last.partitionErrors().get(0).errorCode())
+  }
+
+  @ParameterizedTest
+  @CsvSource(Array("2.8, false", "3.0, false", "3.0, true"))
+  def testStopReplicaOrderWhenTopicIdBecomesKnown(protocolVersion: String, hasZeroTopicId: Boolean): Unit = {
+    val merger = buildControllerRequestMerger(protocolVersion)
+    val replies = mutable.Buffer.empty[StopReplicaResponse]
+    val recordReply: AbstractResponse => Unit = reply => { replies += reply.asInstanceOf[StopReplicaResponse] }
+
+    def reply(delete: Boolean): LiCombinedControlResponse = {
+      val result = new LiCombinedControlResponseData.StopReplicaPartitionError()
+        .setTopicName(topic)
+        .setPartitionIndex(0)
+        .setErrorCode(Errors.NONE.code())
+        .setDeletePartition(delete && merger.liCombinedControlRequestVersion >= 1)
+      val data = new LiCombinedControlResponseData().setStopReplicaPartitionErrors(Collections.singletonList(result))
+
+      new LiCombinedControlResponse(data, merger.liCombinedControlRequestVersion)
+    }
+
+    if (hasZeroTopicId)
+      merger.addRequest(updateMetadataWithTopicId(Uuid.ZERO_UUID))
+
+    merger.addRequest(stopReplica(delete = false), recordReply)
+    merger.addRequest(updateMetadataWithTopicId(topicId))
+    merger.addRequest(stopReplica(delete = true), recordReply)
+
+    val stop = merger.pollLatestRequest()
+    assertEquals(List(false), stop.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    merger.callbackFor(stop)(reply(delete = false))
+    assertTrue(replies.isEmpty)
+
+    val delete = merger.pollLatestRequest()
+    assertEquals(List(true), delete.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    merger.callbackFor(delete)(reply(delete = true))
+
+    assertEquals(1, replies.size)
+    assertTrue(replies.head.partitionErrors().get(0).deletePartition())
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  @Test
+  def testLeaderAndIsrClearsStopReplicaWhenTopicIdBecomesKnown(): Unit = {
+    val merger = buildControllerRequestMerger("3.0")
+    val leaderAndIsr = new LeaderAndIsrRequest.Builder(leaderAndIsrRequestVersion, controllerId, controllerEpoch,
+      brokerEpoch, brokerEpoch, getLeaderAndIsrPartitionStates(topic, 0).asJava, Map(topic -> topicId).asJava, leaders.asJava)
+
+    merger.addRequest(stopReplica(delete = true))
+    merger.addRequest(leaderAndIsr)
+
+    val request = merger.pollLatestRequest()
+    assertEquals(1, request.leaderAndIsrPartitionStates().size())
+    assertTrue(request.stopReplicaPartitionStates().isEmpty)
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  @Test
+  def testStopReplicaForOldTopicIdIsDroppedOnRecreation(): Unit = {
+    val merger = buildControllerRequestMerger("3.0")
+    val newTopicId = Uuid.randomUuid()
+
+    merger.addRequest(updateMetadataWithTopicId(topicId))
+    merger.addRequest(stopReplica(delete = true))
+    merger.addRequest(updateMetadataWithTopicId(newTopicId))
+    merger.addRequest(stopReplica(delete = false))
+
+    val request = merger.pollLatestRequest()
+    assertEquals(Map(topic -> newTopicId).asJava, request.topicIds())
+    assertEquals(List(false), request.stopReplicaPartitionStates().asScala.map(_.deletePartitions()).toList)
+    assertTrue(!merger.hasPendingRequests())
+  }
+
+  private def stopReplica(delete: Boolean): StopReplicaRequest.Builder =
+    new StopReplicaRequest.Builder(4, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
+      false, getStopReplicaTopicState(0, delete, 1))
+
+  private def updateMetadataWithTopicId(id: Uuid): UpdateMetadataRequest.Builder =
+    new UpdateMetadataRequest.Builder(updateMetadataRequestVersion, controllerId, controllerEpoch, brokerEpoch, brokerEpoch,
+      getUpdateMetadataPartitionStates(topic, 0).asJava, updateMetadataLiveBrokers, Map(topic -> id).asJava)
 
   private def createLeaderAndISRResponsePartitions(topicName: String, errors: Seq[Errors]) = {
     val partitions = new util.ArrayList[LiCombinedControlResponseData.LeaderAndIsrPartitionError]
